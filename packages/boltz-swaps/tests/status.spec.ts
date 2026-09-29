@@ -1,99 +1,11 @@
 import {
     SwapStatus,
-    isChainSwapClaimable,
     isFailureStatus,
     isFinalStatus,
     isSuccessStatus,
 } from "boltz-swaps/status";
 
 describe("status predicates", () => {
-    describe("isChainSwapClaimable", () => {
-        test("returns true for TransactionServerConfirmed regardless of zeroConf", () => {
-            expect(
-                isChainSwapClaimable({
-                    status: SwapStatus.TransactionServerConfirmed,
-                }),
-            ).toBe(true);
-            expect(
-                isChainSwapClaimable({
-                    status: SwapStatus.TransactionServerConfirmed,
-                    zeroConf: false,
-                }),
-            ).toBe(true);
-            expect(
-                isChainSwapClaimable({
-                    status: SwapStatus.TransactionServerConfirmed,
-                    zeroConf: true,
-                }),
-            ).toBe(true);
-        });
-
-        test("returns true for TransactionServerMempool when zeroConf === true", () => {
-            expect(
-                isChainSwapClaimable({
-                    status: SwapStatus.TransactionServerMempool,
-                    zeroConf: true,
-                }),
-            ).toBe(true);
-        });
-
-        test("returns false for TransactionServerMempool when zeroConf is undefined or false", () => {
-            expect(
-                isChainSwapClaimable({
-                    status: SwapStatus.TransactionServerMempool,
-                }),
-            ).toBe(false);
-            expect(
-                isChainSwapClaimable({
-                    status: SwapStatus.TransactionServerMempool,
-                    zeroConf: false,
-                }),
-            ).toBe(false);
-        });
-
-        test("returns false for TransactionServerMempool when zeroConf is truthy but not strictly true", () => {
-            expect(
-                isChainSwapClaimable({
-                    status: SwapStatus.TransactionServerMempool,
-                    zeroConf: 1 as unknown as boolean,
-                }),
-            ).toBe(false);
-            expect(
-                isChainSwapClaimable({
-                    status: SwapStatus.TransactionServerMempool,
-                    zeroConf: "true" as unknown as boolean,
-                }),
-            ).toBe(false);
-        });
-
-        test("returns false for non-server statuses even when zeroConf === true", () => {
-            expect(
-                isChainSwapClaimable({
-                    status: SwapStatus.TransactionMempool,
-                    zeroConf: true,
-                }),
-            ).toBe(false);
-            expect(
-                isChainSwapClaimable({
-                    status: SwapStatus.TransactionConfirmed,
-                    zeroConf: true,
-                }),
-            ).toBe(false);
-            expect(
-                isChainSwapClaimable({
-                    status: SwapStatus.TransactionClaimed,
-                    zeroConf: true,
-                }),
-            ).toBe(false);
-            expect(
-                isChainSwapClaimable({
-                    status: "totally.unknown",
-                    zeroConf: true,
-                }),
-            ).toBe(false);
-        });
-    });
-
     describe("isFailureStatus", () => {
         it.each([
             SwapStatus.SwapExpired,
@@ -165,22 +77,10 @@ describe("status predicates", () => {
     });
 
     describe("cross-predicate invariants", () => {
-        test("a claimable server status is never final", () => {
-            expect(
-                isChainSwapClaimable({
-                    status: SwapStatus.TransactionServerConfirmed,
-                }),
-            ).toBe(true);
+        test("server lockup statuses are never final", () => {
             expect(isFinalStatus(SwapStatus.TransactionServerConfirmed)).toBe(
                 false,
             );
-
-            expect(
-                isChainSwapClaimable({
-                    status: SwapStatus.TransactionServerMempool,
-                    zeroConf: true,
-                }),
-            ).toBe(true);
             expect(isFinalStatus(SwapStatus.TransactionServerMempool)).toBe(
                 false,
             );
@@ -188,22 +88,16 @@ describe("status predicates", () => {
     });
 
     describe("edge cases", () => {
-        test("empty string is never failure, success, final, or claimable", () => {
+        test("empty string is never failure, success, or final", () => {
             expect(isFailureStatus("")).toBe(false);
             expect(isSuccessStatus("")).toBe(false);
             expect(isFinalStatus("")).toBe(false);
-            expect(isChainSwapClaimable({ status: "" })).toBe(false);
         });
 
         test("matching is exact-string and case-sensitive", () => {
             expect(isFinalStatus("Swap.Expired")).toBe(false);
             expect(isFailureStatus("SWAP.EXPIRED")).toBe(false);
             expect(isSuccessStatus("Invoice.Settled")).toBe(false);
-            expect(
-                isChainSwapClaimable({
-                    status: "Transaction.Server.Confirmed",
-                }),
-            ).toBe(false);
         });
     });
 });

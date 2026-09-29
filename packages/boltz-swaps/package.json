@@ -1,17 +1,8 @@
 {
     "name": "boltz-swaps",
     "version": "0.0.9",
-    "description": "Boltz Swap SDK",
+    "description": "Swap SDK (submarine and reverse swaps, BTC only) for Lightning Fork Swap, derived from Boltz's boltz-swaps",
     "license": "MIT",
-    "repository": {
-        "type": "git",
-        "url": "git+https://github.com/BoltzExchange/boltz-web-app.git",
-        "directory": "packages/boltz-swaps"
-    },
-    "homepage": "https://github.com/BoltzExchange/boltz-web-app/tree/main/packages/boltz-swaps",
-    "bugs": {
-        "url": "https://github.com/BoltzExchange/boltz-web-app/issues"
-    },
     "type": "module",
     "sideEffects": false,
     "exports": {
@@ -29,11 +20,6 @@
             "source": "./src/config.ts",
             "types": "./dist/config.d.ts",
             "default": "./dist/config.js"
-        },
-        "./networks": {
-            "source": "./src/networks.ts",
-            "types": "./dist/networks.d.ts",
-            "default": "./dist/networks.js"
         },
         "./logger": {
             "source": "./src/logger.ts",
@@ -90,21 +76,6 @@
             "types": "./dist/statusSource/index.d.ts",
             "default": "./dist/statusSource/index.js"
         },
-        "./chain": {
-            "source": "./src/chain.ts",
-            "types": "./dist/chain.d.ts",
-            "default": "./dist/chain.js"
-        },
-        "./route": {
-            "source": "./src/route.ts",
-            "types": "./dist/route.d.ts",
-            "default": "./dist/route.js"
-        },
-        "./routeExecute": {
-            "source": "./src/routeExecute.ts",
-            "types": "./dist/routeExecute.d.ts",
-            "default": "./dist/routeExecute.js"
-        },
         "./reverse": {
             "source": "./src/reverse.ts",
             "types": "./dist/reverse.d.ts",
@@ -114,71 +85,6 @@
             "source": "./src/submarine.ts",
             "types": "./dist/submarine.d.ts",
             "default": "./dist/submarine.js"
-        },
-        "./bridge": {
-            "source": "./src/bridge/index.ts",
-            "types": "./dist/bridge/index.d.ts",
-            "default": "./dist/bridge/index.js"
-        },
-        "./cctp": {
-            "source": "./src/cctp/index.ts",
-            "types": "./dist/cctp/index.d.ts",
-            "default": "./dist/cctp/index.js"
-        },
-        "./oft": {
-            "source": "./src/oft/index.ts",
-            "types": "./dist/oft/index.d.ts",
-            "default": "./dist/oft/index.js"
-        },
-        "./evm": {
-            "source": "./src/evm/index.ts",
-            "types": "./dist/evm/index.d.ts",
-            "default": "./dist/evm/index.js"
-        },
-        "./evm/contracts": {
-            "source": "./src/evm/contracts.ts",
-            "types": "./dist/evm/contracts.d.ts",
-            "default": "./dist/evm/contracts.js"
-        },
-        "./evm/abis": {
-            "source": "./src/evm/abis/index.ts",
-            "types": "./dist/evm/abis/index.d.ts",
-            "default": "./dist/evm/abis/index.js"
-        },
-        "./evm/explorer": {
-            "source": "./src/evm/explorer.ts",
-            "types": "./dist/evm/explorer.d.ts",
-            "default": "./dist/evm/explorer.js"
-        },
-        "./evm/transaction": {
-            "source": "./src/evm/transaction.ts",
-            "types": "./dist/evm/transaction.d.ts",
-            "default": "./dist/evm/transaction.js"
-        },
-        "./evm/commitment": {
-            "source": "./src/evm/commitment.ts",
-            "types": "./dist/evm/commitment.d.ts",
-            "default": "./dist/evm/commitment.js"
-        },
-        "./evm/logs": {
-            "source": "./src/evm/logs.ts",
-            "types": "./dist/evm/logs.d.ts",
-            "default": "./dist/evm/logs.js"
-        },
-        "./presets/mainnet": {
-            "source": "./src/presets/mainnet.ts",
-            "types": "./dist/presets/mainnet.d.ts",
-            "default": "./dist/presets/mainnet.js"
-        },
-        "./solana": {
-            "source": "./src/solana/index.ts",
-            "types": "./dist/solana/index.d.ts",
-            "default": "./dist/solana/index.js"
-        },
-        "./tron": {
-            "source": "./src/tron/index.ts",
-            "types": "./dist/tron/index.d.ts",
-            "default": "./dist/tron/index.js"
         },
         "./storage": {
             "source": "./src/storage/index.ts",
@@ -190,40 +96,10 @@
             "types": "./dist/lazy.d.ts",
             "default": "./dist/lazy.js"
         },
-        "./lazy/solana": {
-            "source": "./src/solana/lazy.ts",
-            "types": "./dist/solana/lazy.d.ts",
-            "default": "./dist/solana/lazy.js"
-        },
-        "./lazy/tron": {
-            "source": "./src/tron/lazy.ts",
-            "types": "./dist/tron/lazy.d.ts",
-            "default": "./dist/tron/lazy.js"
-        },
-        "./lazy/utxo": {
-            "source": "./src/utxo/lazy.ts",
-            "types": "./dist/utxo/lazy.d.ts",
-            "default": "./dist/utxo/lazy.js"
-        },
         "./utxo": {
             "source": "./src/utxo/index.ts",
             "types": "./dist/utxo/index.d.ts",
             "default": "./dist/utxo/index.js"
-        },
-        "./generated/evm-abis": {
-            "source": "./src/generated/evm-abis.ts",
-            "types": "./dist/generated/evm-abis.d.ts",
-            "default": "./dist/generated/evm-abis.js"
-        },
-        "./generated/solana-cctp": {
-            "source": "./src/generated/solana-cctp-token-messenger-minter/src/generated/index.ts",
-            "types": "./dist/generated/solana-cctp-token-messenger-minter/src/generated/index.d.ts",
-            "default": "./dist/generated/solana-cctp-token-messenger-minter/src/generated/index.js"
-        },
-        "./generated/solana-oft": {
-            "source": "./src/generated/solana-oft/src/generated/index.ts",
-            "types": "./dist/generated/solana-oft/src/generated/index.d.ts",
-            "default": "./dist/generated/solana-oft/src/generated/index.js"
         }
     },
     "files": [
@@ -233,22 +109,15 @@
         "build": "rm -rf .tsbuildinfo dist/ && bun run tsc:bin",
         "dev": "bun run tsc:bin -- --watch",
         "tsc:bin": "node node_modules/typescript7/bin/tsc",
-        "tsc": "bun run tsc:bin -- --noEmit && bun run tsc:bin -- --noEmit -p tests/tsconfig.json && bun run tsc:bin -- --noEmit -p examples/tsconfig.json && bun run tsc:bin -- --noEmit -p integration/tsconfig.json",
+        "tsc": "bun run tsc:bin -- --noEmit && bun run tsc:bin -- --noEmit -p tests/tsconfig.json",
         "test": "vitest run",
-        "test:integration": "vitest run --config vitest.integration.config.mjs",
         "check:lazy": "node scripts/check-eager-loads.mjs",
         "check:package": "node scripts/check-package-smoke.mjs",
-        "prettier": "bunx prettier --cache src tests integration scripts *.json *.mjs",
+        "prettier": "bunx prettier --cache src tests scripts *.json *.mjs",
         "prettier:write": "bun run prettier -- --write",
         "prettier:check": "bun run prettier -- --check",
-        "lint": "eslint --max-warnings 0 --cache src scripts tests integration",
-        "check": "bun run prettier:write && bun run lint -- --fix && bun run tsc",
-        "generate:evm-abis": "bun run scripts/generate-evm-abis.ts",
-        "generate:solana-oft": "codama run solana-oft",
-        "generate:solana-cctp": "codama run solana-cctp --idl src/generated/solana-cctp-token-messenger-minter-v2-idl.json",
-        "generate:fix-codama-imports": "bun run scripts/fix-codama-imports.ts",
-        "generate": "bun run generate:evm-abis && bun run generate:solana-oft && bun run generate:solana-cctp && bun run generate:fix-codama-imports",
-        "prepublishOnly": "bun run generate && bun run build"
+        "lint": "eslint --max-warnings 0 --cache src scripts tests",
+        "check": "bun run prettier:write && bun run lint -- --fix && bun run tsc"
     },
     "dependencies": {
         "@noble/curves": "catalog:",
@@ -256,88 +125,25 @@
         "@scure/base": "catalog:"
     },
     "peerDependencies": {
-        "@layerzerolabs/lz-solana-sdk-v2": "catalog:",
-        "@metaplex-foundation/mpl-toolbox": "catalog:",
-        "@metaplex-foundation/umi": "catalog:",
-        "@metaplex-foundation/umi-bundle-defaults": "catalog:",
-        "@metaplex-foundation/umi-signer-wallet-adapters": "catalog:",
-        "@reown/appkit-utils": "catalog:",
         "@scure/btc-signer": "catalog:",
-        "@solana/kit": "catalog:",
-        "@solana/program-client-core": "catalog:",
-        "@solana/spl-token": "catalog:",
-        "@solana/web3.js": "catalog:",
-        "@tronweb3/tronwallet-abstract-adapter": "catalog:",
-        "@vulpemventures/secp256k1-zkp": "catalog:",
         "bolt11": "catalog:",
-        "bolt12-utils": "catalog:",
-        "boltz-core": "catalog:",
-        "liquidjs-lib": "catalog:",
-        "tronweb": "catalog:",
-        "viem": "catalog:"
+        "boltz-core": "catalog:"
     },
     "peerDependenciesMeta": {
-        "@layerzerolabs/lz-solana-sdk-v2": {
-            "optional": true
-        },
-        "@metaplex-foundation/mpl-toolbox": {
-            "optional": true
-        },
-        "@metaplex-foundation/umi": {
-            "optional": true
-        },
-        "@metaplex-foundation/umi-bundle-defaults": {
-            "optional": true
-        },
-        "@metaplex-foundation/umi-signer-wallet-adapters": {
-            "optional": true
-        },
-        "@reown/appkit-utils": {
-            "optional": true
-        },
         "@scure/btc-signer": {
-            "optional": true
-        },
-        "@solana/kit": {
-            "optional": true
-        },
-        "@solana/program-client-core": {
-            "optional": true
-        },
-        "@solana/spl-token": {
-            "optional": true
-        },
-        "@solana/web3.js": {
-            "optional": true
-        },
-        "@tronweb3/tronwallet-abstract-adapter": {
-            "optional": true
-        },
-        "@vulpemventures/secp256k1-zkp": {
             "optional": true
         },
         "bolt11": {
             "optional": true
         },
-        "bolt12-utils": {
-            "optional": true
-        },
         "boltz-core": {
-            "optional": true
-        },
-        "liquidjs-lib": {
-            "optional": true
-        },
-        "tronweb": {
             "optional": true
         }
     },
     "devDependencies": {
-        "@codama/nodes-from-anchor": "^1.4.1",
-        "@codama/renderers-js": "^2.2.0",
         "boltz-core": "catalog:",
-        "codama": "^1.6.0",
         "typescript7": "npm:typescript@^7.0.2",
         "vitest": "catalog:"
-    }
+    },
+    "private": true
 }

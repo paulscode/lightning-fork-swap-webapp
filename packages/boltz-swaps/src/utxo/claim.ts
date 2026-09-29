@@ -5,167 +5,63 @@ import {
     SwapTreeSerializer,
     detectSwap,
 } from "boltz-core";
-import { Buffer } from "buffer";
-import type { networks as LiquidNetworks } from "liquidjs-lib";
 
-import {
-    getChainSwapClaimDetails,
-    getPartialReverseClaimSignature,
-    postChainSwapDetails,
-} from "../client.ts";
-import { formatError } from "../errors.ts";
+import { getPartialReverseClaimSignature } from "../client.ts";
 import { getLogger } from "../logger.ts";
-import { utxoSecp } from "./lazy.ts";
 import {
     type ECKeys,
-    LBTC,
     createMusig,
     hashForWitnessV1,
     tweakMusig,
 } from "./musig.ts";
 import {
     type UtxoNetwork,
+    constructClaim,
     decodeAddress,
-    getConstructClaimTransaction,
-    getNetwork,
     getOutputAmount,
-    getTransaction,
+    parseTransaction,
     setCooperativeWitness,
     txToHex,
     txToId,
 } from "./transaction.ts";
 
-type LiquidNetwork = (typeof LiquidNetworks)["liquid"];
-
-export type UtxoAsset = "BTC" | "L-BTC";
+export type UtxoAsset = "BTC";
 
 type SerializedSwapTree = Parameters<
     typeof SwapTreeSerializer.deserializeSwapTree
 >[0];
 
-export type PartialSignatureResponse = {
-    pubNonce: string;
-    partialSignature: string;
-};
-
-export type CooperativeSourceClaimInput = {
-    asset: UtxoAsset;
-    refundKeys: ECKeys;
-    sourceSwapTree: SerializedSwapTree;
-};
-
-export type ChainSwapUtxoClaimParams = {
+export type ReverseUtxoClaimParams = {
     id: string;
-    asset: UtxoAsset;
     network: UtxoNetwork;
     serverPublicKey: string;
     swapTree: SerializedSwapTree;
-    blindingKey?: string;
     claimKeys: ECKeys;
     preimage: Uint8Array;
     claimAddress: string;
     receiveAmount: number;
     lockupTxHex: string;
-    cooperativeSource?: CooperativeSourceClaimInput;
     cooperative?: boolean;
 };
 
-export type ChainSwapUtxoClaimResult = {
+export type UtxoClaimResult = {
     transactionHex: string;
     transactionId: string;
 };
 
-export type ReverseUtxoClaimParams = {
-    id: string;
-    asset: UtxoAsset;
-    network: UtxoNetwork;
-    serverPublicKey: string;
-    swapTree: SerializedSwapTree;
-    blindingKey?: string;
-    claimKeys: ECKeys;
-    preimage: Uint8Array;
-    claimAddress: string;
-    receiveAmount: number;
-    lockupTxHex: string;
-    cooperative?: boolean;
-};
-
-const isNotEligibleForCooperativeClaim = (err: unknown): boolean =>
-    formatError(err) === "swap not eligible for a cooperative claim";
-
-export const createCooperativeSourceClaimSignature = async (
-    id: string,
-    input: CooperativeSourceClaimInput,
-): Promise<PartialSignatureResponse | undefined> => {
-    try {
-        const serverClaimDetails = await getChainSwapClaimDetails(id);
-
-        const boltzClaimPublicKey = hex.decode(serverClaimDetails.publicKey);
-        const theirClaimKeyAgg = createMusig(
-            input.refundKeys,
-            boltzClaimPublicKey,
-        );
-        const tweaked = tweakMusig(
-            input.asset,
-            theirClaimKeyAgg,
-            SwapTreeSerializer.deserializeSwapTree(input.sourceSwapTree).tree,
-        );
-
-        const withNonce = tweaked
-            .message(hex.decode(serverClaimDetails.transactionHash))
-            .generateNonce();
-
-        const aggNonces = withNonce.aggregateNonces([
-            [boltzClaimPublicKey, hex.decode(serverClaimDetails.pubNonce)],
-        ]);
-        const session = aggNonces.initializeSession();
-        const signed = session.signPartial();
-
-        return {
-            pubNonce: hex.encode(withNonce.publicNonce),
-            partialSignature: hex.encode(signed.ourPartialSignature),
-        };
-    } catch (err) {
-        if (isNotEligibleForCooperativeClaim(err)) {
-            getLogger().debug(
-                `Backend already broadcast their claim for chain swap ${id}`,
-            );
-            return undefined;
-        }
-        throw err;
-    }
-};
-
-const buildAdjustedTaprootClaim = async (params: {
-    asset: UtxoAsset;
-    network: UtxoNetwork;
-    serverPublicKey: string;
-    swapTree: SerializedSwapTree;
-    blindingKey?: string;
-    claimKeys: ECKeys;
-    preimage: Uint8Array;
-    claimAddress: string;
-    receiveAmount: number;
-    lockupTxHex: string;
-    cooperative: boolean;
-}) => {
-    const { asset, network } = params;
-
+const buildAdjustedTaprootClaim = (
+    params: ReverseUtxoClaimParams & { cooperative: boolean },
+) => {
     const boltzPublicKey = hex.decode(params.serverPublicKey);
     const tree = SwapTreeSerializer.deserializeSwapTree(params.swapTree);
     const keyAgg = createMusig(params.claimKeys, boltzPublicKey);
-    const tweaked = tweakMusig(asset, keyAgg, tree.tree);
+    const tweaked = tweakMusig(keyAgg, tree.tree);
 
-    const lockupTx = getTransaction(asset).fromHex(params.lockupTxHex);
+    const lockupTx = parseTransaction(params.lockupTxHex);
     const swapOutput = detectSwap(tweaked.aggPubkey, lockupTx);
     if (swapOutput === undefined) {
         throw new Error("could not find swap output in lockup transaction");
     }
-
-    const blindingPrivateKey =
-        params.blindingKey !== undefined
-            ? Buffer.from(params.blindingKey, "hex")
-            : undefined;
 
     const details = [
         {
@@ -175,47 +71,28 @@ const buildAdjustedTaprootClaim = async (params: {
             privateKey: params.claimKeys.privateKey,
             type: OutputType.Taproot,
             transactionId: txToId(lockupTx),
-            blindingPrivateKey,
             internalKey: keyAgg.aggPubkey,
             preimage: params.preimage,
         },
-    ] as unknown as (ClaimDetails & { blindingPrivateKey?: Uint8Array })[];
+    ] as unknown as ClaimDetails[];
 
-    const decoded = decodeAddress(asset, params.claimAddress, network);
-    const claimTx = await createAdjustedClaim(
-        asset,
+    const decoded = decodeAddress(params.claimAddress, params.network);
+    const claimTx = createAdjustedClaim(
         params.receiveAmount,
         details,
         decoded.script,
-        asset === LBTC
-            ? (getNetwork(asset, network) as LiquidNetwork)
-            : undefined,
-        decoded.blindingKey,
     );
 
     return { claimTx, details, tweaked, boltzPublicKey };
 };
 
-type ClaimBuild = Awaited<ReturnType<typeof buildAdjustedTaprootClaim>>;
-
-type CooperativeClaimContext = {
-    withNonce: ReturnType<
-        ReturnType<ClaimBuild["tweaked"]["message"]>["generateNonce"]
-    >;
-    boltzPublicKey: ClaimBuild["boltzPublicKey"];
-    claimTx: ClaimBuild["claimTx"];
-};
-
-const claimCooperativeUtxo = async (
-    params: ChainSwapUtxoClaimParams | ReverseUtxoClaimParams,
-    aggregateCooperative: (ctx: CooperativeClaimContext) => Promise<Uint8Array>,
-    warnLabel: string,
-): Promise<ChainSwapUtxoClaimResult> => {
+export const claimReverseUtxo = async (
+    params: ReverseUtxoClaimParams,
+): Promise<UtxoClaimResult> => {
     const cooperative = params.cooperative ?? true;
-    const { asset, network } = params;
 
     const { claimTx, details, tweaked, boltzPublicKey } =
-        await buildAdjustedTaprootClaim({ ...params, cooperative });
+        buildAdjustedTaprootClaim({ ...params, cooperative });
 
     if (!cooperative) {
         return {
@@ -226,19 +103,32 @@ const claimCooperativeUtxo = async (
 
     try {
         const sigHash = hashForWitnessV1(
-            asset,
-            getNetwork(asset, network),
-            details,
+            details as unknown as { script: Uint8Array; amount: bigint }[],
             claimTx,
             0,
         );
 
         const withNonce = tweaked.message(sigHash).generateNonce();
 
+        const boltzSig = await getPartialReverseClaimSignature(
+            params.id,
+            params.preimage,
+            withNonce.publicNonce,
+            txToHex(claimTx),
+            0,
+        );
+
+        const aggNonces = withNonce.aggregateNonces([
+            [boltzPublicKey, boltzSig.pubNonce],
+        ]);
+        const session = aggNonces.initializeSession();
         setCooperativeWitness(
             claimTx,
             0,
-            await aggregateCooperative({ withNonce, boltzPublicKey, claimTx }),
+            session
+                .signPartial()
+                .addPartial(boltzPublicKey, boltzSig.signature)
+                .aggregatePartials(),
         );
 
         return {
@@ -246,101 +136,23 @@ const claimCooperativeUtxo = async (
             transactionId: txToId(claimTx),
         };
     } catch (e) {
-        getLogger().warn(warnLabel, e);
-        return claimCooperativeUtxo(
-            { ...params, cooperative: false },
-            aggregateCooperative,
-            warnLabel,
-        );
+        getLogger().warn("Uncooperative reverse Taproot claim because", e);
+        return claimReverseUtxo({ ...params, cooperative: false });
     }
 };
 
-export const claimChainSwapUtxo = (
-    params: ChainSwapUtxoClaimParams,
-): Promise<ChainSwapUtxoClaimResult> =>
-    claimCooperativeUtxo(
-        params,
-        async ({ withNonce, boltzPublicKey, claimTx }) => {
-            // For a UTXO source, also hand the server our partial signature so
-            // it can claim the source cooperatively in the same request.
-            const theirSig =
-                params.cooperativeSource !== undefined
-                    ? await createCooperativeSourceClaimSignature(
-                          params.id,
-                          params.cooperativeSource,
-                      )
-                    : undefined;
-
-            const theirPartial = await postChainSwapDetails(
-                params.id,
-                hex.encode(params.preimage),
-                theirSig,
-                {
-                    index: 0,
-                    transaction: txToHex(claimTx),
-                    pubNonce: hex.encode(withNonce.publicNonce),
-                },
-            );
-
-            const aggNonces = withNonce.aggregateNonces([
-                [boltzPublicKey, hex.decode(theirPartial.pubNonce)],
-            ]);
-            const session = aggNonces.initializeSession();
-            const withTheirs = session.addPartial(
-                boltzPublicKey,
-                hex.decode(theirPartial.partialSignature),
-            );
-            return withTheirs.signPartial().aggregatePartials();
-        },
-        "Uncooperative Taproot claim because",
-    );
-
-export const claimReverseUtxo = (
-    params: ReverseUtxoClaimParams,
-): Promise<ChainSwapUtxoClaimResult> =>
-    claimCooperativeUtxo(
-        params,
-        async ({ withNonce, boltzPublicKey, claimTx }) => {
-            const boltzSig = await getPartialReverseClaimSignature(
-                params.id,
-                params.preimage,
-                withNonce.publicNonce,
-                txToHex(claimTx),
-                0,
-            );
-
-            const aggNonces = withNonce.aggregateNonces([
-                [boltzPublicKey, boltzSig.pubNonce],
-            ]);
-            const session = aggNonces.initializeSession();
-            return session
-                .signPartial()
-                .addPartial(boltzPublicKey, boltzSig.signature)
-                .aggregatePartials();
-        },
-        "Uncooperative reverse Taproot claim because",
-    );
-
-const createAdjustedClaim = async (
-    asset: string,
+const createAdjustedClaim = (
     receiveAmount: number,
-    claimDetails: (ClaimDetails & { blindingPrivateKey?: Uint8Array })[],
+    claimDetails: ClaimDetails[],
     destination: Uint8Array,
-    liquidNetwork?: LiquidNetwork,
-    blindingKey?: Buffer,
 ) => {
     if (receiveAmount === 0) {
         throw new Error("amount to be received is 0");
     }
 
-    // Ensure secp256k1-zkp is initialized for Liquid transaction construction.
-    if (asset === LBTC) {
-        await utxoSecp.get();
-    }
-
     let inputSum = 0;
     for (const details of claimDetails) {
-        inputSum += await getOutputAmount(asset, details as never);
+        inputSum += getOutputAmount(details as never);
     }
 
     const feeBudget = Math.floor(inputSum - receiveAmount);
@@ -349,14 +161,6 @@ const createAdjustedClaim = async (
             `cannot construct claim transaction: receiveAmount ${receiveAmount} exceeds available input sum ${inputSum}`,
         );
     }
-    const constructClaimTransaction = getConstructClaimTransaction(asset);
 
-    return constructClaimTransaction(
-        claimDetails,
-        destination,
-        feeBudget,
-        true,
-        liquidNetwork,
-        blindingKey,
-    );
+    return constructClaim(claimDetails, destination, feeBudget, true);
 };

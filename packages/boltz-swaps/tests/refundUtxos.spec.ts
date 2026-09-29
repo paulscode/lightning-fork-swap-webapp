@@ -1,5 +1,4 @@
 import type * as BoltzCoreModule from "boltz-core";
-import { SwapType } from "boltz-swaps";
 
 import type * as ClientModule from "../src/client.ts";
 import { type Logger, setLogger } from "../src/logger.ts";
@@ -13,13 +12,11 @@ const mocks = vi.hoisted(() => ({
     tweakMusig: vi.fn(),
     hashForWitnessV1: vi.fn(),
     decodeAddress: vi.fn(),
-    getConstructRefundTransaction: vi.fn(),
-    getNetwork: vi.fn(),
-    getTransaction: vi.fn(),
+    constructRefund: vi.fn(),
+    parseTransaction: vi.fn(),
     setCooperativeWitness: vi.fn(),
     txToHex: vi.fn(),
     txToId: vi.fn(),
-    utxoSecpGet: vi.fn(),
     detectSwap: vi.fn(),
     deserializeSwapTree: vi.fn(),
 }));
@@ -39,16 +36,11 @@ vi.mock("../src/utxo/musig.ts", async (importActual) => ({
 vi.mock("../src/utxo/transaction.ts", async (importActual) => ({
     ...(await importActual<typeof TransactionModule>()),
     decodeAddress: mocks.decodeAddress,
-    getConstructRefundTransaction: mocks.getConstructRefundTransaction,
-    getNetwork: mocks.getNetwork,
-    getTransaction: mocks.getTransaction,
+    constructRefund: mocks.constructRefund,
+    parseTransaction: mocks.parseTransaction,
     setCooperativeWitness: mocks.setCooperativeWitness,
     txToHex: mocks.txToHex,
     txToId: mocks.txToId,
-}));
-
-vi.mock("../src/utxo/lazy.ts", () => ({
-    utxoSecp: { get: mocks.utxoSecpGet },
 }));
 
 vi.mock("boltz-core", async (importActual) => {
@@ -81,7 +73,6 @@ const makeMusigStub = () => {
 };
 
 let tweaked: ReturnType<typeof makeMusigStub>;
-let constructRefund: ReturnType<typeof vi.fn>;
 let refundTx: { id: string };
 let logger: Logger;
 
@@ -89,8 +80,6 @@ const baseParams = (
     overrides: Partial<RefundUtxosParams> = {},
 ): RefundUtxosParams => ({
     id: "refund-1",
-    swapType: SwapType.Submarine,
-    asset: "BTC",
     network: "regtest",
     swapTree: {} as never,
     claimPublicKey: CLAIM_PUBLIC_KEY,
@@ -119,16 +108,14 @@ beforeEach(() => {
         type: 3,
         script: new Uint8Array([0x51]),
     });
-    mocks.getTransaction.mockReturnValue({
-        fromHex: vi.fn((h: string) => ({ kind: "lockupTx", h })),
-    });
-    mocks.getNetwork.mockReturnValue({ name: "regtest-network" });
+    mocks.parseTransaction.mockImplementation((h: string) => ({
+        kind: "lockupTx",
+        h,
+    }));
     mocks.decodeAddress.mockReturnValue({
         script: new Uint8Array([0x76, 0xa9]),
-        blindingKey: undefined,
     });
-    constructRefund = vi.fn(() => refundTx);
-    mocks.getConstructRefundTransaction.mockReturnValue(constructRefund);
+    mocks.constructRefund.mockReturnValue(refundTx);
     mocks.txToHex.mockReturnValue("refundhex");
     mocks.txToId.mockReturnValue("refundid");
     mocks.hashForWitnessV1.mockReturnValue(new Uint8Array([0x77]));
@@ -136,7 +123,6 @@ beforeEach(() => {
         pubNonce: new Uint8Array([0x0a, 0x0b]),
         signature: new Uint8Array([0x0c, 0x0d]),
     });
-    mocks.utxoSecpGet.mockResolvedValue({ confidential: {} });
 
     logger = {
         trace: vi.fn(),
@@ -173,13 +159,13 @@ describe("refundUtxos multi-input", () => {
         );
 
         // one input per lockup
-        expect(constructRefund.mock.calls[0][0]).toHaveLength(3);
+        expect(mocks.constructRefund.mock.calls[0][0]).toHaveLength(3);
 
         // a partial signature requested for every ascending input index
         expect(mocks.getPartialRefundSignature).toHaveBeenCalledTimes(3);
         expect(
             mocks.getPartialRefundSignature.mock.calls.map(
-                (c) => c[4] as number,
+                (c) => c[3] as number,
             ),
         ).toEqual([0, 1, 2]);
 
@@ -198,11 +184,26 @@ describe("refundUtxos multi-input", () => {
         });
     });
 
-    test("forwards the swap type to the partial-signature request", async () => {
-        await refundUtxos(baseParams({ swapType: SwapType.Chain }));
+    test("parses every lockup transaction and hashes each input against all inputs", async () => {
+        await refundUtxos(
+            baseParams({
+                lockups: [
+                    { lockupTxHex: "aa", timeoutBlockHeight: 100 },
+                    { lockupTxHex: "bb", timeoutBlockHeight: 110 },
+                ],
+            }),
+        );
 
-        expect(mocks.getPartialRefundSignature.mock.calls[0][1]).toBe(
-            SwapType.Chain,
+        expect(
+            mocks.parseTransaction.mock.calls.map((c) => c[0] as string),
+        ).toEqual(["aa", "bb"]);
+        expect(mocks.hashForWitnessV1).toHaveBeenCalledTimes(2);
+        expect(mocks.hashForWitnessV1.mock.calls[0][0]).toHaveLength(2);
+        expect(
+            mocks.hashForWitnessV1.mock.calls.map((c) => c[2] as number),
+        ).toEqual([0, 1]);
+        expect(mocks.getPartialRefundSignature.mock.calls[0][0]).toBe(
+            "refund-1",
         );
     });
 });
@@ -227,9 +228,9 @@ describe("refundUtxos cooperative failure", () => {
         );
 
         expect(logger.warn).toHaveBeenCalledTimes(1);
-        expect(constructRefund).toHaveBeenCalledTimes(2);
+        expect(mocks.constructRefund).toHaveBeenCalledTimes(2);
         // uncooperative fallback uses the single nLockTime
-        expect(constructRefund.mock.calls[1][2]).toBe(200);
+        expect(mocks.constructRefund.mock.calls[1][2]).toBe(200);
         expect(result.transactionHex).toBe("refundhex");
         expect(result.cooperativeError).toBe("refund denied");
     });
@@ -250,7 +251,7 @@ describe("refundUtxos uncooperative", () => {
 
         expect(mocks.getPartialRefundSignature).not.toHaveBeenCalled();
         expect(mocks.setCooperativeWitness).not.toHaveBeenCalled();
-        expect(constructRefund.mock.calls[0][2]).toBe(999);
+        expect(mocks.constructRefund.mock.calls[0][2]).toBe(999);
         expect(result).toEqual({
             transactionHex: "refundhex",
             transactionId: "refundid",

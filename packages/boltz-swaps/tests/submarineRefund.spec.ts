@@ -1,8 +1,6 @@
 import { hex } from "@scure/base";
 import type * as BoltzCoreModule from "boltz-core";
 import { OutputType } from "boltz-core";
-import { SwapType } from "boltz-swaps";
-import { Buffer } from "buffer";
 
 import type * as ClientModule from "../src/client.ts";
 import { type Logger, setLogger } from "../src/logger.ts";
@@ -16,13 +14,11 @@ const mocks = vi.hoisted(() => ({
     tweakMusig: vi.fn(),
     hashForWitnessV1: vi.fn(),
     decodeAddress: vi.fn(),
-    getConstructRefundTransaction: vi.fn(),
-    getNetwork: vi.fn(),
-    getTransaction: vi.fn(),
+    constructRefund: vi.fn(),
+    parseTransaction: vi.fn(),
     setCooperativeWitness: vi.fn(),
     txToHex: vi.fn(),
     txToId: vi.fn(),
-    utxoSecpGet: vi.fn(),
     detectSwap: vi.fn(),
     deserializeSwapTree: vi.fn(),
 }));
@@ -42,16 +38,11 @@ vi.mock("../src/utxo/musig.ts", async (importActual) => ({
 vi.mock("../src/utxo/transaction.ts", async (importActual) => ({
     ...(await importActual<typeof TransactionModule>()),
     decodeAddress: mocks.decodeAddress,
-    getConstructRefundTransaction: mocks.getConstructRefundTransaction,
-    getNetwork: mocks.getNetwork,
-    getTransaction: mocks.getTransaction,
+    constructRefund: mocks.constructRefund,
+    parseTransaction: mocks.parseTransaction,
     setCooperativeWitness: mocks.setCooperativeWitness,
     txToHex: mocks.txToHex,
     txToId: mocks.txToId,
-}));
-
-vi.mock("../src/utxo/lazy.ts", () => ({
-    utxoSecp: { get: mocks.utxoSecpGet },
 }));
 
 vi.mock("boltz-core", async (importActual) => {
@@ -84,7 +75,6 @@ const makeMusigStub = () => {
 };
 
 let tweaked: ReturnType<typeof makeMusigStub>;
-let constructRefund: ReturnType<typeof vi.fn>;
 let refundTx: { id: string };
 let logger: Logger;
 
@@ -92,7 +82,6 @@ const baseParams = (
     overrides: Partial<Parameters<typeof refundSubmarineUtxo>[0]> = {},
 ): Parameters<typeof refundSubmarineUtxo>[0] => ({
     id: "refund-1",
-    asset: "BTC",
     network: "regtest",
     swapTree: {} as never,
     claimPublicKey: CLAIM_PUBLIC_KEY,
@@ -121,16 +110,11 @@ beforeEach(() => {
         type: 3,
         script: new Uint8Array([0x51]),
     });
-    mocks.getTransaction.mockReturnValue({
-        fromHex: vi.fn(() => ({ kind: "lockupTx" })),
-    });
-    mocks.getNetwork.mockReturnValue({ name: "regtest-network" });
+    mocks.parseTransaction.mockReturnValue({ kind: "lockupTx" });
     mocks.decodeAddress.mockReturnValue({
         script: new Uint8Array([0x76, 0xa9]),
-        blindingKey: undefined,
     });
-    constructRefund = vi.fn(() => refundTx);
-    mocks.getConstructRefundTransaction.mockReturnValue(constructRefund);
+    mocks.constructRefund.mockReturnValue(refundTx);
     mocks.txToHex.mockReturnValue("refundhex");
     mocks.txToId.mockReturnValue("refundid");
     mocks.hashForWitnessV1.mockReturnValue(new Uint8Array([0x77]));
@@ -138,7 +122,6 @@ beforeEach(() => {
         pubNonce: new Uint8Array([0x0a, 0x0b]),
         signature: new Uint8Array([0x0c, 0x0d]),
     });
-    mocks.utxoSecpGet.mockResolvedValue({ confidential: {} });
 
     logger = {
         trace: vi.fn(),
@@ -169,10 +152,10 @@ describe("refundSubmarineUtxo cooperative happy path", () => {
         expect(mocks.getPartialRefundSignature).toHaveBeenCalledTimes(1);
         const args = mocks.getPartialRefundSignature.mock.calls[0];
         expect(args[0]).toBe("refund-1");
-        expect(args[1]).toBe(SwapType.Submarine);
-        expect(args[2]).toEqual(tweaked.publicNonce);
-        expect(args[3]).toBe("refundhex");
-        expect(args[4]).toBe(0);
+        expect(args[1]).toEqual(tweaked.publicNonce);
+        expect(args[2]).toBe("refundhex");
+        expect(args[3]).toBe(0);
+        expect(args).toHaveLength(4);
 
         const boltzPublicKey = hex.decode(CLAIM_PUBLIC_KEY);
         expect(tweaked.addPartial).toHaveBeenCalledWith(
@@ -184,7 +167,7 @@ describe("refundSubmarineUtxo cooperative happy path", () => {
             0,
             new Uint8Array([0xaa, 0xbb]),
         );
-        expect(constructRefund.mock.calls[0][2]).toBe(0);
+        expect(mocks.constructRefund.mock.calls[0][2]).toBe(0);
         expect(result).toEqual({
             transactionHex: "refundhex",
             transactionId: "refundid",
@@ -202,8 +185,8 @@ describe("refundSubmarineUtxo uncooperative fallback", () => {
 
         expect(logger.warn).toHaveBeenCalledTimes(1);
         expect(mocks.setCooperativeWitness).not.toHaveBeenCalled();
-        expect(constructRefund).toHaveBeenCalledTimes(2);
-        expect(constructRefund.mock.calls[1][2]).toBe(150);
+        expect(mocks.constructRefund).toHaveBeenCalledTimes(2);
+        expect(mocks.constructRefund.mock.calls[1][2]).toBe(150);
         expect(result).toEqual({
             transactionHex: "refundhex",
             transactionId: "refundid",
@@ -219,7 +202,7 @@ describe("refundSubmarineUtxo non-cooperative branch", () => {
 
         expect(mocks.getPartialRefundSignature).not.toHaveBeenCalled();
         expect(mocks.setCooperativeWitness).not.toHaveBeenCalled();
-        expect(constructRefund.mock.calls[0][2]).toBe(150);
+        expect(mocks.constructRefund.mock.calls[0][2]).toBe(150);
         expect(result).toEqual({
             transactionHex: "refundhex",
             transactionId: "refundid",
@@ -234,17 +217,7 @@ describe("refundSubmarineUtxo guards", () => {
         await expect(refundSubmarineUtxo(baseParams())).rejects.toThrow(
             /could not find swap output/,
         );
-        expect(constructRefund).not.toHaveBeenCalled();
-    });
-
-    test("L-BTC initializes secp before constructing", async () => {
-        await refundSubmarineUtxo(baseParams({ asset: "L-BTC" }));
-        expect(mocks.utxoSecpGet).toHaveBeenCalledTimes(1);
-    });
-
-    test("BTC skips secp init", async () => {
-        await refundSubmarineUtxo(baseParams());
-        expect(mocks.utxoSecpGet).not.toHaveBeenCalled();
+        expect(mocks.constructRefund).not.toHaveBeenCalled();
     });
 });
 
@@ -316,8 +289,8 @@ describe("refundSubmarineUtxo cooperative-chain failures fall back to a timelock
 
             expect(logger.warn).toHaveBeenCalledTimes(1);
             expect(mocks.setCooperativeWitness).not.toHaveBeenCalled();
-            expect(constructRefund).toHaveBeenCalledTimes(2);
-            expect(constructRefund.mock.calls[1][2]).toBe(150);
+            expect(mocks.constructRefund).toHaveBeenCalledTimes(2);
+            expect(mocks.constructRefund.mock.calls[1][2]).toBe(150);
             expect(result).toEqual({
                 transactionHex: "refundhex",
                 transactionId: "refundid",
@@ -327,42 +300,36 @@ describe("refundSubmarineUtxo cooperative-chain failures fall back to a timelock
 });
 
 describe("refundSubmarineUtxo detail construction", () => {
-    test("forwards taproot refund details and selects the BTC builder", async () => {
+    test("forwards taproot refund details, the decoded script, the fee rate and RBF", async () => {
         await refundSubmarineUtxo(baseParams());
 
-        expect(mocks.getConstructRefundTransaction).toHaveBeenCalledWith(
-            "BTC",
-            false,
+        expect(mocks.parseTransaction).toHaveBeenCalledWith("deadbeef");
+        expect(mocks.decodeAddress).toHaveBeenCalledWith(
+            "bcrt1quser",
+            "regtest",
         );
 
-        const details = constructRefund.mock.calls[0][0];
+        const [details, script, locktime, feePerVbyte, isRbf] =
+            mocks.constructRefund.mock.calls[0];
         expect(details).toHaveLength(1);
         expect(details[0]).toMatchObject({
             cooperative: true,
             type: OutputType.Taproot,
             transactionId: "refundid",
         });
-        expect(details[0].blindingPrivateKey).toBeUndefined();
-        expect(constructRefund.mock.calls[0][5]).toBeUndefined();
-        expect(constructRefund.mock.calls[0][6]).toBeUndefined();
+        expect(script).toEqual(new Uint8Array([0x76, 0xa9]));
+        expect(locktime).toBe(0);
+        expect(feePerVbyte).toBe(2);
+        expect(isRbf).toBe(true);
     });
 
-    test("selects the liquid builder and forwards the blinding key for L-BTC", async () => {
-        await refundSubmarineUtxo(
-            baseParams({ asset: "L-BTC", blindingKey: "aabb" }),
+    test("does not expose the cooperative error from refundUtxos", async () => {
+        mocks.getPartialRefundSignature.mockRejectedValueOnce(
+            new Error("refund denied"),
         );
 
-        expect(mocks.getConstructRefundTransaction).toHaveBeenCalledWith(
-            "L-BTC",
-            true,
-        );
+        const result = await refundSubmarineUtxo(baseParams());
 
-        const details = constructRefund.mock.calls[0][0];
-        expect(details[0].blindingPrivateKey).toEqual(
-            Buffer.from("aabb", "hex"),
-        );
-        expect(constructRefund.mock.calls[0][5]).toEqual({
-            name: "regtest-network",
-        });
+        expect(result).not.toHaveProperty("cooperativeError");
     });
 });

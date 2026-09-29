@@ -56,17 +56,3 @@ export const isSuccessStatus = (status: string): boolean =>
 // failure). Used to stop watching/polling.
 export const isFinalStatus = (status: string): boolean =>
     isFailureStatus(status) || isSuccessStatus(status);
-
-// Whether a chain swap can be claimed at the given status.
-export const isChainSwapClaimable = (args: {
-    status: string;
-    zeroConf?: boolean;
-}): boolean => {
-    if (args.status === SwapStatus.TransactionServerConfirmed) {
-        return true;
-    }
-    return (
-        args.zeroConf === true &&
-        args.status === SwapStatus.TransactionServerMempool
-    );
-};

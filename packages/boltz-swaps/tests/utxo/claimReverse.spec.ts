@@ -16,14 +16,12 @@ const mocks = vi.hoisted(() => ({
     tweakMusig: vi.fn(),
     hashForWitnessV1: vi.fn(),
     decodeAddress: vi.fn(),
-    getConstructClaimTransaction: vi.fn(),
-    getNetwork: vi.fn(),
+    constructClaim: vi.fn(),
     getOutputAmount: vi.fn(),
-    getTransaction: vi.fn(),
+    parseTransaction: vi.fn(),
     setCooperativeWitness: vi.fn(),
     txToHex: vi.fn(),
     txToId: vi.fn(),
-    utxoSecpGet: vi.fn(),
     detectSwap: vi.fn(),
     deserializeSwapTree: vi.fn(),
 }));
@@ -43,17 +41,12 @@ vi.mock("../../src/utxo/musig.ts", async (importActual) => ({
 vi.mock("../../src/utxo/transaction.ts", async (importActual) => ({
     ...(await importActual<typeof TransactionModule>()),
     decodeAddress: mocks.decodeAddress,
-    getConstructClaimTransaction: mocks.getConstructClaimTransaction,
-    getNetwork: mocks.getNetwork,
+    constructClaim: mocks.constructClaim,
     getOutputAmount: mocks.getOutputAmount,
-    getTransaction: mocks.getTransaction,
+    parseTransaction: mocks.parseTransaction,
     setCooperativeWitness: mocks.setCooperativeWitness,
     txToHex: mocks.txToHex,
     txToId: mocks.txToId,
-}));
-
-vi.mock("../../src/utxo/lazy.ts", () => ({
-    utxoSecp: { get: mocks.utxoSecpGet },
 }));
 
 vi.mock("boltz-core", async (importActual) => {
@@ -87,7 +80,6 @@ const makeMusigStub = () => {
 };
 
 let tweaked: ReturnType<typeof makeMusigStub>;
-let constructClaimTransaction: ReturnType<typeof vi.fn>;
 let claimTx: { id: string };
 let logger: Logger;
 
@@ -95,7 +87,6 @@ const baseParams = (
     overrides: Partial<ReverseUtxoClaimParams> = {},
 ): ReverseUtxoClaimParams => ({
     id: "rev-1",
-    asset: "BTC",
     network: "regtest",
     serverPublicKey: SERVER_PUBLIC_KEY,
     swapTree: {} as never,
@@ -124,19 +115,12 @@ beforeEach(() => {
         type: 3,
         script: new Uint8Array([0x51]),
     });
-    mocks.getTransaction.mockReturnValue({
-        fromHex: vi.fn(() => ({ kind: "lockupTx" })),
-    });
-    mocks.getNetwork.mockReturnValue({ name: "regtest-network" });
-    mocks.getOutputAmount.mockResolvedValue(60_000);
+    mocks.parseTransaction.mockReturnValue({ kind: "lockupTx" });
+    mocks.getOutputAmount.mockReturnValue(60_000);
     mocks.decodeAddress.mockReturnValue({
         script: new Uint8Array([0x76, 0xa9]),
-        blindingKey: undefined,
     });
-    constructClaimTransaction = vi.fn(() => claimTx);
-    mocks.getConstructClaimTransaction.mockReturnValue(
-        constructClaimTransaction,
-    );
+    mocks.constructClaim.mockReturnValue(claimTx);
     mocks.txToHex.mockImplementation((tx: unknown) =>
         tx === claimTx ? "cohex" : "othertxhex",
     );
@@ -148,7 +132,6 @@ beforeEach(() => {
         pubNonce: new Uint8Array([0x0a, 0x0b]),
         signature: new Uint8Array([0x0c, 0x0d]),
     });
-    mocks.utxoSecpGet.mockResolvedValue({ confidential: {} });
 
     logger = {
         trace: vi.fn(),
@@ -211,7 +194,7 @@ describe("claimReverseUtxo uncooperative fallback", () => {
 
         expect(logger.warn).toHaveBeenCalledTimes(1);
         expect(mocks.setCooperativeWitness).not.toHaveBeenCalled();
-        expect(constructClaimTransaction).toHaveBeenCalledTimes(2);
+        expect(mocks.constructClaim).toHaveBeenCalledTimes(2);
         expect(result).toEqual({
             transactionHex: "cohex",
             transactionId: "coid",
@@ -241,23 +224,23 @@ describe("claimReverseUtxo guards", () => {
         await expect(claimReverseUtxo(baseParams())).rejects.toThrow(
             /could not find swap output/,
         );
-        expect(constructClaimTransaction).not.toHaveBeenCalled();
+        expect(mocks.constructClaim).not.toHaveBeenCalled();
     });
 
     test("throws when the receive amount is zero", async () => {
         await expect(
             claimReverseUtxo(baseParams({ receiveAmount: 0 })),
         ).rejects.toThrow(/amount to be received is 0/);
-        expect(constructClaimTransaction).not.toHaveBeenCalled();
+        expect(mocks.constructClaim).not.toHaveBeenCalled();
     });
 
     test("throws when the receive amount exceeds the input sum", async () => {
-        mocks.getOutputAmount.mockResolvedValue(60_000);
+        mocks.getOutputAmount.mockReturnValue(60_000);
 
         await expect(
             claimReverseUtxo(baseParams({ receiveAmount: 70_000 })),
         ).rejects.toThrow(/exceeds available input sum/);
-        expect(constructClaimTransaction).not.toHaveBeenCalled();
+        expect(mocks.constructClaim).not.toHaveBeenCalled();
     });
 });
 
@@ -272,17 +255,39 @@ describe("claimReverseUtxo cooperative aggregation", () => {
         expect(noncesArg[0][1]).toEqual(new Uint8Array([0x0a, 0x0b]));
 
         // inputSum (getOutputAmount 60_000) - receiveAmount (50_000)
-        expect(constructClaimTransaction.mock.calls[0][2]).toBe(10_000);
-        expect(constructClaimTransaction.mock.calls[0][3]).toBe(true);
-        expect(constructClaimTransaction.mock.calls[0][4]).toBeUndefined();
+        expect(mocks.constructClaim.mock.calls[0][2]).toBe(10_000);
+        expect(mocks.constructClaim.mock.calls[0][3]).toBe(true);
+        expect(mocks.constructClaim.mock.calls[0]).toHaveLength(4);
     });
 
-    test("initializes secp and passes the liquid network for L-BTC", async () => {
-        await claimReverseUtxo(baseParams({ asset: "L-BTC" }));
+    test("uses the tweaked aggregate key to find the output and decodes the claim address for the network", async () => {
+        await claimReverseUtxo(baseParams());
 
-        expect(mocks.utxoSecpGet).toHaveBeenCalledTimes(1);
-        expect(constructClaimTransaction.mock.calls[0][4]).toEqual({
-            name: "regtest-network",
+        expect(mocks.parseTransaction).toHaveBeenCalledWith("deadbeef");
+        expect(mocks.detectSwap).toHaveBeenCalledWith(tweaked.aggPubkey, {
+            kind: "lockupTx",
         });
+        expect(mocks.decodeAddress).toHaveBeenCalledWith(
+            "bcrt1quser",
+            "regtest",
+        );
+        expect(mocks.tweakMusig).toHaveBeenCalledWith(expect.anything(), {
+            stub: true,
+        });
+        expect(mocks.constructClaim.mock.calls[0][1]).toEqual(
+            new Uint8Array([0x76, 0xa9]),
+        );
+    });
+
+    test("pins server-first MuSig ordering with the hex-decoded server key", async () => {
+        await claimReverseUtxo(baseParams());
+
+        expect(mocks.createMusig).toHaveBeenCalledWith(
+            expect.objectContaining({
+                privateKey: expect.any(Uint8Array),
+                publicKey: expect.any(Uint8Array),
+            }),
+            hex.decode(SERVER_PUBLIC_KEY),
+        );
     });
 });

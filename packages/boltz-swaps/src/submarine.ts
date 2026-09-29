@@ -1,26 +1,21 @@
 import { hex } from "@scure/base";
-import type { Hex } from "viem";
 
 import {
     type SubmarineCreatedResponse,
-    getEipRefundSignature,
     getSubmarineClaimDetails,
     postSubmarineClaimDetails,
 } from "./client.ts";
 import { getLogger } from "./logger.ts";
-import { SwapType } from "./types.ts";
 import type {
     ECKeys,
     RefundResult,
     RefundSubmarineUtxoParams,
-    UtxoAsset,
 } from "./utxo/index.ts";
 
 export type { RefundResult, RefundSubmarineUtxoParams };
 
 export type SignSubmarineClaimArgs = {
     id: string;
-    asset: UtxoAsset;
     swapTree: SubmarineCreatedResponse["swapTree"];
     claimPublicKey: string;
     refundKeys: ECKeys;
@@ -46,7 +41,7 @@ export const signSubmarineClaim = async (
     const boltzPublicKey = hex.decode(args.claimPublicKey);
     const keyAgg = createMusig(args.refundKeys, boltzPublicKey);
     const tree = SwapTreeSerializer.deserializeSwapTree(args.swapTree as never);
-    const tweaked = tweakMusig(args.asset, keyAgg, tree.tree);
+    const tweaked = tweakMusig(keyAgg, tree.tree);
 
     const withNonce = tweaked
         .message(claimDetails.transactionHash)
@@ -71,7 +66,3 @@ export const refundSubmarineUtxo = async (
     const { refundSubmarineUtxo: impl } = await import("./utxo/refund.ts");
     return impl(params);
 };
-
-export const getSubmarineEvmRefundSignature = (
-    id: string,
-): Promise<{ signature: Hex }> => getEipRefundSignature(id, SwapType.Submarine);

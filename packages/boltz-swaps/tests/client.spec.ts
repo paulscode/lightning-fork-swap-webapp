@@ -1,13 +1,13 @@
 import {
-    createChainSwap,
     createReverseSwap,
     createSubmarineSwap,
-    fetchBolt12Invoice,
+    getLockupTransaction,
+    getPairs,
+    getPartialRefundSignature,
     getSwapStatuses,
     patchSwapMetadata,
-    quoteDexAmountIn,
-    quoteDexAmountOut,
 } from "boltz-swaps/client";
+import { SwapType } from "boltz-swaps/types";
 
 import type * as FetcherModule from "../src/http/fetcher.ts";
 
@@ -20,92 +20,87 @@ vi.mock("../src/http/fetcher.ts", async (importActual) => ({
     fetcher: fetcherMock,
 }));
 
-describe("boltzClient DEX quotes", () => {
+describe("getPairs", () => {
     beforeEach(() => {
         fetcherMock.mockReset();
     });
 
-    test("should sort amount-in quotes by highest output first", async () => {
-        const quotes = [
-            { quote: "10", data: { route: "mid" } },
-            { quote: "25", data: { route: "best" } },
-            { quote: "5", data: { route: "worst" } },
-        ];
-        fetcherMock.mockResolvedValue(quotes);
-
-        const result = await quoteDexAmountIn("ETH", "tokenA", "tokenB", 100n);
-
-        expect(fetcherMock).toHaveBeenCalledWith(
-            "/v2/quote/ETH/in?tokenIn=tokenA&tokenOut=tokenB&amountIn=100",
+    test("fetches only the submarine and reverse pairs", async () => {
+        const options = { signal: new AbortController().signal };
+        fetcherMock.mockImplementation((url: string) =>
+            Promise.resolve({ url }),
         );
-        expect(result.map(({ quote }) => quote)).toEqual(["25", "10", "5"]);
-        expect(quotes.map(({ quote }) => quote)).toEqual(["10", "25", "5"]);
-    });
 
-    test("should sort amount-out quotes by lowest input first", async () => {
-        const quotes = [
-            { quote: "10", data: { route: "mid" } },
-            { quote: "25", data: { route: "worst" } },
-            { quote: "5", data: { route: "best" } },
-        ];
-        fetcherMock.mockResolvedValue(quotes);
+        const result = await getPairs(options);
 
-        const result = await quoteDexAmountOut("ETH", "tokenA", "tokenB", 100n);
-
+        expect(fetcherMock).toHaveBeenCalledTimes(2);
         expect(fetcherMock).toHaveBeenCalledWith(
-            "/v2/quote/ETH/out?tokenIn=tokenA&tokenOut=tokenB&amountOut=100",
+            "/v2/swap/submarine",
+            undefined,
+            options,
         );
-        expect(result.map(({ quote }) => quote)).toEqual(["5", "10", "25"]);
-        expect(quotes.map(({ quote }) => quote)).toEqual(["10", "25", "5"]);
+        expect(fetcherMock).toHaveBeenCalledWith(
+            "/v2/swap/reverse",
+            undefined,
+            options,
+        );
+        expect(result).toEqual({
+            [SwapType.Submarine]: { url: "/v2/swap/submarine" },
+            [SwapType.Reverse]: { url: "/v2/swap/reverse" },
+        });
     });
 });
 
-describe("fetchBolt12Invoice", () => {
+describe("getPartialRefundSignature", () => {
     beforeEach(() => {
         fetcherMock.mockReset();
     });
 
-    test("posts the offer and amount and forwards the abort signal", async () => {
-        const controller = new AbortController();
-        fetcherMock.mockResolvedValue({ invoice: "lni1inv" });
-
-        const result = await fetchBolt12Invoice("lno1offer", 1234, {
-            signal: controller.signal,
+    test("posts to the submarine refund endpoint and decodes the response", async () => {
+        fetcherMock.mockResolvedValue({
+            pubNonce: "0a0b",
+            partialSignature: "0c0d",
         });
 
-        expect(result).toEqual({ invoice: "lni1inv" });
+        const result = await getPartialRefundSignature(
+            "swap-id",
+            new Uint8Array([0x01, 0x02]),
+            "txhex",
+            3,
+        );
+
         expect(fetcherMock).toHaveBeenCalledWith(
-            "/v2/lightning/BTC/bolt12/fetch",
-            { offer: "lno1offer", amount: 1234 },
-            { signal: controller.signal },
-            25_000,
+            "/v2/swap/submarine/swap-id/refund",
+            { index: 3, pubNonce: "0102", transaction: "txhex" },
+        );
+        expect(result).toEqual({
+            pubNonce: new Uint8Array([0x0a, 0x0b]),
+            signature: new Uint8Array([0x0c, 0x0d]),
+        });
+    });
+});
+
+describe("getLockupTransaction", () => {
+    beforeEach(() => {
+        fetcherMock.mockReset();
+    });
+
+    test("fetches the submarine lockup transaction", async () => {
+        fetcherMock.mockResolvedValue({ id: "tx" });
+
+        await expect(
+            getLockupTransaction("swap-id", SwapType.Submarine),
+        ).resolves.toEqual({ id: "tx" });
+        expect(fetcherMock).toHaveBeenCalledWith(
+            "/v2/swap/submarine/swap-id/transaction",
         );
     });
 
-    test("passes an undefined signal and the default timeout when no options are given", async () => {
-        fetcherMock.mockResolvedValue({ invoice: "lni1inv" });
-
-        await fetchBolt12Invoice("lno1offer", 1234);
-
-        expect(fetcherMock).toHaveBeenCalledWith(
-            "/v2/lightning/BTC/bolt12/fetch",
-            { offer: "lno1offer", amount: 1234 },
-            { signal: undefined },
-            25_000,
+    test("throws for a reverse swap without a request", () => {
+        expect(() => getLockupTransaction("swap-id", SwapType.Reverse)).toThrow(
+            "cannot get lockup transaction for swap type reverse",
         );
-    });
-
-    test("forwards a custom timeout as the fetcher request timeout", async () => {
-        fetcherMock.mockResolvedValue({ invoice: "lni1inv" });
-
-        await fetchBolt12Invoice("lno1offer", 1234, { timeoutMs: 5_000 });
-
-        expect(fetcherMock).toHaveBeenCalledWith(
-            "/v2/lightning/BTC/bolt12/fetch",
-            { offer: "lno1offer", amount: 1234 },
-            { signal: undefined },
-            5_000,
-        );
+        expect(fetcherMock).not.toHaveBeenCalled();
     });
 });
 
@@ -188,7 +183,7 @@ describe("boltzClient swap metadata", () => {
 
     test("create requests store encrypted route metadata when provided", async () => {
         await createSubmarineSwap(
-            "WBTC",
+            "BTC",
             "BTC",
             "lninvoice",
             "pair-hash",
@@ -204,7 +199,7 @@ describe("boltzClient swap metadata", () => {
         fetcherMock.mockClear();
         await createReverseSwap(
             "BTC",
-            "TBTC",
+            "BTC",
             1_000,
             "preimagehash",
             "pair-hash",
@@ -214,23 +209,6 @@ describe("boltzClient swap metadata", () => {
         );
         expect(fetcherMock).toHaveBeenCalledWith(
             "/v2/swap/reverse",
-            expect.objectContaining({ metadata: "encrypted-metadata" }),
-        );
-
-        fetcherMock.mockClear();
-        await createChainSwap(
-            "BTC",
-            "TBTC",
-            1_000,
-            "preimagehash",
-            "claimpub",
-            "refundpub",
-            "claimaddr",
-            "pair-hash",
-            "encrypted-metadata",
-        );
-        expect(fetcherMock).toHaveBeenCalledWith(
-            "/v2/swap/chain",
             expect.objectContaining({ metadata: "encrypted-metadata" }),
         );
     });
@@ -247,19 +225,19 @@ describe("boltzClient swap metadata", () => {
 
     test("includes the submarine refund address when provided", async () => {
         await createSubmarineSwap(
-            "TBTC",
+            "BTC",
             "BTC",
             "lninvoice",
             "pair-hash",
             undefined,
             undefined,
-            "0x8382Ab573C5E48270Abb1b0A76564F76eEbc24c5",
+            "bcrt1qw508d6qejxtdg4y5r3zarvary0c5xw7kygt080",
         );
 
         expect(fetcherMock).toHaveBeenCalledWith(
             "/v2/swap/submarine",
             expect.objectContaining({
-                refundAddress: "0x8382Ab573C5E48270Abb1b0A76564F76eEbc24c5",
+                refundAddress: "bcrt1qw508d6qejxtdg4y5r3zarvary0c5xw7kygt080",
             }),
         );
     });

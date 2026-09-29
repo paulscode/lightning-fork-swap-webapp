@@ -1,9 +1,7 @@
 import { SigHash } from "@scure/btc-signer";
 import { Musig, TaprootUtils } from "boltz-core";
-import { TaprootUtils as LiquidTaprootUtils } from "boltz-core/liquid";
 
 import {
-    LBTC,
     createMusig,
     hashForWitnessV1,
     tweakMusig,
@@ -11,7 +9,6 @@ import {
 
 const musigSentinel = { tag: "musig" } as never;
 const tweakSentinel = { tag: "tweaked" } as never;
-const liquidHashSentinel = new Uint8Array([0xaa, 0xbb, 0xcc]);
 const btcHashSentinel = new Uint8Array([0x11, 0x22, 0x33]);
 
 afterEach(() => {
@@ -150,159 +147,39 @@ describe("createMusig", () => {
     });
 });
 
-describe("tweakMusig: asset dispatch", () => {
+describe("tweakMusig", () => {
     const tree = { tag: "tree" } as never;
 
-    test("L-BTC routes to the Liquid TaprootUtils.tweakMusig only", () => {
-        const liquidSpy = vi
-            .spyOn(LiquidTaprootUtils, "tweakMusig")
-            .mockReturnValue(tweakSentinel);
-        const btcSpy = vi
-            .spyOn(TaprootUtils, "tweakMusig")
-            .mockReturnValue("WRONG" as never);
-
-        const result = tweakMusig(LBTC, musigSentinel, tree);
-
-        expect(result).toBe(tweakSentinel);
-        expect(liquidSpy).toHaveBeenCalledTimes(1);
-        expect(liquidSpy).toHaveBeenCalledWith(musigSentinel, tree);
-        expect(btcSpy).not.toHaveBeenCalled();
-    });
-
-    test("L-BTC constant equals the 'L-BTC' string", () => {
-        expect(LBTC).toBe("L-BTC");
-    });
-
-    test("BTC routes to the (BTC) TaprootUtils.tweakMusig only", () => {
-        const liquidSpy = vi
-            .spyOn(LiquidTaprootUtils, "tweakMusig")
-            .mockReturnValue("WRONG" as never);
+    test("forwards (musig, tree) to TaprootUtils.tweakMusig", () => {
         const btcSpy = vi
             .spyOn(TaprootUtils, "tweakMusig")
             .mockReturnValue(tweakSentinel);
 
-        const result = tweakMusig("BTC", musigSentinel, tree);
+        const result = tweakMusig(musigSentinel, tree);
 
         expect(result).toBe(tweakSentinel);
         expect(btcSpy).toHaveBeenCalledTimes(1);
         expect(btcSpy).toHaveBeenCalledWith(musigSentinel, tree);
-        expect(liquidSpy).not.toHaveBeenCalled();
-    });
-
-    test("any non 'L-BTC' asset (e.g. RBTC) routes to the BTC TaprootUtils branch", () => {
-        const liquidSpy = vi
-            .spyOn(LiquidTaprootUtils, "tweakMusig")
-            .mockReturnValue("WRONG" as never);
-        const btcSpy = vi
-            .spyOn(TaprootUtils, "tweakMusig")
-            .mockReturnValue(tweakSentinel);
-
-        const result = tweakMusig("RBTC", musigSentinel, tree);
-
-        expect(result).toBe(tweakSentinel);
-        expect(btcSpy).toHaveBeenCalledTimes(1);
-        expect(btcSpy).toHaveBeenCalledWith(musigSentinel, tree);
-        expect(liquidSpy).not.toHaveBeenCalled();
     });
 });
 
-describe("hashForWitnessV1: Liquid branch", () => {
-    const liquidNetwork = { name: "liquid" } as never;
-    const liquidTx = { tag: "liquid-tx" } as never;
-    const liquidInputs = [
-        {
-            script: Buffer.from([0x51]),
-            value: Buffer.from([0x01]),
-            asset: Buffer.from([0x02]),
-            nonce: Buffer.from([0x03]),
-        },
-    ] as never;
-    const leafHash = Buffer.from([0xde, 0xad, 0xbe, 0xef]);
-
-    test("forwards (network, inputs, tx, index, leafHash) to LiquidTaprootUtils.hashForWitnessV1", () => {
-        const liquidSpy = vi
-            .spyOn(LiquidTaprootUtils, "hashForWitnessV1")
-            .mockReturnValue(liquidHashSentinel as never);
-
-        const result = hashForWitnessV1(
-            LBTC,
-            liquidNetwork,
-            liquidInputs,
-            liquidTx,
-            2,
-            leafHash,
-        );
-
-        expect(result).toBe(liquidHashSentinel);
-        expect(liquidSpy).toHaveBeenCalledTimes(1);
-        expect(liquidSpy).toHaveBeenCalledWith(
-            liquidNetwork,
-            liquidInputs,
-            liquidTx,
-            2,
-            leafHash,
-        );
-    });
-
-    test("forwards undefined leafHash when omitted (5th positional arg is undefined)", () => {
-        const liquidSpy = vi
-            .spyOn(LiquidTaprootUtils, "hashForWitnessV1")
-            .mockReturnValue(liquidHashSentinel as never);
-
-        hashForWitnessV1(LBTC, liquidNetwork, liquidInputs, liquidTx, 7);
-
-        expect(liquidSpy).toHaveBeenCalledTimes(1);
-        const callArgs = liquidSpy.mock.calls[0];
-        expect(callArgs[3]).toBe(7);
-        expect(callArgs[4]).toBeUndefined();
-    });
-
-    test("does not touch the tx (no preimageWitnessV1 call) on the Liquid branch", () => {
-        vi.spyOn(LiquidTaprootUtils, "hashForWitnessV1").mockReturnValue(
-            liquidHashSentinel as never,
-        );
-        const preimageWitnessV1 = vi.fn();
-
-        hashForWitnessV1(
-            LBTC,
-            liquidNetwork,
-            liquidInputs,
-            { preimageWitnessV1 } as never,
-            0,
-        );
-
-        expect(preimageWitnessV1).not.toHaveBeenCalled();
-    });
-});
-
-describe("hashForWitnessV1: BTC branch", () => {
-    const btcNetwork = { bech32: "bc" } as never;
-
-    test("calls tx.preimageWitnessV1(index, scripts, SigHash.DEFAULT, amounts) and drops leafHash", () => {
-        const liquidSpy = vi
-            .spyOn(LiquidTaprootUtils, "hashForWitnessV1")
-            .mockReturnValue("WRONG" as never);
-
+describe("hashForWitnessV1", () => {
+    test("calls tx.preimageWitnessV1(index, scripts, SigHash.DEFAULT, amounts)", () => {
         const s0 = new Uint8Array([0xa0]);
         const s1 = new Uint8Array([0xa1]);
         const preimageWitnessV1 = vi.fn().mockReturnValue(btcHashSentinel);
         const fakeTx = { preimageWitnessV1 } as never;
-        const someLeafHash = Buffer.from([0x99]);
 
         const result = hashForWitnessV1(
-            "BTC",
-            btcNetwork,
             [
                 { script: s0, amount: 100n },
                 { script: s1, amount: 200n },
-            ] as never,
+            ],
             fakeTx,
             1,
-            someLeafHash,
         );
 
         expect(result).toBe(btcHashSentinel);
-        expect(liquidSpy).not.toHaveBeenCalled();
         expect(preimageWitnessV1).toHaveBeenCalledTimes(1);
         expect(preimageWitnessV1).toHaveBeenCalledWith(
             1,
@@ -312,9 +189,7 @@ describe("hashForWitnessV1: BTC branch", () => {
         );
 
         expect(preimageWitnessV1.mock.calls[0][2]).toBe(0);
-
         expect(preimageWitnessV1.mock.calls[0]).toHaveLength(4);
-        expect(preimageWitnessV1.mock.calls[0]).not.toContain(someLeafHash);
     });
 
     test("scripts and amounts arrays stay element-wise aligned across the dual map (3 inputs)", () => {
@@ -324,13 +199,11 @@ describe("hashForWitnessV1: BTC branch", () => {
         const preimageWitnessV1 = vi.fn().mockReturnValue(btcHashSentinel);
 
         hashForWitnessV1(
-            "BTC",
-            btcNetwork,
             [
                 { script: s0, amount: 10n },
                 { script: s1, amount: 20n },
                 { script: s2, amount: 30n },
-            ] as never,
+            ],
             { preimageWitnessV1 } as never,
             0,
         );
@@ -346,13 +219,7 @@ describe("hashForWitnessV1: BTC branch", () => {
     test("empty inputs produce two empty parallel arrays", () => {
         const preimageWitnessV1 = vi.fn().mockReturnValue(btcHashSentinel);
 
-        const result = hashForWitnessV1(
-            "BTC",
-            btcNetwork,
-            [] as never,
-            { preimageWitnessV1 } as never,
-            3,
-        );
+        const result = hashForWitnessV1([], { preimageWitnessV1 } as never, 3);
 
         expect(result).toBe(btcHashSentinel);
         expect(preimageWitnessV1).toHaveBeenCalledTimes(1);
@@ -361,31 +228,6 @@ describe("hashForWitnessV1: BTC branch", () => {
             [],
             SigHash.DEFAULT,
             [],
-        );
-    });
-
-    test("any non 'L-BTC' asset (e.g. RBTC) uses the BTC preimage branch", () => {
-        const liquidSpy = vi
-            .spyOn(LiquidTaprootUtils, "hashForWitnessV1")
-            .mockReturnValue("WRONG" as never);
-        const preimageWitnessV1 = vi.fn().mockReturnValue(btcHashSentinel);
-        const s0 = new Uint8Array([0xc0]);
-
-        const result = hashForWitnessV1(
-            "RBTC",
-            btcNetwork,
-            [{ script: s0, amount: 555n }] as never,
-            { preimageWitnessV1 } as never,
-            0,
-        );
-
-        expect(result).toBe(btcHashSentinel);
-        expect(liquidSpy).not.toHaveBeenCalled();
-        expect(preimageWitnessV1).toHaveBeenCalledWith(
-            0,
-            [s0],
-            SigHash.DEFAULT,
-            [555n],
         );
     });
 });

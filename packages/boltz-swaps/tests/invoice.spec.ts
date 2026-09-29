@@ -1,21 +1,153 @@
-import { secp256k1 } from "@noble/curves/secp256k1.js";
 import { sha256 } from "@noble/hashes/sha2.js";
 import { hex } from "@scure/base";
 import bolt11 from "bolt11";
-import * as Bolt12 from "bolt12-utils";
 import { setBoltzSwapsConfig } from "boltz-swaps/config";
 import {
     InvoiceType,
+    MissingBlake2bFeatureError,
     assertPreimageHash,
     decodeInvoice,
-    isBolt12Offer,
+    hasBlake2bFeature,
     isInvoice,
-    validateInvoiceForOffer,
+    isMissingBlake2bFeatureError,
+    missingBlake2bFeatureMessage,
 } from "boltz-swaps/invoice";
+import { resolveInvoice } from "boltz-swaps/resolveInvoice";
+
+// Real regtest invoices. The first comes from a Lightning Fork (BLAKE2b chain)
+// lnd and sets the required feature bit 512 (`option_blake2b`); the second
+// comes from a stock lnd on the SHA256 chain and does not.
+const blake2bInvoice =
+    "lnbcrt12340n1p4tktmzpp5ggdr84f68a08yqlz6yh06l0ul92n9jmq84nxun4geuxp7a309jnsdq8w3jhxaqcqzzsxqyz5vqsp55g06tmkp8nrh99hywklkstyn3u4sd4nqd9x2wp5ykuxy5sq2uzhq9r8yqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqpqysgq7je49q3ts6mf8h88wflj0977evmj4kunrt5h3xep29lcmmvp63k9ypt5p6u68g45dj2clcnthfe459sqf2wamuz2ty9l4rtj9vhel0qquxjkn5";
+const sha256Invoice =
+    "lnbcrt12340n1p4tkt6jpp59qm9ghv5e3302uk3z4l5c7mz7cg8x6zpmz7uyc2yt92ttf8qtd8sdqqcqzzsxqyz5vqsp5vt9hhkrtnlhewm00wt0m6curu4ak5k5ky66zwh99urdfata77xfs9qxpqysgqxfq2taljltqeky5nhy34l3ak7mmrvzsgd8m5y93v4m4str6wsw63rhvqaqfgu42uw0j9hfwq0r25njxktpy2eq2alxja2y7ngdhvz8gq4hwatk";
+
+// bolt11 reports feature bits from 20 upwards in `extra_bits`
+const featureBitsTag = (setBits: number[]) => {
+    const startBit = 20;
+    const bits: boolean[] = new Array<boolean>(520 - startBit).fill(false);
+    for (const bit of setBits) {
+        bits[bit - startBit] = true;
+    }
+
+    return {
+        tagName: "feature_bits",
+        data: {
+            extra_bits: {
+                start_bit: startBit,
+                bits,
+                has_required: setBits.some((bit) => bit % 2 === 0),
+            },
+        },
+    };
+};
+
+describe("BLAKE2b feature bit", () => {
+    afterEach(() => {
+        vi.restoreAllMocks();
+        setBoltzSwapsConfig({});
+    });
+
+    test("bolt11 exposes bit 512 of a BLAKE2b-chain invoice in extra_bits", () => {
+        const decoded = bolt11.decode(blake2bInvoice);
+        const features = decoded.tags.find(
+            (tag) => tag.tagName === "feature_bits",
+        )?.data as { extra_bits: { start_bit: number; bits: boolean[] } };
+
+        expect(features.extra_bits.start_bit).toBe(20);
+        expect(features.extra_bits.bits[512 - 20]).toBe(true);
+        expect(hasBlake2bFeature(decoded)).toBe(true);
+    });
+
+    test("a SHA256-chain invoice has no BLAKE2b feature bit", () => {
+        expect(hasBlake2bFeature(bolt11.decode(sha256Invoice))).toBe(false);
+    });
+
+    test("decodes a BLAKE2b-chain invoice", () => {
+        const decoded = decodeInvoice(blake2bInvoice);
+        expect(decoded.type).toBe(InvoiceType.Bolt11);
+        expect(decoded.satoshis).toBe(1234);
+        expect(decoded.preimageHash).toHaveLength(64);
+    });
+
+    test("refuses a SHA256-chain invoice with a clear message", () => {
+        let thrown: unknown;
+        try {
+            decodeInvoice(sha256Invoice);
+        } catch (e) {
+            thrown = e;
+        }
+
+        expect(thrown).toBeInstanceOf(MissingBlake2bFeatureError);
+        expect(isMissingBlake2bFeatureError(thrown)).toBe(true);
+        expect((thrown as Error).message).toBe(missingBlake2bFeatureMessage);
+        expect(missingBlake2bFeatureMessage).toBe(
+            "This invoice was not made by a Lightning node on the Bitcoin BLAKE2b chain (it lacks feature bit 512). Paying it would fail.",
+        );
+    });
+
+    test("accepts the optional variant, bit 513", () => {
+        vi.spyOn(bolt11, "decode").mockReturnValue({
+            satoshis: 1,
+            tags: [
+                { tagName: "payment_hash", data: "mock_hash" },
+                featureBitsTag([25, 513]),
+            ],
+        } as unknown as ReturnType<typeof bolt11.decode>);
+
+        expect(decodeInvoice("lnbc1mock").satoshis).toBe(1);
+    });
+
+    test("refuses an invoice with other high feature bits only", () => {
+        vi.spyOn(bolt11, "decode").mockReturnValue({
+            satoshis: 1,
+            tags: [
+                { tagName: "payment_hash", data: "mock_hash" },
+                featureBitsTag([25, 510, 514]),
+            ],
+        } as unknown as ReturnType<typeof bolt11.decode>);
+
+        expect(() => decodeInvoice("lnbc1mock")).toThrow(
+            MissingBlake2bFeatureError,
+        );
+    });
+
+    test("refuses an invoice without a features field", () => {
+        vi.spyOn(bolt11, "decode").mockReturnValue({
+            satoshis: 1,
+            tags: [{ tagName: "payment_hash", data: "mock_hash" }],
+        } as unknown as ReturnType<typeof bolt11.decode>);
+
+        expect(() => decodeInvoice("lnbc1mock")).toThrow(
+            MissingBlake2bFeatureError,
+        );
+    });
+
+    describe("resolveInvoice on regtest", () => {
+        beforeEach(() => {
+            setBoltzSwapsConfig({ network: "regtest" });
+        });
+
+        test("resolves a pasted BLAKE2b-chain invoice", async () => {
+            await expect(
+                resolveInvoice(`lightning:${blake2bInvoice}`, 1234),
+            ).resolves.toEqual({
+                invoice: blake2bInvoice,
+                type: InvoiceType.Bolt11,
+            });
+        });
+
+        test("refuses a pasted SHA256-chain invoice", async () => {
+            await expect(resolveInvoice(sha256Invoice, 1234)).rejects.toThrow(
+                missingBlake2bFeatureMessage,
+            );
+        });
+    });
+});
 
 describe("decodeInvoice bolt11 millisatoshi rounding", () => {
-    beforeEach(() => {
-        vi.clearAllMocks();
+    afterEach(() => {
+        vi.restoreAllMocks();
     });
 
     test.each`
@@ -31,62 +163,25 @@ describe("decodeInvoice bolt11 millisatoshi rounding", () => {
         ({ millisatoshis, expectedSats }) => {
             vi.spyOn(bolt11, "decode").mockReturnValue({
                 millisatoshis: millisatoshis.toString(),
-                tags: [{ tagName: "payment_hash", data: "mock_hash" }],
-            } as ReturnType<typeof bolt11.decode>);
+                tags: [
+                    { tagName: "payment_hash", data: "mock_hash" },
+                    featureBitsTag([512]),
+                ],
+            } as unknown as ReturnType<typeof bolt11.decode>);
 
             expect(decodeInvoice("lnbc1mock").satoshis).toBe(expectedSats);
         },
     );
 });
 
-describe("decodeInvoice bolt12 millisatoshi rounding", () => {
-    beforeEach(() => {
-        vi.clearAllMocks();
-    });
-
-    test.each`
-        invoiceAmount  | expectedSats | description
-        ${1509895001n} | ${1509895}   | ${"1 msat remainder - round down"}
-        ${1509895499n} | ${1509895}   | ${"499 msat remainder - round down"}
-        ${1509895500n} | ${1509896}   | ${"500 msat remainder - round up"}
-        ${1509895999n} | ${1509896}   | ${"999 msat remainder - round up"}
-        ${1000n}       | ${1}         | ${"exact conversion"}
-        ${0n}          | ${0}         | ${"zero amount"}
-    `(
-        "rounds bolt12 $invoiceAmount msat to $expectedSats sats ($description)",
-        ({ invoiceAmount, expectedSats }) => {
-            vi.spyOn(bolt11, "decode").mockImplementation(() => {
-                throw new Error("invalid bolt11");
-            });
-            vi.spyOn(Bolt12, "decodeBolt12").mockReturnValue({
-                hrp: "lni",
-                data: new Uint8Array(),
-            });
-            vi.spyOn(Bolt12, "parseTlvStream").mockReturnValue([]);
-            vi.spyOn(Bolt12, "extractInvoiceFields").mockReturnValue({
-                invoice_amount: invoiceAmount,
-                invoice_payment_hash: new Uint8Array(32).fill(1),
-                records: [],
-            });
-
-            const result = decodeInvoice("lni1mock");
-            expect(result.type).toBe(InvoiceType.Bolt12);
-            expect(result.satoshis).toBe(expectedSats);
-        },
-    );
-});
-
 describe("decodeInvoice error handling", () => {
-    beforeEach(() => {
-        vi.clearAllMocks();
+    afterEach(() => {
+        vi.restoreAllMocks();
     });
 
-    test("throws 'invalid invoice' when neither bolt11 nor bolt12 decode", () => {
+    test("throws 'invalid invoice' when bolt11 cannot decode", () => {
         vi.spyOn(bolt11, "decode").mockImplementation(() => {
             throw new Error("bad bolt11");
-        });
-        vi.spyOn(Bolt12, "decodeBolt12").mockImplementation(() => {
-            throw new Error("bad bolt12");
         });
 
         let thrown: unknown;
@@ -96,365 +191,16 @@ describe("decodeInvoice error handling", () => {
             thrown = e;
         }
         expect((thrown as Error).message).toBe("invalid invoice");
-        expect(((thrown as Error).cause as Error).message).toBe("bad bolt12");
+        expect(((thrown as Error).cause as Error).message).toBe("bad bolt11");
     });
 
-    test("surfaces a bolt12 invoice missing its payment hash as 'invalid invoice'", () => {
-        vi.spyOn(bolt11, "decode").mockImplementation(() => {
-            throw new Error("not bolt11");
-        });
-        vi.spyOn(Bolt12, "decodeBolt12").mockReturnValue({
-            hrp: "lni",
-            data: new Uint8Array(),
-        });
-        vi.spyOn(Bolt12, "parseTlvStream").mockReturnValue([]);
-        vi.spyOn(Bolt12, "extractInvoiceFields").mockReturnValue({
-            invoice_payment_hash: undefined,
-            records: [],
-        });
+    test("throws 'invalid invoice' when the payment hash is missing", () => {
+        vi.spyOn(bolt11, "decode").mockReturnValue({
+            satoshis: 1,
+            tags: [featureBitsTag([512])],
+        } as unknown as ReturnType<typeof bolt11.decode>);
 
-        let thrown: unknown;
-        try {
-            decodeInvoice("lni1mock");
-        } catch (e) {
-            thrown = e;
-        }
-        expect((thrown as Error).message).toBe("invalid invoice");
-        expect(((thrown as Error).cause as Error).message).toBe(
-            "missing bolt12 payment hash",
-        );
-    });
-
-    test("rejects a bolt12 invoice with a non-'lni' human-readable prefix", () => {
-        vi.spyOn(bolt11, "decode").mockImplementation(() => {
-            throw new Error("not bolt11");
-        });
-        vi.spyOn(Bolt12, "decodeBolt12").mockReturnValue({
-            hrp: "lno",
-            data: new Uint8Array(),
-        });
-
-        let thrown: unknown;
-        try {
-            decodeInvoice("lno1mock");
-        } catch (e) {
-            thrown = e;
-        }
-        expect((thrown as Error).message).toBe("invalid invoice");
-        expect(((thrown as Error).cause as Error).message).toBe(
-            "invalid bolt12 invoice",
-        );
-    });
-});
-
-describe("validateInvoiceForOffer", () => {
-    const privateKey = new Uint8Array(32).fill(1);
-    const compressedPubkey = secp256k1.getPublicKey(privateKey, true);
-    const xOnlyPubkey = compressedPubkey.slice(1);
-
-    beforeEach(() => {
-        vi.clearAllMocks();
-    });
-
-    test("compares the offer signer against the normalized invoice node id", () => {
-        vi.spyOn(Bolt12, "decodeOffer").mockReturnValue({
-            hrp: "lno",
-            offer_id: new Uint8Array(32).fill(4),
-            has_paths: false,
-            issuer_id: hex.encode(compressedPubkey),
-            records: [],
-        });
-        vi.spyOn(Bolt12, "decodeBolt12").mockReturnValue({
-            hrp: "lni",
-            data: new Uint8Array(),
-        });
-        vi.spyOn(Bolt12, "parseTlvStream").mockReturnValue([]);
-        vi.spyOn(Bolt12, "extractInvoiceFields").mockReturnValue({
-            invoice_node_id: compressedPubkey,
-            signature: new Uint8Array(64).fill(2),
-            records: [],
-        });
-        vi.spyOn(Bolt12, "computeMerkleRoot").mockReturnValue(
-            new Uint8Array(32).fill(3),
-        );
-        const verifySignature = vi
-            .spyOn(Bolt12, "verifySignature")
-            .mockReturnValue(true);
-
-        expect(() =>
-            validateInvoiceForOffer("lno1mock", "lni1mock"),
-        ).not.toThrow();
-        expect(verifySignature).toHaveBeenCalledWith(
-            "invoice",
-            new Uint8Array(32).fill(3),
-            xOnlyPubkey,
-            new Uint8Array(64).fill(2),
-        );
-    });
-
-    test("normalizes compressed pubkeys from blinded paths", () => {
-        const pathBytes = new Uint8Array(102);
-        pathBytes[66] = 1;
-        pathBytes.set(compressedPubkey, 67);
-
-        vi.spyOn(Bolt12, "decodeOffer").mockReturnValue({
-            hrp: "lno",
-            offer_id: new Uint8Array(32).fill(4),
-            has_paths: true,
-            paths: hex.encode(pathBytes),
-            records: [],
-        });
-        vi.spyOn(Bolt12, "decodeBolt12").mockReturnValue({
-            hrp: "lni",
-            data: new Uint8Array(),
-        });
-        vi.spyOn(Bolt12, "parseTlvStream").mockReturnValue([]);
-        vi.spyOn(Bolt12, "extractInvoiceFields").mockReturnValue({
-            invoice_node_id: compressedPubkey,
-            signature: new Uint8Array(64).fill(2),
-            records: [],
-        });
-        vi.spyOn(Bolt12, "computeMerkleRoot").mockReturnValue(
-            new Uint8Array(32).fill(3),
-        );
-        vi.spyOn(Bolt12, "verifySignature").mockReturnValue(true);
-
-        expect(() =>
-            validateInvoiceForOffer("lno1mock", "lni1mock"),
-        ).not.toThrow();
-    });
-
-    test("accepts x-only keys without conversion", () => {
-        vi.spyOn(Bolt12, "decodeOffer").mockReturnValue({
-            hrp: "lno",
-            offer_id: new Uint8Array(32).fill(4),
-            has_paths: false,
-            issuer_id: hex.encode(xOnlyPubkey),
-            records: [],
-        });
-        vi.spyOn(Bolt12, "decodeBolt12").mockReturnValue({
-            hrp: "lni",
-            data: new Uint8Array(),
-        });
-        vi.spyOn(Bolt12, "parseTlvStream").mockReturnValue([]);
-        vi.spyOn(Bolt12, "extractInvoiceFields").mockReturnValue({
-            invoice_node_id: xOnlyPubkey,
-            signature: new Uint8Array(64).fill(2),
-            records: [],
-        });
-        vi.spyOn(Bolt12, "computeMerkleRoot").mockReturnValue(
-            new Uint8Array(32).fill(3),
-        );
-        const verifySignature = vi
-            .spyOn(Bolt12, "verifySignature")
-            .mockReturnValue(true);
-
-        expect(() =>
-            validateInvoiceForOffer("lno1mock", "lni1mock"),
-        ).not.toThrow();
-        expect(verifySignature).toHaveBeenCalledWith(
-            "invoice",
-            new Uint8Array(32).fill(3),
-            xOnlyPubkey,
-            new Uint8Array(64).fill(2),
-        );
-    });
-
-    test("throws when invoice_node_id is missing", () => {
-        vi.spyOn(Bolt12, "decodeOffer").mockReturnValue({
-            hrp: "lno",
-            offer_id: new Uint8Array(32).fill(4),
-            has_paths: false,
-            issuer_id: hex.encode(compressedPubkey),
-            records: [],
-        });
-        vi.spyOn(Bolt12, "decodeBolt12").mockReturnValue({
-            hrp: "lni",
-            data: new Uint8Array(),
-        });
-        vi.spyOn(Bolt12, "parseTlvStream").mockReturnValue([]);
-        vi.spyOn(Bolt12, "extractInvoiceFields").mockReturnValue({
-            invoice_node_id: undefined,
-            signature: new Uint8Array(64).fill(2),
-            records: [],
-        });
-
-        expect(() => validateInvoiceForOffer("lno1mock", "lni1mock")).toThrow(
-            "invalid invoice signature",
-        );
-    });
-
-    test("throws when signature is missing", () => {
-        vi.spyOn(Bolt12, "decodeOffer").mockReturnValue({
-            hrp: "lno",
-            offer_id: new Uint8Array(32).fill(4),
-            has_paths: false,
-            issuer_id: hex.encode(compressedPubkey),
-            records: [],
-        });
-        vi.spyOn(Bolt12, "decodeBolt12").mockReturnValue({
-            hrp: "lni",
-            data: new Uint8Array(),
-        });
-        vi.spyOn(Bolt12, "parseTlvStream").mockReturnValue([]);
-        vi.spyOn(Bolt12, "extractInvoiceFields").mockReturnValue({
-            invoice_node_id: compressedPubkey,
-            signature: undefined,
-            records: [],
-        });
-
-        expect(() => validateInvoiceForOffer("lno1mock", "lni1mock")).toThrow(
-            "invalid invoice signature",
-        );
-    });
-
-    test("throws when signature verification fails", () => {
-        vi.spyOn(Bolt12, "decodeOffer").mockReturnValue({
-            hrp: "lno",
-            offer_id: new Uint8Array(32).fill(4),
-            has_paths: false,
-            issuer_id: hex.encode(compressedPubkey),
-            records: [],
-        });
-        vi.spyOn(Bolt12, "decodeBolt12").mockReturnValue({
-            hrp: "lni",
-            data: new Uint8Array(),
-        });
-        vi.spyOn(Bolt12, "parseTlvStream").mockReturnValue([]);
-        vi.spyOn(Bolt12, "extractInvoiceFields").mockReturnValue({
-            invoice_node_id: compressedPubkey,
-            signature: new Uint8Array(64).fill(2),
-            records: [],
-        });
-        vi.spyOn(Bolt12, "computeMerkleRoot").mockReturnValue(
-            new Uint8Array(32).fill(3),
-        );
-        vi.spyOn(Bolt12, "verifySignature").mockReturnValue(false);
-
-        expect(() => validateInvoiceForOffer("lno1mock", "lni1mock")).toThrow(
-            "invalid invoice signature",
-        );
-    });
-
-    test("throws when the invoice signer does not match the offer", () => {
-        const otherKey = secp256k1.getPublicKey(
-            new Uint8Array(32).fill(2),
-            true,
-        );
-
-        vi.spyOn(Bolt12, "decodeOffer").mockReturnValue({
-            hrp: "lno",
-            offer_id: new Uint8Array(32).fill(4),
-            has_paths: false,
-            issuer_id: hex.encode(compressedPubkey),
-            records: [],
-        });
-        vi.spyOn(Bolt12, "decodeBolt12").mockReturnValue({
-            hrp: "lni",
-            data: new Uint8Array(),
-        });
-        vi.spyOn(Bolt12, "parseTlvStream").mockReturnValue([]);
-        vi.spyOn(Bolt12, "extractInvoiceFields").mockReturnValue({
-            invoice_node_id: otherKey,
-            signature: new Uint8Array(64).fill(2),
-            records: [],
-        });
-        vi.spyOn(Bolt12, "computeMerkleRoot").mockReturnValue(
-            new Uint8Array(32).fill(3),
-        );
-        vi.spyOn(Bolt12, "verifySignature").mockReturnValue(true);
-
-        expect(() => validateInvoiceForOffer("lno1mock", "lni1mock")).toThrow(
-            "invoice does not belong to offer",
-        );
-    });
-
-    test("extracts the signer from the final hop of a multi-hop blinded path", () => {
-        // first_node(33) + blinding(33) + numHops(1)=2 + hop0[node(33)+enclen(2)]
-        // + hop1[node(33)+enclen(2)]; only the final hop's node can sign.
-        const path = new Uint8Array(137);
-        path[66] = 2;
-        path.set(compressedPubkey, 102);
-
-        vi.spyOn(Bolt12, "decodeOffer").mockReturnValue({
-            hrp: "lno",
-            offer_id: new Uint8Array(32).fill(4),
-            has_paths: true,
-            paths: hex.encode(path),
-            records: [],
-        });
-        vi.spyOn(Bolt12, "decodeBolt12").mockReturnValue({
-            hrp: "lni",
-            data: new Uint8Array(),
-        });
-        vi.spyOn(Bolt12, "parseTlvStream").mockReturnValue([]);
-        vi.spyOn(Bolt12, "extractInvoiceFields").mockReturnValue({
-            invoice_node_id: compressedPubkey,
-            signature: new Uint8Array(64).fill(2),
-            records: [],
-        });
-        vi.spyOn(Bolt12, "computeMerkleRoot").mockReturnValue(
-            new Uint8Array(32).fill(3),
-        );
-        vi.spyOn(Bolt12, "verifySignature").mockReturnValue(true);
-
-        expect(() =>
-            validateInvoiceForOffer("lno1mock", "lni1mock"),
-        ).not.toThrow();
-    });
-
-    test("extracts no signer from a truncated blinded path", () => {
-        // numHops=1 but the encrypted-data length (0xffff) runs past the buffer,
-        // so the parser yields no final node id and the offer has no fallback.
-        const path = new Uint8Array(102);
-        path[66] = 1;
-        path.set(compressedPubkey, 67);
-        path[100] = 0xff;
-        path[101] = 0xff;
-
-        vi.spyOn(Bolt12, "decodeOffer").mockReturnValue({
-            hrp: "lno",
-            offer_id: new Uint8Array(32).fill(4),
-            has_paths: true,
-            paths: hex.encode(path),
-            records: [],
-        });
-        vi.spyOn(Bolt12, "decodeBolt12").mockReturnValue({
-            hrp: "lni",
-            data: new Uint8Array(),
-        });
-        vi.spyOn(Bolt12, "parseTlvStream").mockReturnValue([]);
-        vi.spyOn(Bolt12, "extractInvoiceFields").mockReturnValue({
-            invoice_node_id: compressedPubkey,
-            signature: new Uint8Array(64).fill(2),
-            records: [],
-        });
-        vi.spyOn(Bolt12, "computeMerkleRoot").mockReturnValue(
-            new Uint8Array(32).fill(3),
-        );
-        vi.spyOn(Bolt12, "verifySignature").mockReturnValue(true);
-
-        expect(() => validateInvoiceForOffer("lno1mock", "lni1mock")).toThrow(
-            "invoice does not belong to offer",
-        );
-    });
-});
-
-describe("isBolt12Offer", () => {
-    beforeEach(() => {
-        vi.clearAllMocks();
-    });
-
-    test("true for a decodable offer", () => {
-        vi.spyOn(Bolt12, "decodeOffer").mockReturnValue({} as never);
-        expect(isBolt12Offer("lno1mock")).toBe(true);
-    });
-
-    test("false when decoding throws", () => {
-        vi.spyOn(Bolt12, "decodeOffer").mockImplementation(() => {
-            throw new Error("not an offer");
-        });
-        expect(isBolt12Offer("nope")).toBe(false);
+        expect(() => decodeInvoice("lnbc1mock")).toThrow("invalid invoice");
     });
 });
 
@@ -546,19 +292,9 @@ describe("isInvoice", () => {
         });
     });
 
-    describe("bolt12 invoices", () => {
-        test.each(["mainnet", "regtest", "testnet"] as const)(
-            "accepts an 'lni' bolt12 invoice regardless of network (%s)",
-            (network) => {
-                setBoltzSwapsConfig({ network });
-                expect(isInvoice("lni1abc")).toBe(true);
-            },
-        );
-
-        test("rejects 'lni' without an HRP separator", () => {
-            expect(isInvoice("lni")).toBe(false);
-            expect(isInvoice("lniabc")).toBe(false);
-        });
+    test("rejects a bolt12 invoice", () => {
+        setBoltzSwapsConfig({ network: "mainnet" });
+        expect(isInvoice("lni1abc")).toBe(false);
     });
 
     describe("non-string input", () => {

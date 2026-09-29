@@ -1,18 +1,9 @@
 import { hex } from "@scure/base";
-import type { Address, Hex } from "viem";
 
 import { getReferralHeader, isCooperativeDisabled } from "./config.ts";
 import { fetcher } from "./http/fetcher.ts";
 import { getLogger } from "./logger.ts";
-import {
-    type ContractAddresses,
-    type Contracts,
-    type FetchOptions,
-    SwapType,
-} from "./types.ts";
-import { defaultFetchTimeoutMs } from "./util/abort.ts";
-
-export type { ContractAddresses, Contracts };
+import { SwapType } from "./types.ts";
 
 const cooperativeErrorMessage = "cooperative signatures for swaps are disabled";
 const checkCooperative = () => {
@@ -60,22 +51,6 @@ type ReversePairTypeTaproot = PairType & {
     };
 };
 
-type ChainPairTypeTaproot = PairType & {
-    limits: PairLimits & {
-        maximalZeroConf: number;
-    };
-    fees: {
-        percentage: number;
-        minerFees: {
-            server: number;
-            user: {
-                claim: number;
-                lockup: number;
-            };
-        };
-    };
-};
-
 type SubmarinePairsTaproot = Record<
     string,
     Record<string, SubmarinePairTypeTaproot>
@@ -86,12 +61,9 @@ type ReversePairsTaproot = Record<
     Record<string, ReversePairTypeTaproot>
 >;
 
-type ChainPairsTaproot = Record<string, Record<string, ChainPairTypeTaproot>>;
-
 type Pairs = {
     [SwapType.Submarine]: SubmarinePairsTaproot;
     [SwapType.Reverse]: ReversePairsTaproot;
-    [SwapType.Chain]: ChainPairsTaproot;
 };
 
 type PartialSignature = {
@@ -109,12 +81,6 @@ type SwapTree = {
     refundLeaf: SwapTreeLeaf;
 };
 
-type CommitmentLockupDetails = {
-    contract: string;
-    claimAddress: string;
-    timelock: number;
-};
-
 type SubmarineCreatedResponse = {
     id: string;
     address: string;
@@ -124,8 +90,6 @@ type SubmarineCreatedResponse = {
     expectedAmount: number;
     claimPublicKey: string;
     timeoutBlockHeight: number;
-    blindingKey?: string;
-    claimAddress?: string;
 };
 
 type ReverseCreatedResponse = {
@@ -136,37 +100,6 @@ type ReverseCreatedResponse = {
     timeoutBlockHeight: number;
     onchainAmount: number;
     refundPublicKey?: string;
-    blindingKey?: string;
-    refundAddress?: string;
-};
-
-type ChainSwapDetails = {
-    swapTree: SwapTree;
-    lockupAddress: string;
-    serverPublicKey: string;
-    timeoutBlockHeight: number;
-    amount: number;
-    blindingKey?: string;
-    refundAddress?: string;
-    claimAddress?: string;
-    bip21?: string;
-};
-
-type ChainSwapCreatedResponse = {
-    id: string;
-    claimDetails: ChainSwapDetails;
-    lockupDetails: ChainSwapDetails;
-};
-
-type ChainSwapTransaction = {
-    transaction: {
-        id: string;
-        hex?: string;
-    };
-    timeout: {
-        blockHeight: number;
-        eta?: number;
-    };
 };
 
 type RestorableSwapDetails = {
@@ -175,21 +108,12 @@ type RestorableSwapDetails = {
     lockupAddress: string;
     serverPublicKey: string;
     timeoutBlockHeight: number;
-    blindingKey?: string;
     amount?: number;
     transaction?: { id: string; vout: number };
     preimageHash?: string;
 };
 
 export type EmptyResponse = Record<string, never>;
-
-type RestorableEvmClaimDetails = {
-    contractAddress: string;
-    claimAddress: string;
-    transaction?: { id: string };
-    amount?: number;
-    timeoutBlockHeight: number;
-};
 
 export type RestorableSwap = {
     id: string;
@@ -202,7 +126,6 @@ export type RestorableSwap = {
     claimPrivateKey?: string;
     claimDetails?: RestorableSwapDetails;
     refundDetails?: RestorableSwapDetails;
-    evmClaimDetails?: RestorableEvmClaimDetails;
     metadata?: string;
 };
 
@@ -223,77 +146,21 @@ export type SwapStatusResponse = {
     };
 };
 
-export type QuoteData = {
-    quote: string;
-    data: unknown;
-};
-
-export type QuoteCalldata = {
-    to: Address;
-    value: string;
-    data: Hex;
-};
-
-export enum DexQuoteDirection {
-    In = "in",
-    Out = "out",
-}
-
-const sortDexQuotes = (
-    quotes: QuoteData[],
-    direction: DexQuoteDirection,
-): QuoteData[] =>
-    [...quotes].sort((first, second) => {
-        const firstAmount = BigInt(first.quote);
-        const secondAmount = BigInt(second.quote);
-
-        if (firstAmount === secondAmount) {
-            return 0;
-        }
-
-        if (direction === DexQuoteDirection.In) {
-            return firstAmount > secondAmount ? -1 : 1;
-        }
-
-        return firstAmount < secondAmount ? -1 : 1;
-    });
-
 export const getPairs = async (options?: RequestInit): Promise<Pairs> => {
-    const [submarine, reverse, chain] = await Promise.all([
+    const [submarine, reverse] = await Promise.all([
         fetcher<SubmarinePairsTaproot>(
             "/v2/swap/submarine",
             undefined,
             options,
         ),
         fetcher<ReversePairsTaproot>("/v2/swap/reverse", undefined, options),
-        fetcher<ChainPairsTaproot>("/v2/swap/chain", undefined, options),
     ]);
 
     return {
-        [SwapType.Chain]: chain,
         [SwapType.Reverse]: reverse,
         [SwapType.Submarine]: submarine,
     };
 };
-
-// Returns the BOLT12 invoice for an offer without validating that it matches.
-// Callers must verify with their own validator (host's
-// `validateInvoiceForOffer`) since BOLT12 validation depends on Lightning
-// crypto primitives not currently in this package.
-export const fetchBolt12Invoice = (
-    offer: string,
-    amountSat: number,
-    opts?: FetchOptions,
-): Promise<{ invoice: string }> =>
-    fetcher<{ invoice: string }>(
-        "/v2/lightning/BTC/bolt12/fetch",
-        {
-            offer,
-            amount: amountSat,
-        },
-        { signal: opts?.signal },
-        opts?.timeoutMs ?? defaultFetchTimeoutMs,
-    );
 
 export const fetchBip21Invoice = async (invoice: string) => {
     const log = getLogger();
@@ -351,30 +218,6 @@ export const createReverseSwap = (
         metadata,
     });
 
-export const createChainSwap = (
-    from: string,
-    to: string,
-    userLockAmount: number | undefined,
-    preimageHash: string,
-    claimPublicKey: string | undefined,
-    refundPublicKey: string | undefined,
-    claimAddress: string | undefined,
-    pairHash: string,
-    metadata?: string,
-): Promise<ChainSwapCreatedResponse> =>
-    fetcher("/v2/swap/chain", {
-        from,
-        to,
-        preimageHash,
-        claimPublicKey,
-        refundPublicKey,
-        claimAddress,
-        pairHash,
-        referralId: getReferralId(),
-        userLockAmount,
-        metadata,
-    });
-
 export const patchSwapMetadata = (
     id: string,
     metadata: string,
@@ -387,16 +230,13 @@ export const patchSwapMetadata = (
 
 export const getPartialRefundSignature = async (
     id: string,
-    type: SwapType,
     pubNonce: Uint8Array,
     transactionHex: string,
     index: number,
 ): Promise<PartialSignature> => {
     checkCooperative();
     const res = await fetcher<{ pubNonce: string; partialSignature: string }>(
-        `/v2/swap/${
-            type === SwapType.Submarine ? "submarine" : "chain"
-        }/${id}/refund`,
+        `/v2/swap/submarine/${id}/refund`,
         {
             index,
             pubNonce: hex.encode(pubNonce),
@@ -457,59 +297,8 @@ export const postSubmarineClaimDetails = (
     });
 };
 
-export const getEipRefundSignature = (id: string, type: SwapType) => {
-    checkCooperative();
-    return fetcher<{ signature: Hex }>(`/v2/swap/${type}/${id}/refund`);
-};
-
 export const getFeeEstimations = () =>
     fetcher<Record<string, number>>("/v2/chain/fees");
-
-export const getNodeStats = () =>
-    fetcher<{
-        BTC: {
-            total: {
-                capacity: number;
-                channels: number;
-                peers: number;
-                oldestChannel: number;
-            };
-        };
-    }>("/v2/nodes/stats");
-
-export const getContracts = () =>
-    fetcher<Record<string, Contracts>>("/v2/chain/contracts");
-
-export const getCommitmentLockupDetails = (currency: string) =>
-    fetcher<CommitmentLockupDetails>(`/v2/commitment/${currency}/details`);
-
-export const postCommitmentSignature = (
-    currency: string,
-    swapId: string,
-    signature: Hex,
-    transactionHash: string,
-    logIndex?: number,
-    maxOverpaymentPercentage?: number,
-) =>
-    fetcher<object>(`/v2/commitment/${currency}`, {
-        swapId,
-        signature,
-        transactionHash,
-        logIndex,
-        maxOverpaymentPercentage,
-    });
-
-export const postCommitmentRefundSignature = (
-    currency: string,
-    transactionHash: string,
-    refundAddressSignature: Hex,
-    logIndex?: number,
-) =>
-    fetcher<{ signature: Hex }>(`/v2/commitment/${currency}/refund`, {
-        transactionHash,
-        refundAddressSignature,
-        logIndex,
-    });
 
 // API-only transaction broadcast. Host wraps this with `broadcastToExplorer`
 // fallback in `src/utils/blockchain.ts` to race the two channels.
@@ -521,32 +310,15 @@ export const broadcastApiTransaction = (
         hex: txHex,
     });
 
-export const getLockupTransaction = async (
+export const getLockupTransaction = (
     id: string,
     type: SwapType,
 ): Promise<LockupTransaction> => {
-    switch (type) {
-        case SwapType.Submarine:
-            return fetcher<{
-                id: string;
-                hex: string;
-                timeoutBlockHeight: number;
-                timeoutEta?: number;
-            }>(`/v2/swap/submarine/${id}/transaction`);
-
-        case SwapType.Chain: {
-            const res = await getChainSwapTransactions(id);
-            return {
-                id: res.userLock.transaction.id,
-                hex: res.userLock.transaction.hex ?? "",
-                timeoutEta: res.userLock.timeout.eta,
-                timeoutBlockHeight: res.userLock.timeout.blockHeight,
-            };
-        }
-
-        default:
-            throw `cannot get lockup transaction for swap type ${type}`;
+    if (type !== SwapType.Submarine) {
+        throw new Error(`cannot get lockup transaction for swap type ${type}`);
     }
+
+    return fetcher<LockupTransaction>(`/v2/swap/submarine/${id}/transaction`);
 };
 
 export const getReverseTransaction = (id: string) =>
@@ -585,42 +357,6 @@ export const getSwapStatuses = async (
     return merged;
 };
 
-export const getChainSwapClaimDetails = (id: string) =>
-    fetcher<{
-        pubNonce: string;
-        publicKey: string;
-        transactionHash: string;
-    }>(`/v2/swap/chain/${id}/claim`);
-
-export const postChainSwapDetails = (
-    id: string,
-    preimage: string | undefined,
-    signature: { pubNonce: string; partialSignature: string } | undefined,
-    toSign?: { pubNonce: string; transaction: string; index: number },
-) => {
-    checkCooperative();
-    return fetcher<{
-        pubNonce: string;
-        partialSignature: string;
-    }>(`/v2/swap/chain/${id}/claim`, {
-        preimage,
-        signature,
-        toSign,
-    });
-};
-
-export const getChainSwapTransactions = (id: string) =>
-    fetcher<{
-        userLock: ChainSwapTransaction;
-        serverLock: ChainSwapTransaction;
-    }>(`/v2/swap/chain/${id}/transactions`);
-
-export const getChainSwapNewQuote = (id: string) =>
-    fetcher<{ amount: number }>(`/v2/swap/chain/${id}/quote`);
-
-export const acceptChainSwapNewQuote = (id: string, amount: number) =>
-    fetcher<object>(`/v2/swap/chain/${id}/quote`, { amount });
-
 export const getSubmarinePreimage = (id: string) =>
     fetcher<{ preimage: string }>(`/v2/swap/submarine/${id}/preimage`);
 
@@ -638,104 +374,11 @@ export const getRestorableSwaps = (
     );
 };
 
-export const assetRescueSetup = (
-    asset: string,
-    swapId: string,
-    transactionId: string,
-    vout: number,
-    destination: string,
-) =>
-    fetcher<{
-        musig: {
-            serverPublicKey: string;
-            pubNonce: string;
-            message: string;
-        };
-        transaction: string;
-    }>(`/v2/asset/${asset}/rescue/setup`, {
-        swapId,
-        transactionId,
-        vout,
-        destination,
-    });
-
-export const assetRescueBroadcast = (
-    asset: string,
-    swapId: string,
-    pubNonce: Uint8Array,
-    partialSignature: Uint8Array,
-) =>
-    fetcher<{
-        transactionId: string;
-    }>(`/v2/asset/${asset}/rescue/broadcast`, {
-        swapId,
-        pubNonce: hex.encode(pubNonce),
-        partialSignature: hex.encode(partialSignature),
-    });
-
-export const quoteDexAmountIn = async (
-    chain: string,
-    tokenIn: string,
-    tokenOut: string,
-    amountIn: bigint,
-): Promise<QuoteData[]> => {
-    if (amountIn === 0n) {
-        return [];
-    }
-
-    const params = new URLSearchParams();
-    params.set("tokenIn", tokenIn);
-    params.set("tokenOut", tokenOut);
-    params.set("amountIn", amountIn.toString());
-    return sortDexQuotes(
-        await fetcher(`/v2/quote/${chain}/in?${params.toString()}`),
-        DexQuoteDirection.In,
-    );
-};
-
-export const quoteDexAmountOut = async (
-    chain: string,
-    tokenIn: string,
-    tokenOut: string,
-    amountOut: bigint,
-): Promise<QuoteData[]> => {
-    if (amountOut === 0n) {
-        return [];
-    }
-
-    const params = new URLSearchParams();
-    params.set("tokenIn", tokenIn);
-    params.set("tokenOut", tokenOut);
-    params.set("amountOut", amountOut.toString());
-    return sortDexQuotes(
-        await fetcher(`/v2/quote/${chain}/out?${params.toString()}`),
-        DexQuoteDirection.Out,
-    );
-};
-
-export const encodeDexQuote = (
-    chain: string,
-    recipient: string,
-    amountIn: bigint,
-    amountOutMin: bigint,
-    data: QuoteData["data"],
-) =>
-    fetcher<{ calls: QuoteCalldata[] }>(`/v2/quote/${chain}/encode`, {
-        recipient,
-        amountIn: amountIn.toString(),
-        amountOutMin: amountOutMin.toString(),
-        data,
-    });
-
 export type {
     Pairs,
-    CommitmentLockupDetails,
     PartialSignature,
-    ChainPairTypeTaproot,
     ReversePairTypeTaproot,
     SubmarineCreatedResponse,
     SubmarinePairTypeTaproot,
     ReverseCreatedResponse,
-    ChainSwapDetails,
-    ChainSwapCreatedResponse,
 };
