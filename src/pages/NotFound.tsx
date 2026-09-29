@@ -1,6 +1,6 @@
 import { useNavigate } from "@solidjs/router";
 
-import satoshiDisappeared from "../assets/satoshi-disappeared.webp";
+import logo from "../assets/lightning-fork-icon.webp";
 import { useGlobalContext } from "../context/Global";
 
 const NotFound = () => {
@@ -14,14 +14,13 @@ const NotFound = () => {
                 <small>{t("not_found_subline")}</small>
             </h1>
 
-            <div class="satoshi-image-container">
-                <img
-                    src={satoshiDisappeared}
-                    alt="Empty pedestal where Satoshi statue once stood in Lugano"
-                    class="satoshi-image"
-                    loading="lazy"
-                />
-            </div>
+            <img
+                src={logo}
+                alt=""
+                class="notfound-image"
+                width="220"
+                height="220"
+            />
 
             <span class="btn btn-inline" onClick={() => navigate("/")}>
                 {t("back_to_home")}

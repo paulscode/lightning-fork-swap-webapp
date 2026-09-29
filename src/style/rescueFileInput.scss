@@ -39,7 +39,7 @@
     justify-content: center;
     min-height: 2.625rem;
     padding: 0.375rem 2.75rem;
-    border: 0.0625rem solid var(--color-white-15);
+    border: 0.0625rem solid var(--color-border);
     border-radius: 0.625rem;
     background-color: var(--color-black-20);
     cursor: pointer;
@@ -104,7 +104,7 @@
 // === Success / uploaded state ===
 
 .rescue-file-input[data-uploaded="true"] .rescue-file-input-area {
-    border: 0.0625rem solid var(--color-white-15);
+    border: 0.0625rem solid var(--color-border);
     background-color: var(--color-black-20);
 }
 

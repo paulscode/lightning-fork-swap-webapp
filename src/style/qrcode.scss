@@ -12,20 +12,12 @@ $size: 40px;
         height: $size;
         z-index: 1;
         background: white;
-        background-image: vars.$boltz_icon;
+        background-image: vars.$lightning_fork_icon;
         background-size: 100%;
         border-radius: 50%;
     }
     &[data-asset="BTC"] span {
         background-image: vars.$bitcoin_icon;
-    }
-    &[data-asset="LBTC"] span {
-        background-image: vars.$liquid_icon;
-    }
-    &[data-asset="RBTC"] span {
-        background-image: vars.$rbtc_icon;
-        background-size: 80%;
-        background-position: center;
     }
     img {
         width: 300px;

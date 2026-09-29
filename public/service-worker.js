@@ -1,4 +1,4 @@
-const cacheName = "site-cache-v1";
+const cacheName = "lightning-fork-swap-cache-v1";
 const assetsToCache = ["/"];
 self.addEventListener("install", (event) => {
     self.skipWaiting(); // skip waiting

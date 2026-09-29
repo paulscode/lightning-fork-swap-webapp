@@ -1,213 +1,86 @@
 import type { Component } from "solid-js";
 
+import ExternalLink from "../components/ExternalLink";
+import { config } from "../config";
 import "../style/legal.scss";
 
 const Terms: Component = () => {
     return (
         <div class="terms-container">
-            <h1>Terms of Service</h1>
-            <h2>1. Introduction</h2>
+            <h1>Terms of Use</h1>
             <p>
-                Boltz Services are operated by Boltz S.A. de C.V., an entity
-                formed under the laws of El Salvador. Services provided by Boltz
-                include, but are not limited to, Boltz, the technology and
-                platform integrated therein, the Boltz Application Programming
-                Interfaces (API), and related software, applications or products
-                (collectively the "Service" or "Services"). Please read these
-                Terms of Service (the "Terms") carefully before using our
-                Services. By accessing our Service, e.g. by using any part of
-                the site or any software interacting with our API, users agree
-                to be bound by these Terms. If users don't agree with these
-                Terms or any of its clauses, they shall immediately cease to use
-                any Boltz Services.
+                By using Lightning Fork Swap (the "service") you accept these
+                terms. If you do not accept them, do not use the service.
             </p>
 
-            <h2>2. Enforcement & Amendments</h2>
+            <h2>1. What the service does</h2>
             <p>
-                2.1. By accessing or using our Service, users confirm to have
-                understood and agreed to be bound by these Terms.
+                The service swaps between on-chain BTC on the Bitcoin (BLAKE2b)
+                chain and its Lightning network. It offers two kinds of swaps:
             </p>
+            <ul>
+                <li>
+                    Submarine swaps: you send on-chain BTC and the service pays
+                    your Lightning invoice.
+                </li>
+                <li>
+                    Reverse swaps: you pay a Lightning invoice and receive
+                    on-chain BTC.
+                </li>
+            </ul>
             <p>
-                2.2. We reserve the right to amend, modify or alter these Terms
-                from time to time, in our sole discretion.
-            </p>
-
-            <h2>3. Service Description</h2>
-            <p>
-                The Service allows users to swap between different Bitcoin
-                layers and supported digital assets. Boltz does not operate swap
-                infrastructure for non-Bitcoin-denominated assets (e.g.
-                stablecoins); these swaps are facilitated through third-party
-                liquidity protocols and executed client-side. All Boltz Swaps
-                use advanced cryptography and are non-custodial, which means
-                users retain full control of their assets throughout the entire
-                flow of a swap. Users need to provide the following information
-                to use the Service:
-            </p>
-            <p>
-                3.1. Select the asset and network that you want to swap from and
-                the asset and network that you want to swap to (jointly referred
-                to as "swap pair").
-            </p>
-            <p>3.2. Select the amount to be swapped.</p>
-            <p>
-                3.3. Provide the destination information where the swapped
-                amount will be sent.
+                Only Lightning invoices from nodes on the Bitcoin (BLAKE2b)
+                chain work. Such invoices carry feature bit 512. Invoices from
+                other networks are rejected.
             </p>
 
-            <h2>4. Service Rules</h2>
-            <p>By using the service you warrant:</p>
+            <h2>2. Non-custodial</h2>
             <p>
-                4.1. You use our Service at your sole option, discretion and
-                risk.
-            </p>
-            <p>
-                4.2. You are solely responsible for any applicable taxes which
-                may be payable while using our Service.
-            </p>
-            <p>
-                4.3. You understand and agree that Boltz may prohibit operation
-                in some jurisdictions. Boltz maintains the right to select its
-                markets and jurisdictions to operate and may restrict its
-                Service in certain jurisdictions at any time.
-            </p>
-            <p>
-                4.4. You are at least 18 years old or meet the minimum legal age
-                requirement (if applicable) in your jurisdiction to use our
-                Service.
-            </p>
-            <p>
-                4.5. You agree to pay the fees for transactions completed via
-                our Service as defined by Boltz, which we may change from time
-                to time.
-            </p>
-            <p>
-                4.6. The number of transaction confirmations required for a
-                transaction to be considered accepted for a swap is different
-                for each blockchain-based Bitcoin layer. The required number of
-                transaction confirmations is subject to change at the discretion
-                of Boltz without notice.
-            </p>
-            <p>
-                4.7. On UTXO-based Bitcoin layers, sending more than one
-                transaction to a swap address is a violation of these Terms and,
-                in some rare cases, may result in the loss of funds.
-            </p>
-            <p>
-                4.8. Sending a transaction to a swap address after 24 hours has
-                passed since the creation of the swap is a violation of these
-                Terms and, in some rare cases, may result in the loss of funds.
-            </p>
-            <p>
-                4.9. Sending funds outside the allowed minimum and maximum
-                amount range is a violation of these Terms and, in some rare
-                cases, may result in the loss of funds.
-            </p>
-            <p>
-                4.10. Sending funds to the address specified in the swap in a
-                currency and/or blockchain network other than that specified in
-                the swap is a violation of these Terms and, in some rare cases,
-                may result in the loss of funds.
-            </p>
-            <p>
-                4.11. Boltz Swaps are executed fully automatically and when you
-                contact support with a request to cancel or change a swap, Boltz
-                has the right to refuse this request without giving reasons.
-            </p>
-            <p>
-                4.12. You agree that Boltz cannot distinguish between swaps
-                created via official software distributed by Boltz or modified
-                swap client software, due to the openness of its API and open
-                source nature of its software. You agree that Boltz can only
-                provide support for swap client software officially distributed
-                by Boltz and used in ways permitted under these Terms.
-            </p>
-            <p>
-                4.13. You agree that there are risks associated with
-                Internet-based systems, such as the failure of hardware,
-                software, and Internet connections and with the different
-                blockchain protocols, such as any malfunction, unintended
-                function, unexpected functioning of or attack on a protocol.
-                This includes risks specific to EVM-compatible networks and
-                smart contracts, such as smart contract vulnerabilities, network
-                congestion, gas price fluctuations, and bridge or cross-chain
-                messaging failures.
-            </p>
-            <p>
-                4.14. Users shall not use sending/destination addresses or
-                bitcoin used in connection with this service for activities
-                associated with terrorism, fraud, scams, or illegal purposes.
-            </p>
-            <p>
-                4.15. Boltz explicitly disclaims any responsibility or liability
-                for any losses, damages, or harm incurred by users as a result
-                of scams, frauds, or any other deceptive practices perpetrated
-                by third parties in connection with the use of our Service.
-            </p>
-            <p>
-                4.16. Boltz does not provide custodial services, meaning that
-                Boltz never controls bitcoin of users, not even for a short
-                transient period of time. Users hereby indemnify Boltz, who are
-                held to have no responsibility, against any direct, indirect,
-                consequential, or any damages of any kind, arising out of or in
-                any way connected with the use of our Service, including but not
-                limited to those arising from users' personal error and/or
-                misbehavior. This especially includes loss of funds due to loss
-                of private keys for swap claims and refunds or providing
-                incorrect swap destination info, e.g. an incorrect Bitcoin
-                address.
-            </p>
-            <p>
-                4.17. Boltz uses an automated risk management system to check
-                all transactions made by users. We reserve the right to reject
-                processing swaps with transactions originating from illegal
-                activity. In these scenarios, users will have the option to
-                unilaterally refund using funds locked in swap addresses using
-                their cryptographic refund keys as generated by officially
-                distributed Boltz software.
-            </p>
-            <p>
-                4.18. Boltz will retain transaction data to comply with our
-                legal obligations under applicable laws and regulations in El
-                Salvador. We are entitled to transfer this data to government
-                bodies for the prevention and disclosure of prohibited or
-                illegal actions.
-            </p>
-            <p>
-                4.19. For swaps involving assets that are not denominated in
-                Bitcoin (e.g. stablecoins), you acknowledge and accept exchange
-                rate risk. Rates may fluctuate between the time you initiate a
-                swap and when it is executed. Boltz does not provide any
-                guarantees regarding exchange rates.
-            </p>
-            <p>
-                4.20. Certain supported assets are issued or managed by third
-                parties and may be swapped via third-party liquidity protocols
-                not operated by Boltz. Boltz disclaims any responsibility for
-                the actions or failures of token issuers, bridge operators, or
-                liquidity protocols, including but not limited to freezing or
-                blacklisting of addresses, loss of peg, bridge failures,
-                liquidity shortfalls, or changes to token contracts. You
-                acknowledge and accept these risks when swapping such assets.
+                Swaps are atomic. Funds are locked in hash time-locked contracts
+                (HTLCs): either both sides of a swap complete, or neither does.
+                The service never holds your funds. If a submarine swap fails,
+                you can refund your on-chain coins, cooperatively with the
+                service or on your own once the timelock expires. If a reverse
+                swap fails, your Lightning payment is not settled and returns to
+                you.
             </p>
 
-            <h2>5. Contact Info</h2>
+            <h2>3. Your responsibilities</h2>
             <p>
-                For questions or general inquiries, please contact{" "}
-                <a href="mailto:hi@bol.tz">hi@bol.tz</a>. Law enforcement
-                officials should email{" "}
-                <a href="mailto:legal@bol.tz">legal@bol.tz</a>. Boltz will
-                respond to law enforcement requests from authorized law
-                enforcement officials with proof of authority. Law enforcement
-                requests should contain the relevant information to the request,
-                including the details of the law enforcement agency, the related
-                case officer or representative to contact, details of
-                information requested, as well as a way in which Boltz can
-                authenticate the request being made as genuine.
+                Your browser stores your swap data and your rescue key. The
+                service cannot recover them for you. Keep a backup of your
+                rescue key; without it you may be unable to refund a failed
+                swap. Check addresses and invoices before you confirm a swap,
+                and keep enough time to act before a timelock expires.
             </p>
 
-            <p class="last-updated">
-                <strong>Last updated: March 16, 2026</strong>
+            <h2>4. Experimental software</h2>
+            <p>
+                The service is experimental software running on a young chain.
+                It may contain bugs, and the chain itself may behave in ways
+                nobody expects. You use the service at your own risk. It is
+                provided "as is", without warranty of any kind. The operator is
+                not liable for any loss arising from its use, to the extent the
+                law allows.
+            </p>
+            <p>
+                The operator may change fees, limits or these terms, and may
+                pause new swaps at any time. Pending swaps, refunds and the
+                rescue page keep working while new swaps are paused.
+            </p>
+
+            <h2>5. Open source</h2>
+            <p>
+                The software is open source under the GNU Affero General Public
+                License v3.0 (AGPL-3.0). It is built on{" "}
+                <ExternalLink href="https://github.com/BoltzExchange/boltz-web-app">
+                    Boltz
+                </ExternalLink>
+                . The source code of this service is available at{" "}
+                <ExternalLink href={config.repoUrl}>
+                    {config.repoUrl}
+                </ExternalLink>
+                .
             </p>
         </div>
     );

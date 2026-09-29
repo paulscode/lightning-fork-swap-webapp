@@ -1,15 +1,13 @@
 {
     "extends": ["stylelint-config-recommended-scss"],
-    "plugins": [
-        "./stylelint-theme-parity.mjs",
-        "stylelint-declaration-strict-value"
-    ],
+    "plugins": ["stylelint-declaration-strict-value"],
     "rules": {
-        "boltz/theme-token-parity": true,
         "declaration-block-no-duplicate-custom-properties": true,
         "declaration-block-no-duplicate-properties": [
             true,
-            { "ignore": ["consecutive-duplicates-with-different-values"] }
+            {
+                "ignore": ["consecutive-duplicates-with-different-values"]
+            }
         ],
         "declaration-block-no-shorthand-property-overrides": true,
         "custom-property-no-missing-var-function": true,

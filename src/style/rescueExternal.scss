@@ -1,5 +1,3 @@
-@use "vars";
-
 .rescue-external {
     .rescue-external-frame {
         max-width: 560px;
@@ -10,143 +8,6 @@
         color: var(--color-white-80);
         margin-top: 8px;
         margin-bottom: 10px;
-    }
-
-    .rescue-external-coverage {
-        margin-top: 12px;
-        text-align: left;
-    }
-
-    .rescue-external-coverage > p {
-        color: var(--color-white-60);
-        margin: 0 0 8px;
-        text-align: center;
-    }
-
-    .rescue-external-coverage[data-empty="true"] {
-        opacity: 0.82;
-    }
-
-    .rescue-external-chip-list {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 7px;
-        justify-content: center;
-        width: 100%;
-    }
-
-    .rescue-external-chip {
-        align-items: center;
-        background: var(--color-dark-gray);
-        border: 1px solid var(--color-white-10);
-        border-radius: 999px;
-        box-sizing: border-box;
-        display: inline-flex;
-        flex: 0 0 auto;
-        gap: 4px;
-        max-width: 100%;
-        padding: 5px 8px 5px 5px;
-        position: relative;
-        width: max-content;
-    }
-
-    .rescue-external-chip strong {
-        color: var(--color-white-90);
-        flex: 0 0 auto;
-        font-size: 0.78rem;
-        line-height: 1;
-        text-align: left;
-        white-space: nowrap;
-    }
-
-    .rescue-external-chip-requirements {
-        align-items: center;
-        color: var(--color-white-60);
-        display: inline-flex;
-        flex: 0 0 auto;
-        gap: 3px;
-    }
-
-    .rescue-external-requirement-icon {
-        height: 13px;
-        width: 13px;
-    }
-
-    .rescue-external-requirement-icon[data-active="true"] {
-        color: color-mix(
-            in srgb,
-            var(--color-success-400) 85%,
-            var(--color-text)
-        );
-    }
-
-    .rescue-external-chip[data-active="false"] {
-        background: var(--color-black-20);
-        cursor: not-allowed;
-    }
-
-    .rescue-external-chip[data-active="false"] .asset,
-    .rescue-external-chip[data-active="false"] strong,
-    .rescue-external-chip[data-active="false"]
-        .rescue-external-chip-requirements {
-        opacity: 0.42;
-    }
-
-    .rescue-external-chip[data-active="false"] .icon {
-        filter: grayscale(1);
-    }
-
-    .rescue-external-chip[data-active="false"][data-tooltip]:hover::after {
-        background: var(--color-darker-gray);
-        border: 1px solid var(--color-white-15);
-        border-radius: var(--border-radius-sm);
-        bottom: calc(100% + 8px);
-        color: var(--color-text);
-        content: attr(data-tooltip);
-        font-size: 0.75rem;
-        left: 50%;
-        line-height: 1.25;
-        max-width: 180px;
-        padding: 6px 8px;
-        pointer-events: none;
-        position: absolute;
-        text-align: center;
-        text-transform: none;
-        transform: translateX(-50%);
-        width: max-content;
-        z-index: 10;
-    }
-
-    .rescue-external-chip .asset {
-        align-items: center;
-        display: inline-flex;
-        flex: 0 0 auto;
-    }
-
-    .rescue-external-chip .icon {
-        height: 24px;
-        width: 24px;
-    }
-
-    .rescue-external-chip .icon::after {
-        background-size: 12px 12px;
-        height: 12px;
-        width: 12px;
-    }
-
-    .rescue-external-chip .asset-USDT .icon {
-        background-image: vars.$usdt_icon;
-        background-size: 72%;
-    }
-
-    .rescue-external-wallet-slot {
-        --rescue-success-text: color-mix(
-            in srgb,
-            var(--color-success-400) 80%,
-            var(--color-text)
-        );
-
-        display: contents;
     }
 
     .mnemonic-input-container {
@@ -169,7 +30,7 @@
 
             color: var(--color-secondary-100);
             background: var(--color-secondary-800);
-            border: 1px solid var(--color-white-15);
+            border: 1px solid var(--color-border);
             border-radius: var(--border-radius-md);
 
             .input-box {
@@ -189,7 +50,7 @@
                 text-align: left;
 
                 border: none;
-                border-bottom: 1px solid var(--color-white-15);
+                border-bottom: 1px solid var(--color-border);
                 border-radius: 0;
             }
             .mnemonic-input:focus {
@@ -206,58 +67,8 @@
         }
     }
 
-    .rescue-external-wallet-slot[data-connected="true"] .btn-light {
-        color: var(--rescue-success-text);
-        background-color: var(--color-black-40);
-    }
-
-    @media (hover: hover) {
-        .rescue-external-wallet-slot[data-connected="true"] .btn-light:hover {
-            background-color: var(--color-black-40);
-            color: var(--rescue-success-text);
-        }
-    }
-
     .rescue-external-actions {
         margin-top: 12px;
-    }
-
-    .rescue-external-report-hint {
-        margin-top: 16px;
-        color: var(--color-white-60);
-        font-size: 0.8rem;
-        text-align: center;
-
-        svg {
-            margin-right: 4px;
-            vertical-align: -3px;
-        }
-    }
-
-    .rescue-external-report-link {
-        background: none;
-        border: none;
-        padding: 0;
-        font: inherit;
-        color: inherit;
-        cursor: pointer;
-        text-decoration: underline;
-
-        &[data-loading="true"] {
-            cursor: wait;
-        }
-
-        .spinner {
-            display: inline-block;
-            margin: 0 0 0 4px;
-            vertical-align: middle;
-
-            > div {
-                width: 6px;
-                height: 6px;
-                margin: 0 1px;
-            }
-        }
     }
 
     .rescue-external-results {

@@ -116,31 +116,3 @@
 .swaplist-asset-static-icon[data-asset="BTC"] {
     background-image: vars.$bitcoin_icon;
 }
-.swaplist-asset-static-icon[data-asset="LBTC"] {
-    background-image: vars.$liquid_icon;
-}
-.swaplist-asset-static-icon[data-asset="RBTC"] {
-    background-image: vars.$rbtc_icon;
-    background-size: 48%;
-    background-position: center;
-}
-.swaplist-asset-static-icon[data-asset="TBTC"] {
-    background-image: vars.$tbtc_icon;
-    background-size: 80%;
-    background-position: center;
-}
-.swaplist-asset-static-icon[data-asset="WBTC"] {
-    background-image: vars.$wbtc_icon;
-    background-size: 80%;
-    background-position: center;
-}
-.swaplist-asset-static-icon[data-asset="USDT"] {
-    background-image: vars.$usdt0_icon;
-    background-size: 76%;
-    background-position: center;
-}
-.swaplist-asset-static-icon[data-asset="USDC"] {
-    background-image: vars.$usdc_icon;
-    background-size: 80%;
-    background-position: center;
-}

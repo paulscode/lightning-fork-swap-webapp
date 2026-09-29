@@ -4,105 +4,51 @@ import path from "path";
 import process from "process";
 import { fileURLToPath } from "url";
 
-const modes = Object.freeze({
-    regular: "--regular",
-    pro: "--pro",
-});
-
-const modeSources = Object.freeze({
-    implicit: "implicit",
-    explicit: "explicit",
-});
-
 const fileNames = Object.freeze({
     template: "index.template.html",
     output: "index.html",
-    cache: ".index-build-cache",
 });
 
 const helpFlags = Object.freeze(["--help", "-h"]);
 
-const modeLabels = Object.freeze({
-    [modes.regular]: "regular",
-    [modes.pro]: "pro",
-});
+// Accepted for compatibility with older scripts; there is only one variant
+const legacyFlags = Object.freeze(["--regular"]);
 
-// Configuration for both regular and pro versions
+const siteUrl = "https://lightningfork.com";
+const siteTitle = "Lightning Fork Swap";
+const siteDescription =
+    "Non-custodial swaps between the Bitcoin BLAKE2b chain and its Lightning network.";
+
 const config = {
-    regular: {
-        boltzUrl: "https://boltz.exchange",
-        boltzTitle: "Boltz | Non-Custodial Bitcoin Bridge",
-        boltzDescription:
-            "Swap between different Bitcoin layers and stablecoins while staying in full control. Fast and non-custodial Bitcoin / Lightning / Liquid / Rootstock / TBTC / WBTC / USDT / USDC swaps.",
-        boltzColor100: "#FFE96D",
-        boltzColor200: "#E1C218",
-        backgroundColor: "#142840",
-        assetsPath: "",
-        ldJson: {
-            "@context": "https://schema.org",
-            "@type": "Organization",
-            name: "Boltz Exchange",
-            url: "https://boltz.exchange",
-            logo: "https://boltz.exchange/boltz.svg",
-            sameAs: ["https://x.com/boltzhq"],
-            hasPart: {
-                "@context": "https://schema.org",
-                "@type": "WebApplication",
-                name: "Boltz Pro | Stack Sats Non-Custodially",
-                url: "https://pro.boltz.exchange",
-                logo: "https://pro.boltz.exchange/boltz-pro-preview.jpg",
-                description:
-                    "Earn sats for swapping Bitcoin in directions that help balance our liquidity. Fast and non-custodial Lightning / Bitcoin / Liquid / Rootstock swaps.",
-            },
-        },
-    },
-    pro: {
-        boltzUrl: "https://pro.boltz.exchange",
-        boltzTitle: "Boltz Pro | Stack Sats Non-Custodially",
-        boltzDescription:
-            "Earn sats for swapping Bitcoin in directions that help balance our liquidity. Fast and non-custodial Lightning / Bitcoin / Liquid / Rootstock swaps.",
-        boltzColor100: "#c8cfd6",
-        boltzColor200: "#9fa8b1",
-        backgroundColor: "#14191e",
-        assetsPath: "/pro",
-        ldJson: {
-            "@context": "https://schema.org",
-            "@type": "WebApplication",
-            name: "Boltz Pro",
-            url: "https://pro.boltz.exchange",
-            logo: "https://pro.boltz.exchange/boltz-preview.jpg",
-            description:
-                "Earn sats for swapping Bitcoin in directions that help balance our liquidity. Fast and non-custodial Lightning / Bitcoin / Liquid / Rootstock swaps.",
-            offers: {
-                "@type": "Offer",
-                description:
-                    "Non-custodial Bitcoin swapping with earning potential",
-            },
-            provider: {
-                "@type": "Organization",
-                name: "Boltz Exchange",
-                url: "https://boltz.exchange",
-                logo: "https://boltz.exchange/boltz.svg",
-            },
-        },
+    siteUrl,
+    siteTitle,
+    siteDescription,
+    themeColor: "#070b16",
+    backgroundColor: "#070b16",
+    accentColor: "#4e93ff",
+    previewImage: `${siteUrl}/lightning-fork-swap-preview.jpg`,
+    ldJson: {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        name: siteTitle,
+        url: siteUrl,
+        image: `${siteUrl}/lightning-fork-swap-preview.jpg`,
+        logo: `${siteUrl}/android-chrome-512x512.png`,
+        description: siteDescription,
+        applicationCategory: "FinanceApplication",
+        operatingSystem: "Any",
+        isAccessibleForFree: true,
+        license: "https://www.gnu.org/licenses/agpl-3.0.html",
     },
 };
 
 function usage() {
-    const scriptName = path.basename(import.meta.url);
+    const scriptName = path.basename(fileURLToPath(import.meta.url));
     console.log(`
-    Usage: ${scriptName} [${modes.regular}|${modes.pro}]
+    Usage: ${scriptName}
 
-    Generates an index.html from index.template.html using configuration variables.
-
-    Arguments:
-        ${modes.regular}   Generate site for regular Boltz Exchange (default)
-        ${modes.pro}       Generate site for Boltz Pro
-
-    Notes:
-        - If no mode is provided, the script defaults to ${modes.regular}.
-        - Cached builds generated with an explicit mode will not be overwritten
-          by an implicit default of a different mode.
+    Generates index.html from index.template.html. The output is only
+    rewritten when the template or this script is newer than it.
   `);
 }
 
@@ -124,13 +70,9 @@ function replaceTemplateVariables(template, variables) {
         }
     }
 
-    // Check if all found variables are defined
-    const undefinedVariables = [];
-    for (const variable of foundVariables) {
-        if (!(variable in variables)) {
-            undefinedVariables.push(variable);
-        }
-    }
+    const undefinedVariables = [...foundVariables].filter(
+        (variable) => !(variable in variables),
+    );
 
     if (undefinedVariables.length > 0) {
         throw new Error(
@@ -138,11 +80,10 @@ function replaceTemplateVariables(template, variables) {
         );
     }
 
-    // Replace all variables in the template
     for (const [key, value] of Object.entries(variables)) {
         // Handle both ${variable} and $variable patterns
         const regex1 = new RegExp(`\\$\\{${key}\\}`, "g");
-        const regex2 = new RegExp(`\\$${key}`, "g");
+        const regex2 = new RegExp(`\\$${key}(?![a-zA-Z0-9_])`, "g");
         result = result.replace(regex1, value);
         result = result.replace(regex2, value);
     }
@@ -151,250 +92,99 @@ function replaceTemplateVariables(template, variables) {
     return result;
 }
 
-function validateInputs(args) {
-    // Validate argument count
-    if (!Array.isArray(args) || args.length !== 1) {
-        throw new Error("Exactly one argument required");
+function validateArgs(args) {
+    const unknown = args.filter((arg) => !legacyFlags.includes(arg));
+    if (unknown.length > 0) {
+        throw new Error(`Unknown arguments: ${unknown.join(", ")}`);
     }
-
-    const mode = args[0];
-
-    // Validate mode argument
-    if (typeof mode !== "string" || !mode.startsWith("--")) {
-        throw new Error("Mode must be a string starting with '--'");
-    }
-
-    // Validate allowed modes
-    const allowedModes = Object.values(modes);
-    if (!allowedModes.includes(mode)) {
-        throw new Error(
-            `Invalid mode: ${mode}. Allowed modes: ${allowedModes.join(", ")}`,
-        );
-    }
-
-    return mode;
-}
-
-function validateConfig(config) {
-    if (!config || typeof config !== "object") {
-        throw new Error("Config must be an object");
-    }
-
-    const requiredFields = [
-        "boltzUrl",
-        "boltzTitle",
-        "boltzDescription",
-        "boltzColor100",
-        "boltzColor200",
-        "backgroundColor",
-        "assetsPath",
-        "ldJson",
-    ];
-
-    for (const field of requiredFields) {
-        if (!(field in config)) {
-            throw new Error(`Missing required config field: ${field}`);
-        }
-    }
-
-    // Validate URL format
-    try {
-        new URL(config.boltzUrl);
-    } catch {
-        throw new Error(`Invalid URL format: ${config.boltzUrl}`);
-    }
-
-    // Validate JSON structure
-    if (typeof config.ldJson !== "object" || config.ldJson === null) {
-        throw new Error("ldJson must be a valid object");
-    }
-
-    return true;
 }
 
 function validateFilePaths(templatePath, outputPath) {
-    // Check if template file exists
     if (!fs.existsSync(templatePath)) {
         throw new Error(`Template file not found: ${templatePath}`);
     }
 
-    // Check if template is readable
     try {
         fs.accessSync(templatePath, fs.constants.R_OK);
     } catch {
         throw new Error(`Template file not readable: ${templatePath}`);
     }
 
-    // Check if output directory is writable
     const outputDir = path.dirname(outputPath);
     try {
         fs.accessSync(outputDir, fs.constants.W_OK);
     } catch {
         throw new Error(`Output directory not writable: ${outputDir}`);
     }
-
-    return true;
 }
 
-function needsRegeneration(
-    templatePath,
-    outputPath,
-    cachePath,
-    currentMode,
-    scriptPath,
-    modeSource,
-) {
-    // Check if output file exists
+function needsRegeneration(templatePath, outputPath, scriptPath) {
     if (!fs.existsSync(outputPath)) {
         console.log("Output file does not exist, regenerating...");
-        return { shouldRegenerate: true, effectiveMode: currentMode };
+        return true;
     }
 
-    // Check if cache file exists
-    if (!fs.existsSync(cachePath)) {
-        console.log("Cache file does not exist, regenerating...");
-        return { shouldRegenerate: true, effectiveMode: currentMode };
-    }
-
-    // Read last used mode from cache
-    let lastMode;
-    try {
-        lastMode = fs.readFileSync(cachePath, "utf8").trim();
-    } catch {
-        console.log("Could not read cache file, regenerating...");
-        return { shouldRegenerate: true, effectiveMode: currentMode };
-    }
-
-    let effectiveMode = currentMode;
-
-    // If the caller didn't specify a mode, favor the previously used mode
-    // from cache to avoid changing variants unintentionally.
-    if (modeSource === modeSources.implicit && lastMode) {
-        if (lastMode !== currentMode) {
-            console.log(
-                `Cached mode is ${lastMode}, implicit default is ${currentMode}; will continue using cached mode.`,
-            );
-        }
-        effectiveMode = lastMode;
-    }
-
-    // Explicitly requested mode changed from cached mode
-    if (
-        modeSource === modeSources.explicit &&
-        lastMode &&
-        lastMode !== currentMode
-    ) {
-        console.log(
-            `Mode changed from ${lastMode} to ${currentMode}, regenerating...`,
-        );
-        return { shouldRegenerate: true, effectiveMode: currentMode };
-    }
-
-    // Compare modification times
-    const templateStat = fs.statSync(templatePath);
     const outputStat = fs.statSync(outputPath);
-    const scriptStat = fs.statSync(scriptPath);
 
-    if (templateStat.mtimeMs > outputStat.mtimeMs) {
+    if (fs.statSync(templatePath).mtimeMs > outputStat.mtimeMs) {
         console.log("Template is newer than output, regenerating...");
-        return { shouldRegenerate: true, effectiveMode };
+        return true;
     }
 
-    if (scriptStat.mtimeMs > outputStat.mtimeMs) {
+    if (fs.statSync(scriptPath).mtimeMs > outputStat.mtimeMs) {
         console.log("Generator script is newer than output, regenerating...");
-        return { shouldRegenerate: true, effectiveMode };
+        return true;
     }
 
     console.log("Output is up to date, skipping regeneration.");
-    return { shouldRegenerate: false, effectiveMode };
+    return false;
 }
 
 function main() {
     try {
         const args = process.argv.slice(2);
-        const modeWasProvided = args.length > 0;
 
         if (args.some((arg) => helpFlags.includes(arg))) {
             usage();
             return 0;
         }
 
-        // Default to regular mode when no mode is supplied
-        const mode = validateInputs(modeWasProvided ? args : [modes.regular]);
-        const modeSource = modeWasProvided
-            ? modeSources.explicit
-            : modeSources.implicit;
+        validateArgs(args);
 
-        // Get script directory
         const __filename = fileURLToPath(import.meta.url);
         const scriptDir = path.dirname(__filename);
         const templatePath = path.join(scriptDir, fileNames.template);
         const outputPath = path.join(scriptDir, fileNames.output);
-        const cachePath = path.join(scriptDir, fileNames.cache);
 
-        // Validate file paths
         validateFilePaths(templatePath, outputPath);
 
-        // Check if regeneration is needed
-        const { shouldRegenerate, effectiveMode } = needsRegeneration(
-            templatePath,
-            outputPath,
-            cachePath,
-            mode,
-            __filename,
-            modeSource,
-        );
-
-        if (!shouldRegenerate) {
+        if (!needsRegeneration(templatePath, outputPath, __filename)) {
             return 0;
         }
 
-        // Get selected config based on the effective mode we will render
-        let selectedConfig;
-        if (effectiveMode === modes.regular) {
-            selectedConfig = config.regular;
-        } else if (effectiveMode === modes.pro) {
-            selectedConfig = config.pro;
-        } else {
-            throw new Error(`Invalid mode: ${effectiveMode}`);
-        }
-
-        // Validate config
-        validateConfig(selectedConfig);
-
-        // Prepare variables for template replacement
         const variables = {
-            ...selectedConfig,
-            ldJson: JSON.stringify(selectedConfig.ldJson, null, 4),
+            ...config,
+            ldJson: JSON.stringify(config.ldJson, null, 4),
         };
 
-        // Read template file
         const template = fs.readFileSync(templatePath, "utf8");
-
         if (!template || template.trim().length === 0) {
             throw new Error("Template file is empty");
         }
 
-        // Replace variables in template
-        const output = replaceTemplateVariables(template, variables);
-
-        // Write output file
-        fs.writeFileSync(outputPath, output, "utf8");
-
-        // Write cache file with current mode
-        fs.writeFileSync(cachePath, effectiveMode, "utf8");
-
-        const modeLabel = modeLabels[effectiveMode] ?? effectiveMode;
-        console.log(
-            `Successfully generated ${outputPath} for ${modeLabel} mode`,
+        fs.writeFileSync(
+            outputPath,
+            replaceTemplateVariables(template, variables),
+            "utf8",
         );
 
-        return 0; // Success exit code
+        console.log(`Successfully generated ${outputPath}`);
+        return 0;
     } catch (error) {
         const errorMessage =
             error instanceof Error ? error.message : String(error);
         console.error("Error:", errorMessage);
-        return 1; // Error exit code
+        return 1;
     }
 }
 
@@ -402,6 +192,5 @@ if (
     process.argv[1] &&
     fileURLToPath(import.meta.url) === path.resolve(process.argv[1])
 ) {
-    const exitCode = main();
-    process.exit(exitCode);
+    process.exit(main());
 }

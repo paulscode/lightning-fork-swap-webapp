@@ -55,7 +55,7 @@ h3 {
 }
 
 .hero-boxes {
-    margin: 72px 12px 122px;
+    margin: 56px 12px 96px;
     display: flex;
     align-items: stretch;
     gap: 24px;
@@ -64,389 +64,33 @@ h3 {
     flex: 1 1 0;
     min-width: 0;
     border-radius: 21px;
-    padding: 12px;
+    padding: 18px 16px;
     color: var(--color-text);
     background: var(--color-secondary-700);
-    border: 1px solid var(--color-white-10);
+    border: 1px solid var(--color-border-subtle);
     display: flex;
     flex-direction: column;
-}
-.hero-icons {
-    flex: 1;
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: center;
-    gap: 2px 4px;
+    transition: border-color 0.2s ease-in-out;
 
-    img {
-        width: 45px;
-        height: 45px;
-
-        &.full-bleed {
-            padding: 5px;
-            box-sizing: border-box;
-        }
-
-        &.padded {
-            transform: scale(1.037);
-        }
-
-        &.rbtc {
-            padding: 4px;
-            box-sizing: border-box;
-        }
+    p {
+        margin: 0;
+        color: var(--color-text-muted);
+        line-height: 1.5;
     }
 }
-.hero-icons-break {
-    flex-basis: 100%;
-    height: 0;
+@media (hover: hover) {
+    .hero-box:hover {
+        border-color: var(--color-border-strong);
+    }
 }
 @media (max-width: 768px) {
     .hero-boxes {
         display: block;
-        margin: 72px 0 122px;
+        margin: 48px 0 72px;
     }
     .hero-box {
         margin: 12px;
     }
-}
-
-#numbers {
-    display: flex;
-    justify-content: center;
-    gap: 0 90px;
-    margin: 50px 0 122px;
-    padding: 0 42px;
-}
-
-@media (max-width: 768px) {
-    #numbers {
-        display: block;
-    }
-}
-.number-label {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    cursor: pointer;
-}
-.number-label:hover {
-    text-decoration: underline;
-}
-
-.number-label a {
-    background: transparent;
-}
-.number {
-    font-size: 36px;
-    font-weight: bold;
-    margin-bottom: 16px;
-}
-.number small {
-    font-size: 16px;
-    display: block;
-    font-weight: normal;
-    color: var(--color-primary);
-}
-
-.thunderhub:before {
-    content: " ";
-    display: inline-block;
-    background: url(../assets/thunderhub.svg);
-    background-size: 100%;
-    background-repeat: no-repeat;
-    width: 42px;
-    height: 42px;
-    border-radius: 12px;
-    position: absolute;
-    top: -8px;
-    left: 0;
-}
-.thunderhub {
-    position: relative;
-    padding-left: 48px;
-    text-decoration: none;
-    font-size: 18px;
-    color: var(--color-text);
-    font-weight: bold;
-    line-height: 1.1;
-}
-.rtl {
-    display: inline-block;
-    background: url(../assets/rtl.svg);
-    background-size: 100%;
-    background-repeat: no-repeat;
-    width: 63px;
-    height: 51px;
-}
-.lnbits {
-    display: inline-block;
-    background: url(../assets/lnbits.svg);
-    background-size: 100%;
-    background-repeat: no-repeat;
-    width: 128px;
-    height: 36px;
-}
-.breez {
-    display: inline-block;
-    background: url(../assets/logo-breez-header.svg);
-    background-size: 100%;
-    background-repeat: no-repeat;
-    width: 96px;
-    height: 45px;
-}
-.aqua {
-    display: inline-block;
-    background: url(../assets/aqua.svg);
-    background-size: 100%;
-    background-repeat: no-repeat;
-    width: 180px;
-    height: 32px;
-}
-
-.usdt0 {
-    display: inline-block;
-    background: url("../assets/usdt0.svg?v=2");
-    background-size: 100%;
-    background-repeat: no-repeat;
-    width: 174.1px;
-    height: 50px;
-}
-.rootstocklabs {
-    display: inline-block;
-    background: url(../assets/rootstocklabs.svg);
-    background-size: 100%;
-    background-repeat: no-repeat;
-    width: 204.6px;
-    height: 50px;
-}
-.arklabs {
-    display: inline-block;
-    background: url(../assets/arklabs.svg);
-    background-size: 100%;
-    background-repeat: no-repeat;
-    width: 150.4px;
-    height: 50px;
-}
-.fuji {
-    display: inline-block;
-    background: url(../assets/fuji.webp);
-    background-size: 100%;
-    background-repeat: no-repeat;
-    width: 120px;
-    height: 38px;
-}
-.geyser {
-    display: inline-block;
-    background: url(../assets/geyser.svg);
-    background-size: 100%;
-    background-repeat: no-repeat;
-    width: 120px;
-    height: 40px;
-}
-.bull-bitcoin {
-    display: inline-block;
-    background: url(../assets/bull-bitcoin.svg);
-    background-size: 100%;
-    background-repeat: no-repeat;
-    width: 180px;
-    height: 41px;
-}
-.blockstreamApp:before {
-    content: " ";
-    display: inline-block;
-    background: url(../assets/blockstream-app.webp);
-    background-size: 100%;
-    background-repeat: no-repeat;
-    width: 56px;
-    height: 56px;
-    border-radius: 12px;
-    position: absolute;
-    top: 0px;
-    left: 0;
-}
-.blockstreamApp {
-    position: relative;
-    padding-left: 62px;
-    text-decoration: none;
-    font-size: 18px;
-    color: var(--color-text);
-    font-weight: normal;
-    line-height: 1.15;
-    display: inline-block;
-}
-.blockstreamApp span {
-    display: block;
-    text-align: left;
-    font-weight: bold;
-    margin-top: 4px;
-}
-.helm {
-    display: inline-block;
-    background: url(../assets/helm.svg);
-    background-size: 100%;
-    background-repeat: no-repeat;
-    width: 44px;
-    height: 55px;
-}
-.bancoLibre {
-    display: inline-block;
-    background: url(../assets/banco-libre.svg);
-    background-size: 100%;
-    background-repeat: no-repeat;
-    width: 200px;
-    height: 40px;
-}
-.btcpay {
-    display: inline-block;
-    background: url(../assets/btcpay.svg);
-    background-size: 100%;
-    background-repeat: no-repeat;
-    width: 110px;
-    height: 48px;
-}
-.speed {
-    display: inline-block;
-    background: url(../assets/speed.svg);
-    background-size: 100%;
-    background-repeat: no-repeat;
-    width: 150px;
-    height: 50px;
-}
-.fedi {
-    display: inline-block;
-    background: url(../assets/fedi.svg);
-    background-size: 100%;
-    background-repeat: no-repeat;
-    width: 115px;
-    height: 35px;
-}
-.alby {
-    display: inline-block;
-    background: url(../assets/alby.svg);
-    background-size: 100%;
-    background-repeat: no-repeat;
-    width: 128px;
-    height: 52px;
-}
-.cakepay {
-    display: inline-block;
-    background: url(../assets/cakepay.svg);
-    background-size: 100%;
-    background-repeat: no-repeat;
-    width: 181px;
-    height: 50px;
-}
-.dzap {
-    display: inline-block;
-    background: url(../assets/dzap.svg);
-    background-size: 100%;
-    background-repeat: no-repeat;
-    width: 110px;
-    height: 31px;
-}
-.freedomia {
-    display: inline-block;
-    background: url(../assets/freedomia.svg);
-    background-size: 100%;
-    background-repeat: no-repeat;
-    width: 200px;
-    height: 34px;
-}
-.bittr {
-    display: inline-block;
-    background: url(../assets/bittr.svg);
-    background-size: 100%;
-    background-repeat: no-repeat;
-    width: 126px;
-    height: 45px;
-}
-.eclair {
-    display: inline-block;
-    background: url(../assets/eclair.webp);
-    background-size: 100%;
-    background-repeat: no-repeat;
-    width: 140px;
-    height: 40px;
-}
-.hodlhodl {
-    display: inline-block;
-    background: url(../assets/hodl-hodl.svg);
-    background-size: 100%;
-    background-repeat: no-repeat;
-    width: 165px;
-    height: 32px;
-}
-.nuri {
-    display: inline-block;
-    background: url(../assets/nuri.svg);
-    background-size: 100%;
-    background-repeat: no-repeat;
-    width: 50px;
-    height: 50px;
-}
-.zeno {
-    display: inline-block;
-    background: url(../assets/zeno.webp);
-    background-size: 100%;
-    background-repeat: no-repeat;
-    width: 50px;
-    height: 50px;
-    border-radius: 12px;
-}
-.manna {
-    display: inline-block;
-    background: url(../assets/manna.webp);
-    background-size: 100%;
-    background-repeat: no-repeat;
-    width: 89px;
-    height: 50px;
-}
-.wdk {
-    display: inline-block;
-    background: url(../assets/wdk.svg);
-    background-size: 100%;
-    background-repeat: no-repeat;
-    width: 124px;
-    height: 45px;
-}
-.theBitcoinCompany {
-    display: inline-block;
-    background: url(../assets/the-bitcoin-company.svg);
-    background-size: 100%;
-    background-repeat: no-repeat;
-    width: 160px;
-    height: 43px;
-}
-
-#partners,
-#integrations {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    flex-wrap: wrap;
-    margin: 40px 0 122px;
-}
-
-#partners > div,
-#integrations > div {
-    padding: 22px;
-}
-
-#partners > div > a,
-#integrations > div > a:before,
-#integrations > div > a {
-    opacity: 0.8;
-    // filter: brightness(1000) grayscale(1);
-    transition: opacity 0.4s ease-in-out;
-}
-
-#partners > div > a:hover,
-#integrations > div > a:hover:before,
-#integrations > div > a:hover {
-    opacity: 1;
-    filter: brightness(1) grayscale(0);
 }
 
 #create-overlay.glow {

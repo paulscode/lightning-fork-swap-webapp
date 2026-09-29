@@ -1,110 +1,69 @@
 import type { Component } from "solid-js";
 
 import ExternalLink from "../components/ExternalLink";
-import { config } from "../configs/mainnet";
 import "../style/legal.scss";
 
 const Privacy: Component = () => {
     return (
         <div class="privacy-container">
-            <h1>Privacy Policy</h1>
-
-            <h2>1. Introduction</h2>
+            <h1>Privacy</h1>
             <p>
-                This Privacy Policy applies to all services provided by Boltz
-                S.A. de C.V., an entity formed under the laws of El Salvador
-                (collectively "we," "our," "Boltz," or the "Service") and
-                describes how we collect, use, and disclose your information
-                when you interact with our services, including through our
-                website or any software interfacing with our API. If you
-                disagree with any terms herein, you must refrain from using our
-                Service.
+                This page explains what Lightning Fork Swap (the "service") can
+                see when you use it.
             </p>
 
-            <h2>2. Information We Collect</h2>
+            <h2>1. No accounts, no tracking</h2>
             <p>
-                Below is a detailed overview of information collected during
-                your use of our services:
-            </p>
-            <p>
-                2.1 Swap Destination: We collect and store data related to
-                transaction destinations, such as Bitcoin addresses, Lightning
-                invoices, or blockchain wallet addresses.
-            </p>
-            <p>
-                2.2 Swap Origin: We collect and store data related to
-                transaction origins, including transaction identifiers or
-                Lightning invoices.
-            </p>
-            <p>
-                2.3 IP Address Handling: We do not permanently store your IP
-                address but may temporarily process it for taxation compliance
-                or geo-restriction enforcement.
-            </p>
-            <p>
-                We do not rent, sell, or share any of the above mentioned data
-                with third parties unless legally compelled by a verified law
-                enforcement request, judicial order, or fraud investigation.
+                The service has no accounts and asks for no personal details. It
+                uses no analytics, no tracking cookies and no third-party
+                trackers.
             </p>
 
-            <h2>3. Information Third Parties May Collect</h2>
+            <h2>2. What the operator sees</h2>
+            <p>To run swaps, the operator's server sees and stores:</p>
             <ul>
+                <li>swap amounts, fees and timestamps;</li>
+                <li>on-chain addresses and transactions involved in a swap;</li>
+                <li>Lightning invoices and payment hashes;</li>
                 <li>
-                    Cloudflare Inc.: We utilize Cloudflare's services to deliver
-                    the static assets of our{" "}
-                    <ExternalLink href="https://boltz.exchange">
-                        web app
-                    </ExternalLink>
-                    . Review Cloudflare's Privacy Policy{" "}
-                    <ExternalLink href="https://www.cloudflare.com/privacypolicy/">
-                        here
-                    </ExternalLink>
-                    . To avoid using Cloudflare's services, you can{" "}
-                    <ExternalLink href="https://docs.boltz.exchange/web-app">
-                        run our web app locally
-                    </ExternalLink>
-                    .
-                </li>
-                <li>
-                    Racknation S.A.: We utilize Racknation's services to provide
-                    our public API. For their privacy practices{" "}
-                    <ExternalLink href="https://www.racknation.cr/contact-us">
-                        contact Racknation directly
-                    </ExternalLink>
-                    . You can also access our API via{" "}
-                    <ExternalLink href={`${config.apiUrl?.tor}/v2`}>
-                        Tor
-                    </ExternalLink>
-                    .
-                </li>
-                <li>
-                    Third-party liquidity protocols and token issuers: Swaps may
-                    interact with third-party smart contracts, liquidity
-                    protocols, or cross-chain messaging protocols (e.g.{" "}
-                    <ExternalLink href="https://layerzero.network/">
-                        LayerZero
-                    </ExternalLink>
-                    ,{" "}
-                    <ExternalLink href="https://www.circle.com/cross-chain-transfer-protocol">
-                        CCTP
-                    </ExternalLink>
-                    ). The respective protocol operators or token issuers may
-                    collect data independently. Boltz has no control over these
-                    third parties' data practices.
+                    IP addresses and request details in server logs, as with any
+                    website.
                 </li>
             </ul>
-
-            <h2>4. Data Protection Contact</h2>
             <p>
-                For questions or concerns regarding this Policy, contact us at:{" "}
-                <ExternalLink href="mailto:legal@bol.tz" target="_self">
-                    legal@bol.tz
-                </ExternalLink>
-                .
+                On-chain transactions and addresses are public on the Bitcoin
+                (BLAKE2b) chain anyway. To hide your IP address, use Tor or a
+                VPN.
             </p>
 
-            <p class="last-updated">
-                <strong>Last updated: March 16, 2026</strong>
+            <h2>3. What stays in your browser</h2>
+            <p>
+                Your browser stores your swap data and your rescue key locally.
+                The rescue key never leaves your browser: the service only
+                receives the public keys a swap needs, and, when you use the
+                rescue page, an extended public key so it can look up your
+                swaps. That extended public key lets the operator link those
+                swaps to each other. Clearing your browser data deletes your
+                local swap data, so keep a backup of your rescue key; you are
+                responsible for it.
+            </p>
+
+            <h2>4. Block explorer data</h2>
+            <p>
+                The site shows chain data (transactions, fees, block heights)
+                from{" "}
+                <ExternalLink href="https://mempool.guide">
+                    mempool.guide
+                </ExternalLink>
+                . These requests go through this site, so mempool.guide does not
+                see your IP address. Links that open mempool.guide directly do
+                send your request to it.
+            </p>
+
+            <h2>5. Open source</h2>
+            <p>
+                The software is open source under the AGPL-3.0 and built on
+                Boltz, so anyone can check what it does.
             </p>
         </div>
     );
