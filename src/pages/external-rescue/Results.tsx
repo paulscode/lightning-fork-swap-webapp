@@ -67,7 +67,9 @@ const RescueList = (props: { results: ExternalRescueSearch["results"] }) => {
                                 onClick={(e) => e.preventDefault()}>
                                 {resultActionLabel(result.action, t)}
                             </a>
-                            <SwapIcons assets={getSwapIconAssets(result.swap)} />
+                            <SwapIcons
+                                assets={getSwapIconAssets(result.swap)}
+                            />
                             <span class="swaplist-asset-id">
                                 {t("id")}:&nbsp;
                                 <Show

@@ -18,9 +18,7 @@ const InvoiceFailedToPay = () => {
             </p>
             <hr />
             <Show when={swap()?.refundTx === undefined}>
-                <RefundButton
-                    swap={swap as Accessor<SubmarineSwap>}
-                />
+                <RefundButton swap={swap as Accessor<SubmarineSwap>} />
             </Show>
             <Show when={swap()?.refundTx !== undefined}>
                 <SwapRefunded refundTxId={swap()!.refundTx!} />

@@ -407,8 +407,10 @@ const GlobalProvider = (props: {
     );
 
     // eslint-disable-next-line solid/reactivity
-    const t = translator(dictLocale, (template: string, values?: BaseTemplateArgs) =>
-        resolveTemplate(template, values),
+    const t = translator(
+        dictLocale,
+        (template: string, values?: BaseTemplateArgs) =>
+            resolveTemplate(template, values),
     ) as unknown as tFn;
 
     return (
@@ -463,7 +465,6 @@ const GlobalProvider = (props: {
                 deleteSwap,
                 getSwaps,
                 clearSwaps,
-
 
                 newKey,
                 rescueFile,

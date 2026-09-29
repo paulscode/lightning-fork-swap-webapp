@@ -13,10 +13,7 @@ import { usePayContext } from "../context/Pay";
 import { useModifySwap } from "../hooks/useModifySwap";
 import { formatAmount, formatDenomination } from "../utils/denomination";
 import { formatError } from "../utils/errors";
-import {
-    type SubmarineSwap,
-    getFinalAssetReceive,
-} from "../utils/swapCreator";
+import { type SubmarineSwap, getFinalAssetReceive } from "../utils/swapCreator";
 import Broadcasting from "./Broadcasting";
 
 const TransactionClaimed = () => {
@@ -65,7 +62,9 @@ const TransactionClaimed = () => {
         }
 
         // For reverse swaps, make sure the claim transaction was broadcast
-        setClaimBroadcast(s.type !== SwapType.Reverse || s.claimTx !== undefined);
+        setClaimBroadcast(
+            s.type !== SwapType.Reverse || s.claimTx !== undefined,
+        );
     });
 
     const receiveAmount = () => {

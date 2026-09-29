@@ -10,8 +10,7 @@ const apiUrl =
     (import.meta.env.VITE_API_URL as string | undefined) ||
     "http://localhost:9001";
 const explorerApiUrl = import.meta.env.VITE_EXPLORER_API_URL as
-    | string
-    | undefined;
+    string | undefined;
 const explorerUrl = import.meta.env.VITE_EXPLORER_URL as string | undefined;
 
 const config = {

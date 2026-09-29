@@ -1,9 +1,15 @@
 import { AssetKind, Explorer } from "boltz-swaps/types";
-import { type Config, baseConfig, chooseUrl, sameOrigin } from "src/configs/base";
+import {
+    type Config,
+    baseConfig,
+    chooseUrl,
+    sameOrigin,
+} from "src/configs/base";
 
 // The API is served from the same origin as the web app (`/v2/...` and the
 // WebSocket at `/v2/ws`) unless VITE_API_URL is set at build time.
-const apiUrl = (import.meta.env.VITE_API_URL as string | undefined) || sameOrigin();
+const apiUrl =
+    (import.meta.env.VITE_API_URL as string | undefined) || sameOrigin();
 
 const config = {
     ...baseConfig,

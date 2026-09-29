@@ -146,7 +146,8 @@ const PayProvider = (props: { children: JSX.Element }) => {
                 const res = await navigator.locks.request(
                     `claim:${swapId}`,
                     async () => {
-                        const claimableSwap = await getSwap<ReverseSwap>(swapId);
+                        const claimableSwap =
+                            await getSwap<ReverseSwap>(swapId);
                         if (
                             claimableSwap === null ||
                             claimableSwap.claimTx !== undefined
@@ -168,12 +169,9 @@ const PayProvider = (props: { children: JSX.Element }) => {
                             transaction,
                             true,
                         );
-                        const claimedSwap = await modifySwap(
-                            result.id,
-                            (s) => {
-                                s.claimTx = result.claimTx;
-                            },
-                        );
+                        const claimedSwap = await modifySwap(result.id, (s) => {
+                            s.claimTx = result.claimTx;
+                        });
                         return claimedSwap === null ? undefined : result;
                     },
                 );

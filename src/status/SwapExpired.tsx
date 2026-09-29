@@ -23,9 +23,7 @@ const SwapExpired = () => {
                     refundableUTXOs().length > 0 &&
                     swap()?.refundTx === undefined
                 }>
-                <RefundButton
-                    swap={swap as Accessor<SubmarineSwap>}
-                />
+                <RefundButton swap={swap as Accessor<SubmarineSwap>} />
                 <hr />
             </Show>
             <Show when={swap()?.refundTx !== undefined}>

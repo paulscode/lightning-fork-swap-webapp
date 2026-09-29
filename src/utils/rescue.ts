@@ -192,9 +192,7 @@ export const refund = async <T extends SubmarineSwap>(
 };
 
 export const isRefundableSwapType = (swap: SomeSwap | null | undefined) =>
-    swap !== null &&
-    swap !== undefined &&
-    swap.type === SwapType.Submarine;
+    swap !== null && swap !== undefined && swap.type === SwapType.Submarine;
 
 export const getRescuableUTXOs = async (currentSwap: SomeSwap) => {
     const [lockupTxResult, utxosResult] = await Promise.allSettled([

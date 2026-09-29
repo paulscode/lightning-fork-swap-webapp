@@ -29,11 +29,7 @@ export const handleCreateSwapError = async (
     if (tooLow || tooHigh) {
         const fresh = await getPairs();
         const current = pair();
-        const refreshed = new Pair(
-            fresh,
-            current.fromAsset,
-            current.toAsset,
-        );
+        const refreshed = new Pair(fresh, current.fromAsset, current.toAsset);
         const newAmount = tooLow
             ? await refreshed.getMinimum()
             : await refreshed.getMaximum();
