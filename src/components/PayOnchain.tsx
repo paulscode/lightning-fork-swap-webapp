@@ -5,13 +5,12 @@ import { Show, createMemo, createResource } from "solid-js";
 
 import CopyButton from "../components/CopyButton";
 import QrCode from "../components/QrCode";
-import { BTC, LBTC } from "../consts/Assets";
+import { BTC } from "../consts/Assets";
 import { useGlobalContext } from "../context/Global";
 import { formatAmount, formatDenomination } from "../utils/denomination";
 import { getPair, isMobile } from "../utils/helper";
 import CopyBox from "./CopyBox";
 import LoadingSpinner from "./LoadingSpinner";
-import OptimizedRoute from "./OptimizedRoute";
 
 const PayOnchain = (props: {
     type: SwapType;
@@ -84,17 +83,12 @@ const PayOnchain = (props: {
             fallback={<LoadingSpinner />}>
             <div>
                 <h2>{headerText()}</h2>
-                <OptimizedRoute />
                 <hr />
                 <a href={props.bip21}>
                     <QrCode asset={props.assetSend} data={props.bip21} />
                 </a>
                 <hr />
-                {/* Use 4 chars to display Liquid addresses, 5 for other assets */}
-                <CopyBox
-                    value={props.address}
-                    groupSize={props.assetSend === LBTC ? 4 : 5}
-                />
+                <CopyBox value={props.address} groupSize={5} />
                 <Show when={props.assetSend === BTC}>
                     <hr class="spacer" />
                     <h3>{t("warning_expiry")}</h3>

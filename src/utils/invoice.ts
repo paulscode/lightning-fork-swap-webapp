@@ -1,10 +1,9 @@
 import { BigNumber } from "bignumber.js";
 import { isLnurlAmountError } from "boltz-swaps/errors";
-import { isBolt12Offer } from "boltz-swaps/invoice";
 import { isLnurl } from "boltz-swaps/lnurl";
 import { resolveInvoice } from "boltz-swaps/resolveInvoice";
 
-import { BTC, LBTC, LN } from "../consts/Assets";
+import { BTC, LN } from "../consts/Assets";
 import { type Denomination, InvoiceValidation } from "../consts/Enums";
 import type { ButtonLabelParams } from "../consts/Types";
 import { formatAmount, formatDenomination } from "./denomination";
@@ -14,8 +13,6 @@ export { isLnurl } from "boltz-swaps/lnurl";
 
 export const invoicePrefix = "lightning:";
 export const bitcoinPrefix = "bitcoin:";
-export const liquidPrefix = "liquidnetwork:";
-export const liquidTestnetPrefix = "liquidtestnet:";
 
 export const maxExpiryHours = 24;
 
@@ -102,11 +99,7 @@ export const isBip21 = (data: string) => {
     }
 
     data = data.toLowerCase();
-    return (
-        data.startsWith(bitcoinPrefix) ||
-        data.startsWith(liquidPrefix) ||
-        data.startsWith(liquidTestnetPrefix)
-    );
+    return data.startsWith(bitcoinPrefix);
 };
 
 // BIP-321 makes query parameter keys case-insensitive,
@@ -134,11 +127,7 @@ export const extractInvoice = (data: string) => {
     }
     if (isBip21(data)) {
         const url = new URL(data);
-        return (
-            url.searchParams.get("lightning") ||
-            url.searchParams.get("lno") ||
-            null
-        );
+        return url.searchParams.get("lightning") || null;
     }
     return data;
 };
@@ -175,9 +164,6 @@ export const getAssetByBip21Prefix = (prefix: string) => {
     switch (prefix) {
         case bitcoinPrefix:
             return BTC;
-        case liquidPrefix:
-        case liquidTestnetPrefix:
-            return LBTC;
         case invoicePrefix:
             return LN;
         default:
@@ -193,8 +179,5 @@ export const isDeferredInvoiceDestination = (
     }
 
     const invoiceInput = extractInvoice(value.trim()) ?? "";
-    return (
-        invoiceInput !== "" &&
-        (isLnurl(invoiceInput) || isBolt12Offer(invoiceInput))
-    );
+    return invoiceInput !== "" && isLnurl(invoiceInput);
 };

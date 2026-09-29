@@ -1,3 +1,4 @@
+import { isMissingBlake2bFeatureError } from "boltz-swaps/invoice";
 import log from "loglevel";
 import QrScanner from "qr-scanner";
 import { Show, createSignal, onCleanup, onMount } from "solid-js";
@@ -27,7 +28,7 @@ const QrScan = () => {
         setReceiveAmount,
         setSendAmount,
     } = useCreateContext();
-    const { t, notify, pairs, regularPairs, bitcoinOnly } = useGlobalContext();
+    const { t, notify, pairs } = useGlobalContext();
 
     const [camera, setCamera] = createSignal<boolean>(false);
     const [scanning, setScanning] = createSignal(false);
@@ -48,13 +49,16 @@ const QrScan = () => {
             scannedValue,
             pair(),
             pairs(),
-            regularPairs(),
             minerFee(),
-            bitcoinOnly(),
         );
 
         if (result.status === DestinationInputStatus.Invalid) {
-            notify("error", t("invalid_address", { asset: pair().toAsset }));
+            notify(
+                "error",
+                isMissingBlake2bFeatureError(result.cause)
+                    ? t("invoice_missing_blake2b")
+                    : t("invalid_address", { asset: pair().toAsset }),
+            );
         }
 
         if (result.status !== DestinationInputStatus.Valid) {

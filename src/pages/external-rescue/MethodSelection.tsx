@@ -1,17 +1,5 @@
-import { BsInfoCircleFill } from "solid-icons/bs";
-import { For, Show, createSignal } from "solid-js";
-
-import ConnectWallet from "../../components/ConnectWallet";
-import LoadingSpinner from "../../components/LoadingSpinner";
 import RescueFileUpload from "../../components/RescueFileUpload";
 import { useGlobalContext } from "../../context/Global";
-import {
-    ChatwootNotReadyError,
-    isChatwootConfigured,
-    postLogsToChatwoot,
-} from "../../utils/chatwoot";
-import { RecoveryChip, missingMethodsTitle, recoveryOptions } from "./Recovery";
-import { RecoveryMethod } from "./types";
 import type { ExternalRescueSearch } from "./useExternalRescueSearch";
 
 type MethodSelectionProps = {
@@ -20,32 +8,7 @@ type MethodSelectionProps = {
 };
 
 export const MethodSelection = (props: MethodSelectionProps) => {
-    const { t, getLogs, notify } = useGlobalContext();
-    const activeMethods = () => props.selection.activeMethods();
-
-    const [sharingLogs, setSharingLogs] = createSignal(false);
-
-    const shareLogs = async () => {
-        if (sharingLogs()) {
-            return;
-        }
-
-        setSharingLogs(true);
-        try {
-            await postLogsToChatwoot(await getLogs());
-        } catch (error) {
-            notify(
-                "error",
-                error instanceof ChatwootNotReadyError
-                    ? t("chatwoot_not_ready")
-                    : error instanceof Error
-                      ? error.message
-                      : String(error),
-            );
-        } finally {
-            setSharingLogs(false);
-        }
-    };
+    const { t } = useGlobalContext();
 
     return (
         <>
@@ -64,39 +27,6 @@ export const MethodSelection = (props: MethodSelectionProps) => {
                 errorKey={props.selection.fileErrorKey()}
             />
             <hr />
-            <div
-                class="rescue-external-wallet-slot"
-                data-connected={
-                    activeMethods().includes(RecoveryMethod.Wallet)
-                        ? "true"
-                        : "false"
-                }>
-                <ConnectWallet showWalletIcon />
-            </div>
-            <hr />
-
-            <div
-                class="rescue-external-coverage"
-                data-empty={!props.selection.canSearch() ? "true" : "false"}>
-                <p>{t("rescue_external_coverage")}</p>
-                <div class="rescue-external-chip-list">
-                    <For each={recoveryOptions}>
-                        {(option) => (
-                            <RecoveryChip
-                                {...option}
-                                active={props.selection.canRecover(option)}
-                                activeMethods={activeMethods()}
-                                t={t}
-                                tooltip={missingMethodsTitle(
-                                    option.methods,
-                                    activeMethods(),
-                                    t,
-                                )}
-                            />
-                        )}
-                    </For>
-                </div>
-            </div>
 
             <div class="btns rescue-external-actions">
                 <button
@@ -107,25 +37,6 @@ export const MethodSelection = (props: MethodSelectionProps) => {
                     {props.selection.searchText()}
                 </button>
             </div>
-
-            <Show when={isChatwootConfigured()}>
-                <p class="rescue-external-report-hint">
-                    <BsInfoCircleFill size={14} opacity={0.5} />
-                    {t("rescue_external_report_issue_start")}
-                    <button
-                        type="button"
-                        class="rescue-external-report-link"
-                        attr:data-loading={sharingLogs() ? "true" : undefined}
-                        onClick={() => void shareLogs()}
-                        data-testid="rescue-share-logs">
-                        {t("rescue_external_report_issue_link")}
-                        <Show when={sharingLogs()}>
-                            <LoadingSpinner />
-                        </Show>
-                    </button>
-                    {t("rescue_external_report_issue_end")}
-                </p>
-            </Show>
         </>
     );
 };

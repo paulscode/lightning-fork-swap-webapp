@@ -29,11 +29,7 @@ import { hiddenInformation } from "../components/settings/PrivacyMode";
 import SettingsCog from "../components/settings/SettingsCog";
 import SettingsMenu from "../components/settings/SettingsMenu";
 import Tooltip from "../components/settings/Tooltip";
-import {
-    type RefundableAssetType,
-    type blockChainsAssets,
-    refundableAssets,
-} from "../consts/Assets";
+import { type RefundableAssetType, refundableAssets } from "../consts/Assets";
 import { copyIconTimeout } from "../consts/CopyContent";
 import { UrlParam } from "../consts/Enums";
 import {
@@ -43,13 +39,10 @@ import {
 } from "../consts/SwapStatus";
 import { useGlobalContext } from "../context/Global";
 import { usePayContext } from "../context/Pay";
-import CommitmentCreated from "../status/CommitmentCreated";
-import CommitmentRejected from "../status/CommitmentRejected";
 import InvoiceExpired from "../status/InvoiceExpired";
 import InvoiceFailedToPay from "../status/InvoiceFailedToPay";
 import InvoicePending from "../status/InvoicePending";
 import InvoiceSet from "../status/InvoiceSet";
-import PreBridgeDexQuoteBlocked from "../status/PreBridgeDexQuoteBlocked";
 import SwapCreated from "../status/SwapCreated";
 import SwapExpired from "../status/SwapExpired";
 import SwapRefunded from "../status/SwapRefunded";
@@ -70,14 +63,7 @@ import {
     hasSwapTimedOut,
     isRefundableSwapType,
 } from "../utils/rescue";
-import {
-    type ChainSwap,
-    PreBridgeRecoveryStatus,
-    type SomeSwap,
-    type SubmarineSwap,
-    getPostBridgeDetail,
-    isCommitmentSwap,
-} from "../utils/swapCreator";
+import type { SomeSwap, SubmarineSwap } from "../utils/swapCreator";
 import { getUrlParam } from "../utils/urlParams";
 
 const Pay = () => {
@@ -136,7 +122,7 @@ const Pay = () => {
         }
         const [lockupTxResult, utxosResult] = await Promise.allSettled([
             getLockupTransaction(currentSwap.id, currentSwap.type),
-            getSwapUTXOs(currentSwap as ChainSwap | SubmarineSwap),
+            getSwapUTXOs(currentSwap as SubmarineSwap),
         ]);
 
         const lockupTx =
@@ -222,13 +208,6 @@ const Pay = () => {
                 return;
             }
 
-            if (isCommitmentSwap(currentSwap)) {
-                setSwapStatus(
-                    currentSwap.status ?? swapStatusPending.SwapCreated,
-                );
-                return;
-            }
-
             const res = await getSwapStatus(currentSwap.id);
             log.info(`Swap ${currentSwap.id} status fetched: ${res.status}`);
             setSwapStatus(res.status);
@@ -242,9 +221,6 @@ const Pay = () => {
         const currentSwap = swap();
 
         if (currentSwap === null || backupVerificationRequired()) {
-            return;
-        }
-        if (isCommitmentSwap(currentSwap)) {
             return;
         }
         const swapValue = currentSwap;
@@ -265,7 +241,6 @@ const Pay = () => {
                 swapStatus() === swapStatusPending.InvoiceSet);
 
         const preClaimStatuses = [
-            swapStatusPending.TransactionServerMempool,
             swapStatusPending.TransactionClaimPending,
             swapStatusPending.InvoicePaid,
         ];
@@ -325,11 +300,8 @@ const Pay = () => {
                     isRefundableSwapType(currentSwap) &&
                     !timedOutRefundable()
                 ) {
-                    const timeoutBlockHeight =
-                        currentSwap.type === SwapType.Submarine
-                            ? (currentSwap as SubmarineSwap).timeoutBlockHeight
-                            : (currentSwap as ChainSwap).lockupDetails
-                                  .timeoutBlockHeight;
+                    const timeoutBlockHeight = (currentSwap as SubmarineSwap)
+                        .timeoutBlockHeight;
 
                     try {
                         const currentBlockHeight = (
@@ -364,7 +336,7 @@ const Pay = () => {
                                     )))
                         ) {
                             const timeoutEta = getTimeoutEta(
-                                swapValue.assetSend as blockChainsAssets,
+                                swapValue.assetSend,
                                 timeoutBlockHeight,
                                 currentBlockHeight,
                             );
@@ -403,15 +375,8 @@ const Pay = () => {
         string | undefined
     >(undefined);
 
-    const backendRefunded = createMemo(
-        () =>
-            swap() !== null &&
-            swap()!.type === SwapType.Chain &&
-            swapStatus() === swapStatusFailed.TransactionRefunded,
-    ); // this status means backend refunded its own tx. We rename it to avoid confusing users.
-
     const renameSwapStatus = (status: string) => {
-        if (backendRefunded() || waitForSwapTimeout() || timedOutRefundable()) {
+        if (waitForSwapTimeout() || timedOutRefundable()) {
             const newStatus = swapStatusFailed.SwapWaitingForRefund;
             log.info("Swap status renamed:", newStatus);
             return newStatus;
@@ -432,30 +397,12 @@ const Pay = () => {
             swapStatus() === swapStatusPending.InvoicePaid,
     );
 
-    const transactionClaimedPostBridge = createMemo(
-        () =>
-            isTransactionClaimedStatus() &&
-            getPostBridgeDetail(swap()?.bridge) !== undefined,
-    );
-
     const blockExplorerLink = () => (
         <BlockExplorerLink
             swap={swap as Accessor<SomeSwap>}
             swapStatus={swapStatus}
         />
     );
-
-    const shouldHideDefaultExplorer = createMemo(() => {
-        const currentSwap = swap();
-        return (
-            (currentSwap !== null &&
-                isCommitmentSwap(currentSwap) &&
-                currentSwap.commitmentLockupTxHash !== undefined) ||
-            transactionClaimedPostBridge() ||
-            currentSwap?.bridge?.recovery?.status ===
-                PreBridgeRecoveryStatus.Recovered
-        );
-    });
 
     return (
         <Show
@@ -480,13 +427,11 @@ const Pay = () => {
                 <div data-status={status()} class="frame">
                     <span class="frame-header">
                         <h2>
-                            {swap() !== null && isCommitmentSwap(swap()!)
-                                ? t("swap")
-                                : t("pay_invoice", {
-                                      id: privacyMode()
-                                          ? hiddenInformation
-                                          : params.id!,
-                                  })}
+                            {t("pay_invoice", {
+                                id: privacyMode()
+                                    ? hiddenInformation
+                                    : params.id!,
+                            })}
                             <Show when={swap()}>
                                 <SwapIcons
                                     assets={getSwapIconAssets(swap()!)}
@@ -516,11 +461,7 @@ const Pay = () => {
                                         <hr />
                                     </>
                                 }>
-                                <Show
-                                    when={
-                                        swap() !== null &&
-                                        !isCommitmentSwap(swap()!)
-                                    }>
+                                <Show when={swap() !== null}>
                                     <div class="swap-status">
                                         {t("status")}:
                                         <span class="btn-small">
@@ -604,14 +545,8 @@ const Pay = () => {
                                             id={
                                                 swap()!.lockupTx !== undefined
                                                     ? swap()!.lockupTx!
-                                                    : swap()!.type ===
-                                                        SwapType.Submarine
-                                                      ? (
-                                                            swap() as SubmarineSwap
-                                                        ).address
-                                                      : (swap() as ChainSwap)
-                                                            .lockupDetails
-                                                            .lockupAddress
+                                                    : (swap() as SubmarineSwap)
+                                                          .address
                                             }
                                         />
                                         <button
@@ -625,35 +560,8 @@ const Pay = () => {
                                     </>
                                 }>
                                 <Switch>
-                                    <Match
-                                        when={
-                                            swap()?.commitmentRejection !==
-                                            undefined
-                                        }>
-                                        <CommitmentRejected />
-                                    </Match>
-                                    <Match
-                                        when={
-                                            swap()?.bridge?.recovery !==
-                                            undefined
-                                        }>
-                                        <PreBridgeDexQuoteBlocked />
-                                    </Match>
-                                    <Match
-                                        when={
-                                            swap() !== null &&
-                                            isCommitmentSwap(swap()!)
-                                        }>
-                                        <CommitmentCreated />
-                                    </Match>
                                     <Match when={isTransactionClaimedStatus()}>
-                                        <TransactionClaimed
-                                            bridgeStatusLink={
-                                                transactionClaimedPostBridge()
-                                                    ? blockExplorerLink()
-                                                    : undefined
-                                            }
-                                        />
+                                        <TransactionClaimed />
                                     </Match>
                                     <Match
                                         when={
@@ -675,16 +583,10 @@ const Pay = () => {
                                             }
                                         />
                                     </Match>
-                                    <Match
-                                        when={
-                                            timedOutRefundable() ||
-                                            backendRefunded()
-                                        }>
+                                    <Match when={timedOutRefundable()}>
                                         <RefundButton
                                             swap={
-                                                swap as Accessor<
-                                                    ChainSwap | SubmarineSwap
-                                                >
+                                                swap as Accessor<SubmarineSwap>
                                             }
                                         />
                                     </Match>
@@ -705,18 +607,14 @@ const Pay = () => {
                                     <Match
                                         when={
                                             swapStatus() ===
-                                                swapStatusPending.TransactionConfirmed ||
-                                            swapStatus() ===
-                                                swapStatusPending.TransactionServerConfirmed
+                                            swapStatusPending.TransactionConfirmed
                                         }>
                                         <TransactionConfirmed />
                                     </Match>
                                     <Match
                                         when={
                                             swapStatus() ===
-                                                swapStatusPending.TransactionMempool ||
-                                            swapStatus() ===
-                                                swapStatusPending.TransactionServerMempool
+                                            swapStatusPending.TransactionMempool
                                         }>
                                         <TransactionMempool swap={swap} />
                                     </Match>
@@ -742,9 +640,7 @@ const Pay = () => {
                                         <SwapCreated />
                                     </Match>
                                 </Switch>
-                                <Show when={!shouldHideDefaultExplorer()}>
-                                    {blockExplorerLink()}
-                                </Show>
+                                {blockExplorerLink()}
                             </Show>
                         </Show>
                     </Show>

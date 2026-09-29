@@ -1,30 +1,18 @@
-import { buildMainnetConfig } from "boltz-swaps/presets/mainnet";
-import { AssetKind, Explorer, NetworkTransport } from "boltz-swaps/types";
+import { AssetKind, Explorer } from "boltz-swaps/types";
 import { type Config, baseConfig, chooseUrl } from "src/configs/base";
 
-const mainnetPreset = buildMainnetConfig({
-    filterAssets: (asset) =>
-        asset === "TBTC" || asset === "USDT0" || asset === "USDT0-ETH",
-    canSend: {
-        "USDT0-ETH": true,
-    },
-    rpcUrls: {
-        ARB: [`http://127.0.0.1:${process.env.ARBITRUM_E2E_PORT ?? "18545"}`],
-        ETH: [`http://127.0.0.1:${process.env.ETHEREUM_E2E_PORT ?? "18546"}`],
-    },
-});
-
-const stablecoins = {
-    TBTC: {
-        ...mainnetPreset.assets.TBTC,
-        contracts: {
-            ...mainnetPreset.assets.TBTC.contracts,
-            deployHeight: 465600400,
-        },
-    },
-    USDT0: mainnetPreset.assets.USDT0,
-    "USDT0-ETH": mainnetPreset.assets["USDT0-ETH"],
-};
+// For local end-to-end testing against a regtest backend.
+// VITE_API_URL: the backend API (default http://localhost:9001)
+// VITE_EXPLORER_API_URL: an Esplora-compatible API (optional; without it,
+//   refunds fall back to the backend for fees and broadcasts)
+// VITE_EXPLORER_URL: human-facing explorer links (optional)
+const apiUrl =
+    (import.meta.env.VITE_API_URL as string | undefined) ||
+    "http://localhost:9001";
+const explorerApiUrl = import.meta.env.VITE_EXPLORER_API_URL as
+    | string
+    | undefined;
+const explorerUrl = import.meta.env.VITE_EXPLORER_URL as string | undefined;
 
 const config = {
     ...baseConfig,
@@ -32,67 +20,26 @@ const config = {
     loglevel: "debug",
     preventReloadOnPendingSwaps: false,
     apiUrl: {
-        normal: "http://localhost:9001",
+        normal: apiUrl,
     },
     assets: {
         BTC: {
             type: AssetKind.UTXO,
-            blockExplorerUrl: {
-                id: Explorer.Esplora,
-                normal: "http://localhost:4002",
-            },
-            blockExplorerApis: [
-                {
-                    id: Explorer.Esplora,
-                    normal: "http://localhost:4002/api",
-                },
-            ],
+            blockExplorerUrl: explorerUrl
+                ? {
+                      id: Explorer.Esplora,
+                      normal: explorerUrl,
+                  }
+                : undefined,
+            blockExplorerApis: explorerApiUrl
+                ? [
+                      {
+                          id: Explorer.Esplora,
+                          normal: explorerApiUrl,
+                      },
+                  ]
+                : [],
         },
-        "L-BTC": {
-            type: AssetKind.UTXO,
-            blockExplorerUrl: {
-                id: Explorer.Esplora,
-                normal: "http://localhost:4003",
-            },
-            blockExplorerApis: [
-                {
-                    id: Explorer.Esplora,
-                    normal: "http://localhost:4003/api",
-                },
-            ],
-        },
-        RBTC: {
-            type: AssetKind.EVMNative,
-            blockExplorerUrl: {
-                id: Explorer.EtherscanStyle,
-                normal: "http://localhost:5100",
-            },
-            network: {
-                chainName: "Anvil",
-                symbol: "RBTC",
-                gasToken: "RBTC",
-                chainId: 33,
-                transport: NetworkTransport.Evm,
-                rpcUrls: ["http://localhost:8545"],
-                nativeCurrency: {
-                    name: "RBTC",
-                    symbol: "RBTC",
-                    decimals: 18,
-                },
-            },
-            rifRelay: "http://localhost:8090",
-            contracts: {
-                deployHeight: 0,
-                smartWalletFactory:
-                    "0x59b670e9fA9D0A427751Af201D676719a970857b",
-                deployVerifier: "0xDc64a140Aa3E981100a9becA4E685f962f0cF6C9",
-            },
-        },
-        ...stablecoins,
-    },
-    gasSponsor: {
-        normal: `http://localhost:${process.env.GAS_SPONSOR_EMULATOR_PORT ?? "18547"}/alchemy`,
-        tor: `http://localhost:${process.env.GAS_SPONSOR_EMULATOR_PORT ?? "18547"}/alchemy`,
     },
 } as Config;
 

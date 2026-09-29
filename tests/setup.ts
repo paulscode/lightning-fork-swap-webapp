@@ -5,7 +5,6 @@ import log from "loglevel";
 
 import { config as runtimeConfig } from "../src/config";
 import { chooseUrl } from "../src/configs/base";
-import { config as mainnetConfig } from "../src/configs/mainnet";
 
 log.setLevel("silent");
 setLogger(log);
@@ -14,23 +13,11 @@ setBoltzSwapsConfig({
     get assets() {
         return runtimeConfig.assets;
     },
-    get cctpApiUrl() {
-        return runtimeConfig.cctpApiUrl;
-    },
-    get layerZeroExplorerUrl() {
-        return runtimeConfig.layerZeroExplorerUrl;
-    },
-    get cctpExplorerUrl() {
-        return runtimeConfig.cctpExplorerUrl;
-    },
-    get oftDeploymentsUrl() {
-        return runtimeConfig.oftDeploymentsUrl;
-    },
     get boltzApiUrl() {
         return chooseUrl(runtimeConfig.apiUrl);
     },
     get referral() {
-        return "boltz_webapp_desktop";
+        return "lightning_fork_swap_desktop";
     },
     get network() {
         return runtimeConfig.network;
@@ -39,17 +26,6 @@ setBoltzSwapsConfig({
         return runtimeConfig.cooperativeDisabled === true;
     },
 });
-
-// Tests run against the regtest config, which intentionally omits TBTC,
-// WBTC, USDT0, and USDC (they're mainnet-only assets). Inject them from the mainnet
-// config so tests that read their shape (token decimals, bridge metadata, etc.) work.
-if (runtimeConfig.assets && mainnetConfig.assets) {
-    runtimeConfig.assets.TBTC ??= mainnetConfig.assets.TBTC;
-    runtimeConfig.assets.WBTC ??= mainnetConfig.assets.WBTC;
-    runtimeConfig.assets.USDT0 ??= mainnetConfig.assets.USDT0;
-    runtimeConfig.assets["USDT0-SOL"] ??= mainnetConfig.assets["USDT0-SOL"];
-    runtimeConfig.assets.USDC ??= mainnetConfig.assets.USDC;
-}
 
 // Replace jsdom's fetch with axios-based fetch to fix AbortController compatibility
 const axiosFetch = async (

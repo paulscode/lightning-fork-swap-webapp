@@ -2,106 +2,23 @@ import { sha256 } from "@noble/hashes/sha2.js";
 import { hex } from "@scure/base";
 import type BigNumber from "bignumber.js";
 import { OutputType } from "boltz-core";
-import type {
-    BridgeDetails,
-    BridgeRoute,
-    PendingBridgeSend,
-    PendingEvmBridgeSend,
-} from "boltz-swaps/bridge";
 import {
-    type ChainSwapCreatedResponse,
     type ReverseCreatedResponse,
     type SubmarineCreatedResponse,
-    createChainSwap,
     createReverseSwap,
     createSubmarineSwap,
 } from "boltz-swaps/client";
-import type { AlchemyCall } from "boltz-swaps/evm";
-import { decodeInvoice } from "boltz-swaps/invoice";
-import {
-    type BridgeKind,
-    GasAbstractionType,
-    SwapPosition,
-    SwapType,
-} from "boltz-swaps/types";
+import { SwapType } from "boltz-swaps/types";
 
-import { type AssetType, LN, isEvmAsset } from "../consts/Assets";
+import { type AssetType, LN } from "../consts/Assets";
 import type { newKeyFn } from "../context/Global";
-import type { EncodedHop } from "./Pair";
 import { type RescueFile, derivePreimageFromRescueKey } from "./rescueFile";
-
-export { GasAbstractionType };
-
-export type DexDetail = {
-    hops: EncodedHop[];
-
-    // Whether hops run pre or post the Boltz swap
-    position: SwapPosition;
-
-    // Expected DEX amount at creation; updated with actual amount after execution.
-    // For post-swap hops: expected output amount from the DEX.
-    // For pre-swap hops: expected input amount to the DEX.
-    quoteAmount: number | string;
-
-    // For pre-swap hops, exact source amount to spend in the DEX.
-    sourceAmount?: string;
-};
-
-export enum PreBridgeRecoveryStatus {
-    Blocked = "blocked",
-    Retrying = "retrying",
-    Recovered = "recovered",
-}
-
-// Client-side recovery state for a pre-bridge swap whose DEX quote fell short
-// while the funds were bridging. This is not a backend status.
-export type PreBridgeRecovery = {
-    status: PreBridgeRecoveryStatus;
-    asset: string;
-    amount: string;
-    receiveCall?: AlchemyCall;
-    txHash?: string;
-};
-
-export type BridgeDetail = BridgeRoute & {
-    kind: BridgeKind;
-    position: SwapPosition;
-    sourceAmount?: string;
-    txHash?: string;
-    details?: BridgeDetails;
-    pendingSend?: PendingBridgeSend;
-    evmSendCandidate?: PendingEvmBridgeSend;
-
-    // Recovery state when a pre-bridge DEX quote falls short and the bridged
-    // funds must be retried or refunded back to the original sender.
-    recovery?: PreBridgeRecovery;
-};
-
-export type PendingBridgeSendCallbacks = {
-    persist: (pending: PendingBridgeSend) => Promise<void>;
-};
-
-export type GasAbstraction = {
-    lockup: GasAbstractionType;
-    claim: GasAbstractionType;
-};
-
-export const createUniformGasAbstraction = (
-    gasAbstraction: GasAbstractionType,
-): GasAbstraction => ({
-    lockup: gasAbstraction,
-    claim: gasAbstraction,
-});
-
-export const noGasAbstraction = (): GasAbstraction =>
-    createUniformGasAbstraction(GasAbstractionType.None);
 
 export type SwapBaseData = {
     type: SwapType;
     status?: string;
     assetSend: string;
     assetReceive: string;
-    getGasToken?: boolean;
     version: number;
     date: number;
 
@@ -109,34 +26,10 @@ export type SwapBaseData = {
     claimTx?: string;
     refundTx?: string;
     lockupTx?: string;
-    commitmentLockupTxHash?: string;
-    commitmentLockupCallId?: string;
-    commitmentSignatureSubmitted?: boolean;
 
-    // Set when the backend permanently rejected the commitment post (e.g.
-    // "insufficient amount"). The on-chain lockup is immutable, so retrying can
-    // never succeed; this stops the retry loop and offers the user a refund.
-    commitmentRejection?: { reason: string };
-
-    gasAbstraction: GasAbstraction;
-    signer?: string;
-    // Set for hardware wallet signers
-    derivationPath?: string;
-
-    // Original user input (Lightning address/LNURL/BIP353/BOLT12) before resolution
+    // Original user input (Lightning address/LNURL) before resolution
     originalDestination?: string;
-
-    // DEX route for routed swaps (e.g. USDT0 via TBTC).
-    dex?: DexDetail;
-
-    // Bridge routes for bridging before lockup or after claim.
-    bridge?: BridgeDetail;
 };
-
-// A factory because the preimage it binds to is derived inside the create call
-export type SwapMetadataFactory = (
-    preimageHash: string,
-) => Promise<string | undefined>;
 
 export type SwapBase = SwapBaseData & {
     sendAmount: number;
@@ -165,186 +58,27 @@ export type ReverseSwap = SwapBase &
         claimPrivateKey?: string;
     };
 
-export type ChainSwap = SwapBase &
-    ChainSwapCreatedResponse & {
-        type: SwapType.Chain;
-        preimage: string;
-        claimAddress: string;
-        claimPrivateKeyIndex?: number;
-        refundPrivateKeyIndex?: number;
-        magicRoutingHintSavedFees?: string;
+export type SomeSwap = SubmarineSwap | ReverseSwap;
 
-        // Deprecated; used for backwards compatibility
-        claimPrivateKey?: string;
-        refundPrivateKey?: string;
-    };
+// The on-chain asset of a swap: what is locked for a submarine swap and
+// what is received for a reverse swap
+export const getRelevantAssetForSwap = (swap: SwapBaseData) =>
+    swap.type === SwapType.Submarine ? swap.assetSend : swap.assetReceive;
 
-export type CommitmentSwap = SwapBaseData & {
-    type: SwapType.Commitment;
-    id: string;
-    initialReceiveAsset: string;
-    sourceAsset: string;
-    sourceAmount: string;
-    timeoutBlockHeight?: number;
-};
-
-export type SomeSwap = SubmarineSwap | ReverseSwap | ChainSwap | CommitmentSwap;
-
-export type SwapAssetRoute = Pick<
-    SwapBaseData,
-    "type" | "assetSend" | "assetReceive" | "dex" | "bridge"
-> &
-    Partial<Pick<CommitmentSwap, "sourceAsset" | "initialReceiveAsset">>;
-
-export const isCommitmentSwap = (swap: SwapBaseData): swap is CommitmentSwap =>
-    swap.type === SwapType.Commitment;
-
-export const getLockupGasAbstraction = (
-    swap: SwapBaseData,
-): GasAbstractionType => swap.gasAbstraction.lockup;
-
-export const getClaimGasAbstraction = (
-    swap: SwapBaseData,
-): GasAbstractionType => swap.gasAbstraction.claim;
-
-export const getRelevantAssetForSwap = (swap: SwapBaseData) => {
-    switch (swap.type) {
-        case SwapType.Submarine:
-        case SwapType.Commitment:
-            return swap.assetSend;
-
-        default:
-            return swap.assetReceive;
-    }
-};
-
-export const getSwapAddress = (swap: SomeSwap): string => {
-    switch (swap.type) {
-        case SwapType.Submarine:
-            return swap.address;
-        case SwapType.Reverse:
-            return swap.lockupAddress;
-        case SwapType.Chain:
-            return swap.lockupDetails.lockupAddress;
-        case SwapType.Commitment:
-            return "";
-    }
-};
+export const getSwapAddress = (swap: SomeSwap): string =>
+    swap.type === SwapType.Submarine ? swap.address : swap.lockupAddress;
 
 export const getFinalAssetSend = (
-    swap: SwapAssetRoute,
+    swap: Pick<SwapBaseData, "type" | "assetSend">,
     coalesceLn: boolean = false,
-): string => {
-    if (swap.type === SwapType.Commitment) {
-        return swap.sourceAsset ?? swap.assetSend;
-    }
-
-    if (swap.bridge?.position === SwapPosition.Pre) {
-        return swap.bridge.sourceAsset;
-    }
-
-    if (
-        swap.dex !== undefined &&
-        swap.dex.position === SwapPosition.Pre &&
-        swap.dex.hops.length > 0
-    ) {
-        return swap.dex.hops[0].from;
-    }
-
-    return coalesceLn && swap.type === SwapType.Reverse ? LN : swap.assetSend;
-};
+): string =>
+    coalesceLn && swap.type === SwapType.Reverse ? LN : swap.assetSend;
 
 export const getFinalAssetReceive = (
-    swap: SwapAssetRoute,
+    swap: Pick<SwapBaseData, "type" | "assetReceive">,
     coalesceLn: boolean = false,
-): string => {
-    if (swap.type === SwapType.Commitment) {
-        return swap.initialReceiveAsset ?? swap.assetReceive;
-    }
-
-    if (swap.bridge?.position === SwapPosition.Post) {
-        return swap.bridge.destinationAsset;
-    }
-
-    if (
-        swap.dex !== undefined &&
-        swap.dex.position === SwapPosition.Post &&
-        swap.dex.hops.length > 0
-    ) {
-        return swap.dex.hops[swap.dex.hops.length - 1].to;
-    }
-
-    return coalesceLn && swap.type === SwapType.Submarine
-        ? LN
-        : swap.assetReceive;
-};
-
-export const isEvmSwap = (swap: SomeSwap) =>
-    isEvmAsset(getRelevantAssetForSwap(swap));
-
-export const getPreBridgeDetail = (
-    bridge?: BridgeDetail,
-): BridgeDetail | undefined =>
-    bridge?.position === SwapPosition.Pre ? bridge : undefined;
-
-export const getPostBridgeDetail = (
-    bridge?: BridgeDetail,
-): BridgeDetail | undefined =>
-    bridge?.position === SwapPosition.Post ? bridge : undefined;
-
-export const getRefundBridgeDetail = (route: {
-    dex?: DexDetail;
-    bridge?: BridgeDetail;
-}): BridgeDetail | undefined =>
-    route.dex?.position === SwapPosition.Pre &&
-    route.bridge?.txHash !== undefined
-        ? getPreBridgeDetail(route.bridge)
-        : undefined;
-
-const generatePreimage = ({
-    asset,
-    keyIndex,
-    rescueFile,
-}: {
-    asset: AssetType;
-    keyIndex: number;
-    rescueFile: RescueFile;
-}) => {
-    return derivePreimageFromRescueKey(rescueFile, keyIndex, asset);
-};
-
-export const createLocalSwapId = () =>
-    Array.from(crypto.getRandomValues(new Uint8Array(8)), (byte) =>
-        byte.toString(16).padStart(2, "0"),
-    ).join("");
-
-export const createCommitmentSwap = (
-    assetSend: string,
-    assetReceive: string,
-    initialReceiveAsset: string,
-    sourceAsset: string,
-    sourceAmount: BigNumber,
-    gasAbstraction: GasAbstraction,
-    dex?: DexDetail,
-    bridge?: BridgeDetail,
-    originalDestination?: string,
-): CommitmentSwap => {
-    return {
-        id: createLocalSwapId(),
-        type: SwapType.Commitment,
-        gasAbstraction,
-        assetSend,
-        assetReceive,
-        date: new Date().getTime(),
-        version: OutputType.Taproot,
-        initialReceiveAsset,
-        sourceAsset,
-        sourceAmount: sourceAmount.toFixed(0),
-        dex,
-        bridge,
-        originalDestination,
-    };
-};
+): string =>
+    coalesceLn && swap.type === SwapType.Submarine ? LN : swap.assetReceive;
 
 export const createSubmarine = async (
     assetSend: string,
@@ -353,11 +87,8 @@ export const createSubmarine = async (
     receiveAmount: BigNumber,
     invoice: string,
     pairHash: string,
-    gasAbstraction: GasAbstraction,
     newKey: newKeyFn,
     originalDestination?: string,
-    metadata?: SwapMetadataFactory,
-    refundAddress?: string,
 ): Promise<SubmarineSwap> => {
     const key = await newKey(assetSend as AssetType);
     const res = await createSubmarineSwap(
@@ -365,11 +96,7 @@ export const createSubmarine = async (
         assetReceive,
         invoice,
         pairHash,
-        key !== undefined
-            ? Buffer.from(key.key.publicKey).toString("hex")
-            : undefined,
-        await metadata?.(decodeInvoice(invoice).preimageHash),
-        refundAddress,
+        hex.encode(key.key.publicKey),
     );
 
     return {
@@ -380,11 +107,10 @@ export const createSubmarine = async (
             assetReceive,
             sendAmount,
             receiveAmount,
-            gasAbstraction,
         ),
         invoice,
         originalDestination,
-        refundPrivateKeyIndex: key?.index,
+        refundPrivateKeyIndex: key.index,
     };
 };
 
@@ -395,18 +121,16 @@ export const createReverse = async (
     receiveAmount: BigNumber,
     claimAddress: string,
     pairHash: string,
-    gasAbstraction: GasAbstraction,
     rescueFile: RescueFile,
     newKey: newKeyFn,
     originalDestination?: string,
-    metadata?: SwapMetadataFactory,
 ): Promise<ReverseSwap> => {
     const key = await newKey(assetReceive as AssetType);
-    const preimage = generatePreimage({
-        asset: assetReceive as AssetType,
-        keyIndex: key?.index,
+    const preimage = derivePreimageFromRescueKey(
         rescueFile,
-    });
+        key.index,
+        assetReceive as AssetType,
+    );
     const preimageHash = hex.encode(sha256(preimage));
 
     const res = await createReverseSwap(
@@ -415,11 +139,8 @@ export const createReverse = async (
         Number(sendAmount),
         preimageHash,
         pairHash,
-        key !== undefined
-            ? Buffer.from(key.key.publicKey).toString("hex")
-            : undefined,
+        hex.encode(key.key.publicKey),
         claimAddress,
-        await metadata?.(preimageHash),
     );
 
     return {
@@ -430,69 +151,11 @@ export const createReverse = async (
             assetReceive,
             sendAmount,
             receiveAmount,
-            gasAbstraction,
         ),
         claimAddress,
         originalDestination,
         preimage: hex.encode(preimage),
-        claimPrivateKeyIndex: key?.index,
-    };
-};
-
-export const createChain = async (
-    assetSend: string,
-    assetReceive: string,
-    sendAmount: BigNumber,
-    receiveAmount: BigNumber,
-    claimAddress: string,
-    pairHash: string,
-    gasAbstraction: GasAbstraction,
-    rescueFile: RescueFile,
-    newKey: newKeyFn,
-    originalDestination?: string,
-    metadata?: SwapMetadataFactory,
-): Promise<ChainSwap> => {
-    const claimKey = await newKey(assetReceive as AssetType);
-    const refundKey = await newKey(assetSend as AssetType);
-    const preimage = generatePreimage({
-        asset: assetReceive as AssetType,
-        keyIndex: claimKey?.index,
-        rescueFile,
-    });
-    const preimageHash = hex.encode(sha256(preimage));
-    const res = await createChainSwap(
-        assetSend,
-        assetReceive,
-        sendAmount.isZero() || sendAmount.isNaN()
-            ? undefined
-            : Number(sendAmount),
-        preimageHash,
-        claimKey !== undefined
-            ? Buffer.from(claimKey.key.publicKey).toString("hex")
-            : undefined,
-        refundKey !== undefined
-            ? Buffer.from(refundKey.key.publicKey).toString("hex")
-            : undefined,
-        claimAddress,
-        pairHash,
-        await metadata?.(preimageHash),
-    );
-
-    return {
-        ...annotateSwapBaseData(
-            res,
-            SwapType.Chain,
-            assetSend,
-            assetReceive,
-            sendAmount,
-            receiveAmount,
-            gasAbstraction,
-        ),
-        claimAddress,
-        originalDestination,
-        preimage: hex.encode(preimage),
-        claimPrivateKeyIndex: claimKey?.index,
-        refundPrivateKeyIndex: refundKey?.index,
+        claimPrivateKeyIndex: key.index,
     };
 };
 
@@ -503,11 +166,9 @@ const annotateSwapBaseData = <T, K extends SwapType>(
     assetReceive: string,
     sendAmount: BigNumber,
     receiveAmount: BigNumber,
-    gasAbstraction: GasAbstraction,
 ): T & SwapBase & { type: K } => ({
     ...createdResponse,
     type,
-    gasAbstraction,
     assetSend,
     assetReceive,
     date: new Date().getTime(),

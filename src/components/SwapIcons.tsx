@@ -1,13 +1,10 @@
 import type { RestorableSwap } from "boltz-swaps/client";
 import { VsArrowSmallRight } from "solid-icons/vs";
 
-import { getAssetDisplaySymbol, getNetworkBadge } from "../consts/Assets";
+import { getAssetDisplaySymbol } from "../consts/Assets";
 import "../style/asset.scss";
 import {
-    type BridgeDetail,
-    type DexDetail,
     type SomeSwap,
-    type SwapAssetRoute,
     getFinalAssetReceive,
     getFinalAssetSend,
 } from "../utils/swapCreator";
@@ -15,16 +12,10 @@ import {
 export const SwapListAssetIcon = (props: { asset: string }) => (
     <span
         class={`asset asset-${getAssetDisplaySymbol(props.asset)}`}
-        data-asset={getAssetDisplaySymbol(props.asset)}
-        data-network={getNetworkBadge(props.asset)}>
+        data-asset={getAssetDisplaySymbol(props.asset)}>
         <span class="icon" />
     </span>
 );
-
-type RestorableSwapWithRoute = RestorableSwap & {
-    bridge?: BridgeDetail;
-    dex?: DexDetail;
-};
 
 export type SwapIconAssets = {
     send: string;
@@ -37,14 +28,12 @@ export const getSwapIconAssets = (swap: SomeSwap): SwapIconAssets => ({
 });
 
 export const getRestoredSwapIconAssets = (
-    swap: RestorableSwapWithRoute,
+    swap: RestorableSwap,
 ): SwapIconAssets => {
-    const displaySwap: SwapAssetRoute = {
+    const displaySwap = {
         type: swap.type,
         assetSend: swap.from,
         assetReceive: swap.to,
-        bridge: swap.bridge,
-        dex: swap.dex,
     };
 
     return {

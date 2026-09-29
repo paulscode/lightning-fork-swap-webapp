@@ -1,8 +1,5 @@
-import { arbitrumChainId } from "boltz-swaps/types";
 import { type Accessor, Show } from "solid-js";
 
-import { config } from "../config";
-import { ETH } from "../consts/Assets";
 import { useGlobalContext } from "../context/Global";
 import { getNetworkName } from "../utils/blockchain";
 
@@ -19,12 +16,7 @@ const RefundEta = (props: {
             <h3>{t("refund_explainer")}</h3>
             <p class="frame-text">
                 {t("pay_timeout_blockheight", {
-                    network: getNetworkName(
-                        config.assets?.[props.asset]?.network?.chainId ===
-                            arbitrumChainId
-                            ? ETH
-                            : props.asset,
-                    ),
+                    network: getNetworkName(props.asset),
                 })}
                 : {props.timeoutBlockHeight()}
                 <Show when={props.timeoutEta()}>

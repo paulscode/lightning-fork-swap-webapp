@@ -1,93 +1,20 @@
-import BigNumber from "bignumber.js";
-import { getGasAbstractionSweepDisplayAmount } from "boltz-swaps/evm";
-import { RskRescueMode, SwapType } from "boltz-swaps/types";
-import { VsArrowSmallRight } from "solid-icons/vs";
-import { For, Match, Show, Switch } from "solid-js";
+import { For, Show } from "solid-js";
 
 import LoadingSpinner from "../../components/LoadingSpinner";
 import Pagination, {
     desktopItemsPerPage,
     mobileItemsPerPage,
 } from "../../components/Pagination";
-import {
-    SwapIcons,
-    SwapListAssetIcon,
-    getSwapIconAssets,
-} from "../../components/SwapIcons";
+import { SwapIcons, getSwapIconAssets } from "../../components/SwapIcons";
 import { getSwapListHeight } from "../../components/SwapList";
 import { hiddenInformation } from "../../components/settings/PrivacyMode";
-import { LN } from "../../consts/Assets";
 import { useGlobalContext } from "../../context/Global";
-import { formatAmount, formatDenomination } from "../../utils/denomination";
-import type { GasAbstractionBalance } from "../../utils/gasAbstractionSweep";
-import { cropString, isMobile } from "../../utils/helper";
+import { isMobile } from "../../utils/helper";
 import { RescueAction } from "../../utils/rescue";
-import {
-    type SomeSwap,
-    type SwapBase,
-    getFinalAssetReceive,
-    getFinalAssetSend,
-} from "../../utils/swapCreator";
+import type { SomeSwap } from "../../utils/swapCreator";
 import { getSwapDate } from "./scan";
-import {
-    BtcSearchState,
-    type EvmRescueResult,
-    RescueResultSource,
-    type UnifiedRescueResult,
-} from "./types";
+import { BtcSearchState, type RescueResult } from "./types";
 import type { ExternalRescueSearch } from "./useExternalRescueSearch";
-
-export const getEvmDisplayAssets = (swap: EvmRescueResult) => {
-    const bridge = swap.bridge ?? swap.restoredSwap?.bridge;
-    const dex = swap.dex ?? swap.restoredSwap?.dex;
-    const shouldUseDex =
-        swap.restoredSwap !== undefined ||
-        swap.action !== RskRescueMode.Refund ||
-        bridge !== undefined;
-    const base = {
-        type: swap.restoredSwap?.type ?? SwapType.Chain,
-        bridge,
-        dex: shouldUseDex ? dex : undefined,
-        assetSend:
-            swap.restoredSwap?.type === SwapType.Reverse
-                ? LN
-                : (swap.restoredSwap?.from ?? swap.asset),
-        assetReceive: swap.restoredSwap?.to ?? swap.asset,
-    } as SwapBase;
-    const assetSend = getFinalAssetSend(base, true);
-    const assetReceive = getFinalAssetReceive(base, true);
-
-    if (
-        swap.restoredSwap === undefined &&
-        swap.action === RskRescueMode.Refund
-    ) {
-        return [assetSend];
-    }
-
-    return assetSend === assetReceive ? [assetSend] : [assetSend, assetReceive];
-};
-
-const SingleAssetIcon = (props: { asset: string }) => (
-    <span class="swaplist-asset swaplist-asset-single">
-        <SwapListAssetIcon asset={props.asset} />
-    </span>
-);
-
-const AssetPair = (props: { assets: string[] }) => (
-    <Show
-        when={props.assets[1]}
-        fallback={<SingleAssetIcon asset={props.assets[0]} />}>
-        <span class="swaplist-asset">
-            <SwapListAssetIcon asset={props.assets[0]} />
-            <VsArrowSmallRight />
-            <SwapListAssetIcon asset={props.assets[1]!} />
-        </span>
-    </Show>
-);
-
-const EvmAssetIcon = (props: { swap: EvmRescueResult }) => (
-    <AssetPair assets={getEvmDisplayAssets(props.swap)} />
-);
 
 const resultActionLabel = (
     action: RescueAction,
@@ -108,121 +35,19 @@ const resultActionLabel = (
     }
 };
 
-const getSweepAmount = (
-    sweep: GasAbstractionBalance,
-    denomination: ReturnType<typeof useGlobalContext>["denomination"],
-    separator: ReturnType<typeof useGlobalContext>["separator"],
-) =>
-    formatAmount(
-        new BigNumber(getGasAbstractionSweepDisplayAmount(sweep).toString()),
-        denomination(),
-        separator(),
-        sweep.asset,
-    );
-
-const resultDetailLabel = (
-    result: UnifiedRescueResult,
-    t: ReturnType<typeof useGlobalContext>["t"],
-) => {
-    if (result.source === RescueResultSource.Evm) {
-        return t("block");
-    }
-
-    return result.source === RescueResultSource.Sweep
-        ? t("balance")
-        : t("created");
-};
-
-const formatResultDetail = (
-    result: UnifiedRescueResult,
-    denomination: ReturnType<typeof useGlobalContext>["denomination"],
-    separator: ReturnType<typeof useGlobalContext>["separator"],
-) => {
-    if (result.source === RescueResultSource.Evm) {
-        return result.swap.blockNumber.toString();
-    }
-
-    if (result.source === RescueResultSource.Sweep) {
-        return `${getSweepAmount(result.swap, denomination, separator)} ${formatDenomination(
-            denomination(),
-            result.swap.asset,
-        )}`;
-    }
-
+const formatResultDate = (result: RescueResult) => {
     const date = new Date();
     date.setTime(getSwapDate(result.swap));
     return date.toLocaleDateString();
 };
-
-const resultId = (result: UnifiedRescueResult) => {
-    switch (result.source) {
-        case RescueResultSource.Evm:
-            return (
-                result.swap.restoredSwap?.id ??
-                cropString(result.swap.transactionHash, 15, 5)
-            );
-        case RescueResultSource.Sweep:
-            return cropString(result.swap.signer.address, 15, 5);
-        case RescueResultSource.Restore:
-            return result.swap.id;
-    }
-};
-
-const resultTestId = (result: UnifiedRescueResult) =>
-    result.source === RescueResultSource.Restore
-        ? `swaplist-item-${result.swap.id}`
-        : `swaplist-item-${result.key}`;
-
-const UnifiedResultAssets = (props: { result: UnifiedRescueResult }) => (
-    <Switch>
-        <Match when={props.result.source === RescueResultSource.Restore}>
-            <SwapIcons
-                assets={getSwapIconAssets(
-                    (
-                        props.result as Extract<
-                            UnifiedRescueResult,
-                            { source: RescueResultSource.Restore }
-                        >
-                    ).swap,
-                )}
-            />
-        </Match>
-        <Match when={props.result.source === RescueResultSource.Evm}>
-            <EvmAssetIcon
-                swap={
-                    (
-                        props.result as Extract<
-                            UnifiedRescueResult,
-                            { source: RescueResultSource.Evm }
-                        >
-                    ).swap
-                }
-            />
-        </Match>
-        <Match when={props.result.source === RescueResultSource.Sweep}>
-            <SingleAssetIcon
-                asset={
-                    (
-                        props.result as Extract<
-                            UnifiedRescueResult,
-                            { source: RescueResultSource.Sweep }
-                        >
-                    ).swap.asset
-                }
-            />
-        </Match>
-    </Switch>
-);
 
 type ResultsProps = {
     state: ExternalRescueSearch["state"];
     results: ExternalRescueSearch["results"];
 };
 
-const UnifiedRescueList = (props: {
-    results: ExternalRescueSearch["results"];
-}) => {
-    const { t, denomination, separator, privacyMode } = useGlobalContext();
+const RescueList = (props: { results: ExternalRescueSearch["results"] }) => {
+    const { t, privacyMode } = useGlobalContext();
 
     return (
         <div id="swaplist" class="rescue-external-result-list">
@@ -231,7 +56,7 @@ const UnifiedRescueList = (props: {
                 {(result, index) => (
                     <>
                         <div
-                            data-testid={resultTestId(result)}
+                            data-testid={`swaplist-item-${result.swap.id}`}
                             class={`swaplist-item ${
                                 !result.actionable ? "disabled" : ""
                             }`}
@@ -242,25 +67,21 @@ const UnifiedRescueList = (props: {
                                 onClick={(e) => e.preventDefault()}>
                                 {resultActionLabel(result.action, t)}
                             </a>
-                            <UnifiedResultAssets result={result} />
+                            <SwapIcons assets={getSwapIconAssets(result.swap)} />
                             <span class="swaplist-asset-id">
                                 {t("id")}:&nbsp;
                                 <Show
                                     when={!privacyMode()}
                                     fallback={hiddenInformation}>
                                     <span class="monospace">
-                                        {resultId(result)}
+                                        {result.swap.id}
                                     </span>
                                 </Show>
                             </span>
                             <span class="swaplist-asset-date hidden-mobile">
-                                {resultDetailLabel(result, t)}:&nbsp;
+                                {t("created")}:&nbsp;
                                 <span class="monospace">
-                                    {formatResultDetail(
-                                        result,
-                                        denomination,
-                                        separator,
-                                    )}
+                                    {formatResultDate(result)}
                                 </span>
                             </span>
                         </div>
@@ -299,10 +120,6 @@ export const Results = (props: ResultsProps) => {
                 </h3>
             </Show>
 
-            <Show when={props.results.currentEvmProgress()}>
-                <p class="frame-text">{props.results.currentEvmProgress()}</p>
-            </Show>
-
             <Show
                 when={
                     props.state.btc.listLoading &&
@@ -314,7 +131,7 @@ export const Results = (props: ResultsProps) => {
             <Show when={props.results.all().length > 0}>
                 <div class="rescue-external-results">
                     <div style={getSwapListHeight(layoutSlots(), isMobile())}>
-                        <UnifiedRescueList results={props.results} />
+                        <RescueList results={props.results} />
                     </div>
                     <Pagination
                         items={props.results.all}
@@ -331,20 +148,6 @@ export const Results = (props: ResultsProps) => {
                 </div>
             </Show>
 
-            <Show when={props.state.evm.unmatchedRefundSwaps > 0}>
-                <p class="frame-text">
-                    {t("unmatched_swaps", {
-                        count: props.state.evm.unmatchedRefundSwaps,
-                    })}
-                </p>
-            </Show>
-            <Show when={props.state.evm.unmatchedClaimSwaps > 0}>
-                <p class="frame-text">
-                    {t("unmatched_swaps", {
-                        count: props.state.evm.unmatchedClaimSwaps,
-                    })}
-                </p>
-            </Show>
             <Show when={props.state.search.error}>
                 <h3 class="frame-text-spaced">
                     {t("error")}: {props.state.search.error}

@@ -1,31 +1,34 @@
-import { buildMainnetConfig } from "boltz-swaps/presets/mainnet";
-import { type Config, baseConfig, chooseUrl } from "src/configs/base";
-import { envRpcUrls } from "src/configs/rpcs";
-import { usdt0CanSendOverrides } from "src/configs/usdt0";
+import { AssetKind, Explorer } from "boltz-swaps/types";
+import { type Config, baseConfig, chooseUrl, sameOrigin } from "src/configs/base";
 
-const mainnetPreset = buildMainnetConfig({
-    rpcUrls: envRpcUrls,
-    canSend: usdt0CanSendOverrides,
-    btcMempoolApiUrl: import.meta.env.VITE_MEMPOOL_API_URL || undefined,
-    // The SDK exposes the Arkade chain-swap source (asset id "ARK"), but the web
-    // app has no Arkade wallet support yet, so keep it out of the app's asset
-    // list (selector and `sendAsset`/`receiveAsset` URL params).
-    filterAssets: (asset) => asset !== "ARK",
-});
+// The API is served from the same origin as the web app (`/v2/...` and the
+// WebSocket at `/v2/ws`) unless VITE_API_URL is set at build time.
+const apiUrl = (import.meta.env.VITE_API_URL as string | undefined) || sameOrigin();
 
 const config = {
     ...baseConfig,
-    swapsSuspended: true,
-    torUrl: "http://boltzzzbnus4m7mta3cxmflnps4fp7dueu2tgurstbvrbt6xswzcocyd.onion/",
     network: "mainnet",
-    loglevel: "debug",
+    loglevel: "info",
     apiUrl: {
-        normal: "https://api.boltz.exchange",
-        tor: "http://boltzzzbnus4m7mta3cxmflnps4fp7dueu2tgurstbvrbt6xswzcocyd.onion/api",
+        normal: apiUrl,
     },
-    cctpApiUrl: mainnetPreset.cctpApiUrl,
-    solburnUrl: mainnetPreset.solburnUrl,
-    assets: mainnetPreset.assets,
+    assets: {
+        BTC: {
+            type: AssetKind.UTXO,
+            blockExplorerUrl: {
+                id: Explorer.Mempool,
+                normal: "https://mempool.guide",
+            },
+            // mempool.guide sends no CORS headers, so the deployment proxies
+            // its API at /explorer/api on the same origin
+            blockExplorerApis: [
+                {
+                    id: Explorer.Mempool,
+                    normal: `${sameOrigin()}/explorer/api`,
+                },
+            ],
+        },
+    },
 } as Config;
 
 export { config, chooseUrl };

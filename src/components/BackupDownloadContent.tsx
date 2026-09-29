@@ -1,7 +1,6 @@
 import { Show } from "solid-js";
 
 import { useGlobalContext } from "../context/Global";
-import { useWeb3Signer } from "../context/Web3";
 import { downloadRescueFile } from "../utils/backup";
 import { formatError } from "../utils/errors";
 import { isMobile } from "../utils/helper";
@@ -15,10 +14,6 @@ type BackupDownloadContentProps = {
 
 const BackupDownloadContent = (props: BackupDownloadContentProps) => {
     const { t, rescueFile, notify } = useGlobalContext();
-    const { browserWalletTransports } = useWeb3Signer();
-
-    const isMobileWalletBrowser = () =>
-        isMobile() && browserWalletTransports().size > 0;
     const downloadKey = () => {
         try {
             downloadRescueFile(rescueFile);
@@ -47,7 +42,7 @@ const BackupDownloadContent = (props: BackupDownloadContentProps) => {
                     {t("download_new_key")}
                 </button>
             </div>
-            <Show when={isMobileWalletBrowser()}>
+            <Show when={isMobile()}>
                 <button
                     class="btn btn-light"
                     data-testid="show-mnemonic-backup"

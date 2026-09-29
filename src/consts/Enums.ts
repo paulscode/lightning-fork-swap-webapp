@@ -16,7 +16,6 @@ export enum UrlParam {
     ReceiveAmount = "receiveAmount",
     Lang = "lang",
     Ref = "ref",
-    FiatCurrency = "fiatCurrency",
     Embedded = "embedded",
     Theme = "theme",
     LockOutput = "lockOutput",
@@ -24,18 +23,8 @@ export enum UrlParam {
     ParentOrigin = "parentOrigin",
 }
 
-export enum AssetSelection {
-    Asset = "asset",
-    AssetNetwork = "assetNetwork",
-}
-
 export enum InvoiceValidation {
     MinAmount = "minAmount",
     MaxAmount = "maxAmount",
     ExactAmount = "exactAmount",
-}
-
-export enum Currency {
-    USD = "USD",
-    EUR = "EUR",
 }

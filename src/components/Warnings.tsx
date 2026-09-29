@@ -1,9 +1,7 @@
 import { Show } from "solid-js";
 
 import reload_svg from "../assets/reload.svg";
-import { config } from "../config";
 import { useGlobalContext } from "../context/Global";
-import ProBanner from "./ProBanner";
 
 const Warnings = () => {
     const { t, online, fetchPairs, wasmSupported } = useGlobalContext();
@@ -22,12 +20,6 @@ const Warnings = () => {
                 <div id="noWasm" class="banner">
                     {t("wasm_not_supported")}
                 </div>
-            </Show>
-            <Show when={config.isBeta}>
-                <div class="banner banner-yellow">{t("beta_caution")}</div>
-            </Show>
-            <Show when={config.isPro}>
-                <ProBanner />
             </Show>
         </div>
     );

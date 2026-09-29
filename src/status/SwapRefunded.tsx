@@ -1,39 +1,20 @@
 import { useNavigate } from "@solidjs/router";
-import { bridgeRegistry } from "boltz-swaps/bridge";
 import { Show } from "solid-js";
 
 import BlockExplorer, {
     BlockExplorerTargetKind,
 } from "../components/BlockExplorer";
-import { getAssetNetwork } from "../consts/Assets";
 import { useGlobalContext } from "../context/Global";
 import { usePayContext } from "../context/Pay";
-import { formatDenomination } from "../utils/denomination";
-import { getRefundBridgeDetail } from "../utils/swapCreator";
 
 const SwapRefunded = (props: { refundTxId: string }) => {
     const navigate = useNavigate();
     const { swap } = usePayContext();
-    const { t, denomination } = useGlobalContext();
-    const refundBridge = () => getRefundBridgeDetail(swap() ?? {});
+    const { t } = useGlobalContext();
 
     return (
         <div>
-            <Show when={refundBridge()} fallback={<p>{t("refunded")}</p>}>
-                {(bridge) => (
-                    <p>
-                        {t("refunded_bridge_pending", {
-                            denomination: formatDenomination(
-                                denomination(),
-                                bridge().sourceAsset,
-                            ),
-                            network:
-                                getAssetNetwork(bridge().sourceAsset) ??
-                                bridge().sourceAsset,
-                        })}
-                    </p>
-                )}
-            </Show>
+            <p>{t("refunded")}</p>
             <hr />
             <Show when={swap()}>
                 {(currentSwap) => (
@@ -41,9 +22,6 @@ const SwapRefunded = (props: { refundTxId: string }) => {
                         asset={currentSwap().assetSend}
                         kind={BlockExplorerTargetKind.Tx}
                         id={props.refundTxId}
-                        explorer={bridgeRegistry.getExplorerKind(
-                            refundBridge(),
-                        )}
                         typeLabel="refund_tx"
                     />
                 )}

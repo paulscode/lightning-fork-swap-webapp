@@ -1,10 +1,13 @@
-import type { HDKey } from "@scure/bip32";
-import { generateMnemonic, validateMnemonic } from "@scure/bip39";
+import { sha256 } from "@noble/hashes/sha2.js";
+import { HDKey } from "@scure/bip32";
+import {
+    generateMnemonic,
+    mnemonicToSeedSync,
+    validateMnemonic,
+} from "@scure/bip39";
 import { wordlist } from "@scure/bip39/wordlists/english.js";
 
-import { config } from "../config";
-import { type AssetType, isEvmAsset } from "../consts/Assets";
-import { derivePreimage, evmPath, mnemonicToHDKey } from "./rescueDerivation";
+import type { AssetType } from "../consts/Assets";
 
 export enum Errors {
     InvalidFile = "invalid file",
@@ -16,14 +19,13 @@ export type RescueFile = {
     mnemonic: string;
 };
 
+// Same derivation as Boltz, so a rescue key works with both
 export const derivationPath = "m/44/0/0/0";
 
 const getPath = (index: number) => `${derivationPath}/${index}`;
 
-const getEvmPath = (chainId: number, index: number) =>
-    `${evmPath(chainId)}/${index}`;
-
-export const getPathGasAbstraction = (chainId: number) => `m/44/${chainId}/1/0`;
+export const mnemonicToHDKey = (mnemonic: string) =>
+    HDKey.fromMasterSeed(mnemonicToSeedSync(mnemonic));
 
 export const getXpub = (rescueFile: RescueFile) => {
     return mnemonicToHDKey(rescueFile.mnemonic).publicExtendedKey;
@@ -36,33 +38,14 @@ export const generateRescueFile = (): RescueFile => ({
 export const deriveKey = (
     rescueFile: RescueFile,
     index: number,
-    asset: AssetType,
+    // Kept for call-site symmetry; all assets share one derivation path
+    _asset?: AssetType,
     hdKey?: HDKey,
 ) => {
-    let derivationPath: string;
-    if (isEvmAsset(asset)) {
-        const chainId = config.assets?.[asset]?.network?.chainId;
-        if (chainId === undefined) {
-            throw new Error(`missing chainId for EVM asset ${asset}`);
-        }
-        derivationPath = getEvmPath(chainId, index);
-    } else {
-        derivationPath = getPath(index);
-    }
-
     if (!hdKey) {
-        return mnemonicToHDKey(rescueFile.mnemonic).derive(derivationPath);
+        return mnemonicToHDKey(rescueFile.mnemonic).derive(getPath(index));
     }
-    return hdKey.derive(derivationPath);
-};
-
-export const deriveKeyGasAbstraction = (
-    rescueFile: RescueFile,
-    chainId: number,
-) => {
-    return mnemonicToHDKey(rescueFile.mnemonic).derive(
-        getPathGasAbstraction(chainId),
-    );
+    return hdKey.derive(getPath(index));
 };
 
 export const validateRescueFile = (
@@ -81,16 +64,19 @@ export const validateRescueFile = (
     return data as RescueFile;
 };
 
+export const derivePreimage = (privateKey: Uint8Array): Uint8Array =>
+    sha256(privateKey);
+
 export const derivePreimageFromRescueKey = (
     rescueKey: RescueFile,
     keyIndex: number,
     asset: AssetType,
     hdKey?: HDKey,
-): Buffer => {
+): Uint8Array => {
     const privateKey = deriveKey(rescueKey, keyIndex, asset, hdKey).privateKey;
     if (privateKey === null) {
         throw new Error("missing private key for preimage derivation");
     }
 
-    return Buffer.from(derivePreimage(privateKey));
+    return derivePreimage(privateKey);
 };

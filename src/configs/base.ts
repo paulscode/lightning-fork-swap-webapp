@@ -4,17 +4,14 @@ import type log from "loglevel";
 export type Config = {
     apiUrl: Url;
     network: "mainnet" | "regtest";
-    isBeta?: boolean;
-    isPro?: boolean;
     assets?: Record<string, Asset>;
-    cctpApiUrl?: string;
-    solburnUrl?: string;
+    // Onion address of the site; the footer links to it only when set
     torUrl?: string;
 } & typeof defaults;
 
 const defaults = {
-    // Replaces the landing page and the swap box with the suspension notice
-    // Refunds, rescues and pending swaps stay reachable
+    // Replaces the landing page and the swap box with a notice that swaps are
+    // paused. Refunds, rescues and pending swaps stay reachable
     swapsSuspended: false,
 
     // Disables API endpoints that create cooperative signatures for claim
@@ -26,36 +23,7 @@ const defaults = {
 
     loglevel: "info" as log.LogLevelDesc,
     defaultLanguage: "en",
-    gasSponsor: {
-        normal: "https://sponsor.ccxp.space/",
-        tor: "http://bcyxkoqqofgnygmajez5rmpk2ne3bbq3p4l2c6yk57cilvfm4pnbp6ad.onion/",
-    },
-    supportUrl: "https://support.boltz.exchange/hc/center",
-    twitterUrl: "https://twitter.com/boltzhq",
-    githubUrl: "https://github.com/BoltzExchange",
-    repoUrl: "https://github.com/BoltzExchange/boltz-web-app",
-    docsUrl: "https://docs.boltz.exchange",
-    blogUrl: "https://blog.boltz.exchange",
-    partnerUrl: "https://partner.boltz.exchange",
-    nostrUrl:
-        "https://primal.net/p/nprofile1qqsqcdcltmv4qanpx3p7svcufdsg9rkk00x7l2sknra4e6whkv59l7clgcdzj",
-    statusUrl: "https://status.boltz.exchange",
-    youtubeUrl:
-        "https://www.youtube.com/playlist?list=PLkqOa9SGBeZfAEHvKkGKjeRIASeu6bNO3",
-    brandingUrl: "https://github.com/BoltzExchange/logo",
-    regtestUrl: "https://github.com/BoltzExchange/regtest/",
-    email: "hi@bol.tz",
-    dnsOverHttps: "https://1.1.1.1/dns-query",
-    chatwootUrl: "https://support.boltz.exchange",
-    preimageValidation: "https://validate-payment.com",
-    layerZeroExplorerUrl: "https://layerzeroscan.com",
-    cctpExplorerUrl: "https://ccxp.space",
-    oftDeploymentsUrl: "https://docs.usdt0.to/api/deployments",
-    rateProviders: {
-        Kraken: "https://api.kraken.com/0/public/Ticker",
-        Mempool: "https://mempool.space/api/v1/prices",
-        CoinGecko: "https://api.coingecko.com/api/v3/simple/price",
-    },
+    repoUrl: "https://github.com/paulscode/lightning-fork-swap",
 };
 
 const isTor = () =>
@@ -65,6 +33,10 @@ const isTor = () =>
 const chooseUrl = (url?: Url) =>
     url ? (isTor() && url.tor ? url.tor : url.normal) : undefined;
 
+// Base URL of the page the app is served from, without a trailing slash
+const sameOrigin = (): string =>
+    typeof window !== "undefined" ? window.location.origin : "";
+
 const baseConfig: Omit<Config, "network" | "apiUrl"> = defaults;
 
-export { baseConfig, chooseUrl, isTor };
+export { baseConfig, chooseUrl, isTor, sameOrigin };

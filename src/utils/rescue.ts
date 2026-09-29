@@ -1,32 +1,16 @@
-import { hex } from "@scure/base";
-import { SwapTreeSerializer, detectSwap } from "boltz-core";
-import {
-    assetRescueBroadcast,
-    assetRescueSetup,
-    getLockupTransaction,
-} from "boltz-swaps/client";
-import { SwapType, arbitrumChainId } from "boltz-swaps/types";
+import { getLockupTransaction } from "boltz-swaps/client";
+import { SwapType } from "boltz-swaps/types";
 import {
     type RefundResult,
-    type TransactionInterface,
-    type UtxoAsset,
     type UtxoNetwork,
-    createMusig,
-    getTransaction,
     refundUtxos,
-    tweakMusig,
-    txToId,
 } from "boltz-swaps/utxo";
 import log from "loglevel";
 
 import { config } from "../config";
 import {
     type AssetType,
-    ETH,
-    LBTC,
     type RefundableAssetType,
-    type blockChainsAssets,
-    isEvmAsset,
     refundableAssets,
 } from "../consts/Assets";
 import {
@@ -45,15 +29,8 @@ import {
 import type { ECKeys } from "./ecpair";
 import { formatError } from "./errors";
 import { getFeeEstimationsFailover } from "./fees";
-import { parseBlindingKey, parsePrivateKey } from "./helper";
-import {
-    type ChainSwap,
-    type CommitmentSwap,
-    type ReverseSwap,
-    type SomeSwap,
-    type SubmarineSwap,
-    isEvmSwap,
-} from "./swapCreator";
+import { parsePrivateKey } from "./helper";
+import type { ReverseSwap, SomeSwap, SubmarineSwap } from "./swapCreator";
 
 export enum RescueAction {
     Successful = "successful",
@@ -66,7 +43,6 @@ export enum RescueAction {
 export const enum RefundType {
     Cooperative = "cooperative",
     Uncooperative = "uncooperative",
-    AssetRescue = "assetRescue",
 }
 
 export const RescueNoAction = [
@@ -79,7 +55,6 @@ export const isSwapClaimable = ({
     status,
     type,
     zeroConf,
-    swap = undefined,
     includeSuccess = false,
 }: {
     status: string;
@@ -88,10 +63,6 @@ export const isSwapClaimable = ({
     zeroConf: boolean;
     includeSuccess?: boolean;
 }) => {
-    if (swap !== undefined && isEvmSwap(swap)) {
-        return false;
-    }
-
     switch (type) {
         case SwapType.Reverse: {
             const statuses = [swapStatusPending.TransactionConfirmed];
@@ -106,19 +77,6 @@ export const isSwapClaimable = ({
 
             return statuses.includes(status);
         }
-        case SwapType.Chain: {
-            const statuses = [swapStatusPending.TransactionServerConfirmed];
-
-            if (zeroConf) {
-                statuses.push(swapStatusPending.TransactionServerMempool);
-            }
-
-            if (includeSuccess) {
-                statuses.push(swapStatusSuccess.TransactionClaimed);
-            }
-
-            return statuses.includes(status);
-        }
         default:
             return false;
     }
@@ -129,18 +87,10 @@ export const hasSwapTimedOut = (swap: SomeSwap, currentBlockHeight: number) => {
         return false;
     }
 
-    const swapTimeoutBlockHeight: Partial<
-        Record<SwapType, () => number | undefined>
-    > = {
-        [SwapType.Chain]: () =>
-            (swap as ChainSwap).lockupDetails.timeoutBlockHeight,
-        [SwapType.Reverse]: () => (swap as ReverseSwap).timeoutBlockHeight,
-        [SwapType.Submarine]: () => (swap as SubmarineSwap).timeoutBlockHeight,
-        [SwapType.Commitment]: () =>
-            (swap as CommitmentSwap).timeoutBlockHeight,
-    };
-
-    const timeoutBlockHeight = swapTimeoutBlockHeight[swap.type]?.();
+    const timeoutBlockHeight =
+        swap.type === SwapType.Submarine
+            ? (swap as SubmarineSwap).timeoutBlockHeight
+            : (swap as ReverseSwap).timeoutBlockHeight;
     return (
         timeoutBlockHeight !== undefined &&
         currentBlockHeight >= timeoutBlockHeight
@@ -148,7 +98,7 @@ export const hasSwapTimedOut = (swap: SomeSwap, currentBlockHeight: number) => {
 };
 
 const refundTaproot = (
-    swap: SubmarineSwap | ChainSwap,
+    swap: SubmarineSwap,
     transactionsToRefund: { hex: string; timeoutBlockHeight?: number }[],
     privateKey: ECKeys,
     refundAddress: string,
@@ -160,39 +110,26 @@ const refundTaproot = (
         `starting to refund swap ${swap.id} cooperatively: ${cooperative}`,
     );
 
-    const theirPublicKey =
-        swap.type === SwapType.Submarine
-            ? (swap as SubmarineSwap).claimPublicKey
-            : (swap as ChainSwap).lockupDetails.serverPublicKey;
-    const lockupTree =
-        swap.type === SwapType.Submarine
-            ? (swap as SubmarineSwap).swapTree
-            : (swap as ChainSwap).lockupDetails.swapTree;
-    const blindingKey = parseBlindingKey(swap, true);
-
     // Cooperative co-signing, per-input signing and the uncooperative fallback
-    // all live in the SDK primitive now.
+    // all live in the SDK primitive
     return refundUtxos({
         id: swap.id,
-        swapType: swap.type,
-        asset: swap.assetSend as UtxoAsset,
         network: config.network as UtxoNetwork,
-        swapTree: lockupTree,
-        claimPublicKey: theirPublicKey,
+        swapTree: swap.swapTree,
+        claimPublicKey: swap.claimPublicKey,
         refundKeys: privateKey,
         lockups: transactionsToRefund.map((tx) => ({
             lockupTxHex: tx.hex,
             timeoutBlockHeight: tx.timeoutBlockHeight ?? nLockTime,
         })),
         refundAddress,
-        blindingKey: blindingKey ? hex.encode(blindingKey) : undefined,
         feePerVbyte,
         nLockTime,
         cooperative,
     });
 };
 
-const broadcastRefund = async <T extends SubmarineSwap | ChainSwap>(
+const broadcastRefund = async <T extends SubmarineSwap>(
     swap: T,
     txConstructionResponse: Awaited<ReturnType<typeof refundTaproot>>,
 ): Promise<string> => {
@@ -215,69 +152,7 @@ const broadcastRefund = async <T extends SubmarineSwap | ChainSwap>(
     }
 };
 
-const assetRescueRefund = async <T extends SubmarineSwap | ChainSwap>(
-    swap: T,
-    privateKey: ECKeys,
-    refundAddress: string,
-    transactionsToRefund: TransactionInterface[],
-) => {
-    if (swap.assetSend !== LBTC) {
-        throw new Error("Asset rescue refund is only supported for LBTC");
-    }
-
-    if (transactionsToRefund.length !== 1) {
-        throw new Error("Asset rescue refund requires exactly one transaction");
-    }
-    const transaction = transactionsToRefund[0];
-
-    const theirPublicKey =
-        swap.type === SwapType.Submarine
-            ? (swap as SubmarineSwap).claimPublicKey
-            : (swap as ChainSwap).lockupDetails.serverPublicKey;
-    const lockupTree =
-        swap.type === SwapType.Submarine
-            ? (swap as SubmarineSwap).swapTree
-            : (swap as ChainSwap).lockupDetails.swapTree;
-
-    const swapTree = SwapTreeSerializer.deserializeSwapTree(lockupTree);
-    const boltzPublicKey = hex.decode(theirPublicKey);
-    const keyAgg = createMusig(privateKey, boltzPublicKey);
-    const tweaked = tweakMusig(swap.assetSend, keyAgg, swapTree.tree);
-
-    const output = detectSwap(tweaked.aggPubkey, transaction);
-    if (output === undefined) {
-        throw new Error("could not detect swap output for rescue");
-    }
-
-    const setup = await assetRescueSetup(
-        swap.assetSend,
-        swap.id,
-        txToId(transaction),
-        output.vout,
-        refundAddress,
-    );
-
-    const withMsg = tweaked.message(hex.decode(setup.musig.message));
-    const withNonce = withMsg.generateNonce();
-
-    const aggNonces = withNonce.aggregateNonces([
-        [boltzPublicKey, hex.decode(setup.musig.pubNonce)],
-    ]);
-    const session = aggNonces.initializeSession();
-    const signed = session.signPartial();
-
-    const res = await assetRescueBroadcast(
-        swap.assetSend,
-        swap.id,
-        withNonce.publicNonce,
-        signed.ourPartialSignature,
-    );
-    log.info("Asset rescue broadcast result", res);
-
-    return res.transactionId;
-};
-
-export const refund = async <T extends SubmarineSwap | ChainSwap>(
+export const refund = async <T extends SubmarineSwap>(
     deriveKey: deriveKeyFn,
     swap: T,
     refundAddress: string,
@@ -286,25 +161,12 @@ export const refund = async <T extends SubmarineSwap | ChainSwap>(
 ): Promise<string> => {
     log.info(`${type} refunding swap ${swap.id}: `, swap);
 
-    const transactions = transactionsToRefund.map((transactionToRefund) =>
-        getTransaction(swap.assetSend).fromHex(transactionToRefund.hex),
-    );
-
     const privateKey = parsePrivateKey(
         deriveKey,
         swap.assetSend as AssetType,
         swap.refundPrivateKeyIndex,
         swap.refundPrivateKey,
     );
-
-    if (type === RefundType.AssetRescue) {
-        return await assetRescueRefund(
-            swap,
-            privateKey,
-            refundAddress,
-            transactions,
-        );
-    }
 
     const feePerVbyte = await getFeeEstimationsFailover(swap.assetSend);
 
@@ -332,12 +194,12 @@ export const refund = async <T extends SubmarineSwap | ChainSwap>(
 export const isRefundableSwapType = (swap: SomeSwap | null | undefined) =>
     swap !== null &&
     swap !== undefined &&
-    [SwapType.Chain, SwapType.Submarine].includes(swap.type);
+    swap.type === SwapType.Submarine;
 
 export const getRescuableUTXOs = async (currentSwap: SomeSwap) => {
     const [lockupTxResult, utxosResult] = await Promise.allSettled([
         getLockupTransaction(currentSwap.id, currentSwap.type),
-        getSwapUTXOs(currentSwap as ChainSwap | SubmarineSwap),
+        getSwapUTXOs(currentSwap as SubmarineSwap),
     ]);
 
     const lockupTx =
@@ -411,11 +273,7 @@ export const createRescueList = async (
     return await Promise.all(
         swaps.map(async (swap) => {
             try {
-                // EVM-source chain swaps are claimed on their UTXO destination,
-                // but their source refund is handled by the EVM rescue flow.
-                // They do not have UTXO refund details to inspect here.
-                const isUtxoRefundable =
-                    isRefundableSwapType(swap) && !isEvmAsset(swap.assetSend);
+                const isUtxoRefundable = isRefundableSwapType(swap);
                 const utxos = isUtxoRefundable
                     ? await getRescuableUTXOs(swap)
                     : [];
@@ -449,7 +307,6 @@ export const createRescueList = async (
 
                 if (
                     isSwapClaimable({
-                        swap,
                         status,
                         type: swap.type,
                         zeroConf,
@@ -490,18 +347,11 @@ export const createRescueList = async (
 };
 
 export const getTimeoutEta = (
-    asset: blockChainsAssets,
+    asset: string,
     timeoutBlockHeight: number,
     currentBlockHeight: number,
 ) => {
-    // for assets on Arbitrum, we need to get timeout ETA from ETH L1
-    const blockchainAsset =
-        config.assets?.[asset]?.network?.chainId === arbitrumChainId
-            ? ETH
-            : asset;
-
     const blocksRemaining = timeoutBlockHeight - currentBlockHeight;
-    const secondsRemaining =
-        blocksRemaining * blockTimeMinutes[blockchainAsset] * 60;
+    const secondsRemaining = blocksRemaining * blockTimeMinutes[asset] * 60;
     return Math.floor(Date.now() / 1000) + secondsRemaining;
 };

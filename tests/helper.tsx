@@ -6,7 +6,6 @@ import {
     CreateProvider,
     useCreateContext,
 } from "../src/context/Create";
-import { FiatProvider } from "../src/context/Fiat";
 import {
     type GlobalContextType,
     GlobalProvider,
@@ -18,7 +17,6 @@ import {
     usePayContext,
 } from "../src/context/Pay";
 import { RescueProvider } from "../src/context/Rescue";
-import { Web3SignerProvider } from "../src/context/Web3";
 import { pairs as testPairs } from "./pairs";
 
 export let signals: CreateContextType;
@@ -34,9 +32,6 @@ export const TestComponent = () => {
     if (globalSignals.pairs() === undefined) {
         globalSignals.setPairs(testPairs);
     }
-    if (globalSignals.regularPairs() === undefined) {
-        globalSignals.setRegularPairs(testPairs);
-    }
 
     signals = createSignals;
 
@@ -44,25 +39,22 @@ export const TestComponent = () => {
 };
 
 const createContextWrapper =
-    (noFetch: boolean) => (props: { children: JSX.Element }) => {
+    // Kept for call-site compatibility; nothing is fetched on mount anymore
+    (_noFetch: boolean) => (props: { children: JSX.Element }) => {
         const App = () => (
             <GlobalProvider>
-                <FiatProvider>
-                    <Web3SignerProvider noFetch={noFetch}>
-                        <CreateProvider>
-                            <PayProvider>
-                                <RescueProvider>
-                                    <Router>
-                                        <Route
-                                            path="/"
-                                            component={() => props.children}
-                                        />
-                                    </Router>
-                                </RescueProvider>
-                            </PayProvider>
-                        </CreateProvider>
-                    </Web3SignerProvider>
-                </FiatProvider>
+                <CreateProvider>
+                    <PayProvider>
+                        <RescueProvider>
+                            <Router>
+                                <Route
+                                    path="/"
+                                    component={() => props.children}
+                                />
+                            </Router>
+                        </RescueProvider>
+                    </PayProvider>
+                </CreateProvider>
             </GlobalProvider>
         );
 

@@ -1,4 +1,3 @@
-import type { ExplorerKind } from "boltz-swaps/types";
 import { Show } from "solid-js";
 
 import { useGlobalContext } from "../context/Global";
@@ -14,28 +13,16 @@ const BlockExplorer = (props: {
     asset: string;
     kind: BlockExplorerTargetKind;
     id: string;
-    explorer?: ExplorerKind;
-    typeLabel?:
-        | "lockup_address"
-        | "lockup_tx"
-        | "claim_tx"
-        | "refund_tx"
-        | "bridge_status";
-    // Liquid only: "#blinded=" fragment appended to view the tx unblinded
-    blinded?: string;
+    typeLabel?: "lockup_address" | "lockup_tx" | "claim_tx" | "refund_tx";
 }) => {
     const { t } = useGlobalContext();
 
-    const href = () => {
-        const base =
-            props.kind === BlockExplorerTargetKind.Tx
-                ? blockExplorerLink(props.asset, true, props.id, props.explorer)
-                : blockExplorerLink(props.asset, false, props.id);
-        if (base !== undefined && props.blinded !== undefined) {
-            return `${base}#blinded=${props.blinded}`;
-        }
-        return base;
-    };
+    const href = () =>
+        blockExplorerLink(
+            props.asset,
+            props.kind === BlockExplorerTargetKind.Tx,
+            props.id,
+        );
 
     const typeLabel = () =>
         props.typeLabel ||
@@ -43,15 +30,10 @@ const BlockExplorer = (props: {
             ? "claim_tx"
             : "lockup_address");
 
-    const label = () => {
-        const current = typeLabel();
-        if (current === "bridge_status") {
-            return t("check_bridge_status");
-        }
-        return t("blockexplorer", {
-            typeLabel: t(`blockexplorer_${current}`),
+    const label = () =>
+        t("blockexplorer", {
+            typeLabel: t(`blockexplorer_${typeLabel()}`),
         });
-    };
 
     return (
         <Show when={href()}>

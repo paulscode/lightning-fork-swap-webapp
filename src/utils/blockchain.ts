@@ -1,25 +1,12 @@
 import { broadcastApiTransaction } from "boltz-swaps/client";
-import {
-    Explorer,
-    type ExplorerUrl,
-    SwapType,
-    type Url,
-} from "boltz-swaps/types";
+import { Explorer, type ExplorerUrl, type Url } from "boltz-swaps/types";
 import log from "loglevel";
 
 import { chooseUrl, config } from "../config";
-import {
-    BTC,
-    ETH,
-    LBTC,
-    RBTC,
-    TBTC,
-    type blockChainsAssets,
-    refundableAssets,
-} from "../consts/Assets";
+import { BTC } from "../consts/Assets";
 import { formatError } from "./errors";
 import { constructRequestOptions } from "./helper";
-import type { ChainSwap, SubmarineSwap } from "./swapCreator";
+import type { SubmarineSwap } from "./swapCreator";
 
 export type UTXO = {
     txid: string;
@@ -37,29 +24,12 @@ type MempoolFeeEstimation = Record<
     number
 >;
 
-export const blockTimeMinutes: Record<blockChainsAssets, number> = {
+export const blockTimeMinutes: Record<string, number> = {
     [BTC]: 10,
-    [LBTC]: 1,
-    [RBTC]: 25 / 60,
-    [ETH]: 12 / 60,
 };
 
-export const getNetworkName = (asset: string) => {
-    switch (asset) {
-        case BTC:
-            return "Bitcoin";
-        case LBTC:
-            return "Liquid";
-        case RBTC:
-            return "Rootstock";
-        case TBTC:
-            return "Arbitrum";
-        case ETH:
-            return "Ethereum";
-        default:
-            return "";
-    }
-};
+export const getNetworkName = (asset: string) =>
+    asset === BTC ? "Bitcoin (BLAKE2b)" : "";
 
 const handleResponseSuccess = async <T>(response: Response): Promise<T> => {
     const contentType = response.headers.get("content-type");
@@ -241,37 +211,22 @@ export const broadcastTransaction = async (
 };
 
 export const getSwapUTXOs = async (
-    swap: ChainSwap | SubmarineSwap,
+    swap: SubmarineSwap,
 ): Promise<SwapUTXO[]> => {
-    const address =
-        swap.type === SwapType.Chain
-            ? (swap as ChainSwap).lockupDetails.lockupAddress
-            : (swap as SubmarineSwap).address;
+    const utxos = await getAddressUTXOs(swap.assetSend, swap.address);
 
-    const utxos = await getAddressUTXOs(swap.assetSend, address);
-
-    const rawTxs: { hex: string; id: string }[] = [];
-
+    const rawTxs: SwapUTXO[] = [];
     for (const utxo of utxos) {
         const rawTx = await getRawTransaction(swap.assetSend, utxo.txid);
-        rawTxs.push({ hex: rawTx, id: utxo.txid });
+        rawTxs.push({
+            hex: rawTx,
+            id: utxo.txid,
+            // Important to know if the swap has timed out or not
+            timeoutBlockHeight: swap.timeoutBlockHeight,
+        });
     }
 
-    return rawTxs.map((rawTx) => {
-        if (refundableAssets.includes(swap.assetSend)) {
-            return {
-                id: rawTx.id,
-                hex: rawTx.hex,
-                // Important to know if the swap has timed out or not
-                timeoutBlockHeight:
-                    swap.type === SwapType.Chain
-                        ? (swap as ChainSwap).lockupDetails.timeoutBlockHeight
-                        : (swap as SubmarineSwap).timeoutBlockHeight,
-            };
-        }
-
-        return { hex: rawTx.hex, id: rawTx.id };
-    });
+    return rawTxs;
 };
 
 const getEsploraFeeEstimations = async (apiEndpoint: Url) => {
@@ -317,6 +272,6 @@ export const getFeeEstimations = async (url: ExplorerUrl) => {
         case Explorer.Esplora:
             return await getEsploraFeeEstimations(url);
         default:
-            throw new Error(`unknown explorer type: ${url.id}`);
+            throw new Error(`unknown explorer type: ${String(url.id)}`);
     }
 };

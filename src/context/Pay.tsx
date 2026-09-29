@@ -1,12 +1,9 @@
 import {
-    type ChainPairTypeTaproot,
     type LockupTransaction,
-    getChainSwapTransactions,
     getReverseTransaction,
-    postChainSwapDetails,
 } from "boltz-swaps/client";
 import { SwapType } from "boltz-swaps/types";
-import { getOutputAmount, getTransaction } from "boltz-swaps/utxo";
+import { parseTransaction } from "boltz-swaps/utxo";
 import log from "loglevel";
 import {
     type Accessor,
@@ -20,30 +17,21 @@ import {
 } from "solid-js";
 
 import { hiddenInformation } from "../components/settings/PrivacyMode";
-import { BTC, LBTC } from "../consts/Assets";
 import { swapStatusPending, swapStatusSuccess } from "../consts/SwapStatus";
 import { createSwapModifier } from "../hooks/useModifySwap";
 import { getTransactionOutSpend } from "../utils/blockchain";
 import {
-    isPositivePersistedAmount,
-    withChainSwapQuoteLock,
-} from "../utils/chainSwapQuote";
-import {
     claim,
     createSubmarineSignature,
-    createTheirPartialChainSwapSignature,
     findSwapOutputVout,
 } from "../utils/claim";
-import { decodeAddress, findOutputByScript } from "../utils/compat";
 import { formatError } from "../utils/errors";
-import { getPair, parseBlindingKey } from "../utils/helper";
+import { getPair } from "../utils/helper";
 import { isSwapClaimable } from "../utils/rescue";
-import {
-    type ChainSwap,
-    type ReverseSwap,
-    type SomeSwap,
-    type SubmarineSwap,
-    isEvmSwap,
+import type {
+    ReverseSwap,
+    SomeSwap,
+    SubmarineSwap,
 } from "../utils/swapCreator";
 import { useGlobalContext } from "./Global";
 
@@ -83,8 +71,6 @@ type SwapStatusTransaction = {
     id?: string;
 };
 
-const coopClaimableSymbols = [BTC, LBTC];
-
 const PayProvider = (props: { children: JSX.Element }) => {
     const {
         t,
@@ -92,7 +78,6 @@ const PayProvider = (props: { children: JSX.Element }) => {
         getSwap,
         privacyMode,
         notify,
-        fetchPairs,
         pairs,
         modifySwapStorage,
         zeroConf,
@@ -117,121 +102,6 @@ const PayProvider = (props: { children: JSX.Element }) => {
     const [shouldIgnoreBackendStatus, setShouldIgnoreBackendStatus] =
         createSignal<boolean>(false);
 
-    const helpServerClaim = async (swap: ChainSwap) => {
-        if (swap.claimTx === undefined) {
-            log.warn(
-                `Not helping server claim Chain Swap ${swap.id} because we have not claimed yet`,
-            );
-            return;
-        }
-
-        try {
-            log.debug(
-                `Helping server claim ${swap.assetSend} of Chain Swap ${swap.id}`,
-            );
-            const sig = await createTheirPartialChainSwapSignature(
-                deriveKey,
-                swap,
-            );
-            if (sig === undefined) {
-                return;
-            }
-            await postChainSwapDetails(swap.id, undefined, sig);
-        } catch (e) {
-            log.warn(
-                `Helping server claim Chain Swap ${swap.id} failed: ${formatError(e)}`,
-            );
-        }
-    };
-
-    const pendingServerClaimHelp = new Set<string>();
-    const helpingServerClaims = new Set<string>();
-    const maybeHelpServerClaim = async (chainSwap: ChainSwap) => {
-        if (!pendingServerClaimHelp.has(chainSwap.id)) {
-            return;
-        }
-
-        if (helpingServerClaims.has(chainSwap.id)) {
-            return;
-        }
-
-        if (chainSwap.claimTx === undefined) {
-            log.debug(
-                `Deferred server claim help for Chain Swap ${chainSwap.id} is still waiting for claimTx`,
-            );
-            return;
-        }
-
-        helpingServerClaims.add(chainSwap.id);
-        try {
-            log.info(
-                `Retrying deferred server claim help for Chain Swap ${chainSwap.id}`,
-            );
-            await helpServerClaim(chainSwap);
-        } finally {
-            pendingServerClaimHelp.delete(chainSwap.id);
-            helpingServerClaims.delete(chainSwap.id);
-        }
-    };
-
-    const recoverChainSwapAmounts = async (
-        swap: ChainSwap,
-        lockupTxHex: string,
-    ): Promise<ChainSwap> => {
-        const getClaimFee = () =>
-            getPair<ChainPairTypeTaproot>(
-                pairs(),
-                SwapType.Chain,
-                swap.assetSend,
-                swap.assetReceive,
-            )?.fees.minerFees.user.claim;
-
-        let claimFee = getClaimFee();
-        if (claimFee === undefined) {
-            await fetchPairs();
-            claimFee = getClaimFee();
-        }
-        if (claimFee === undefined) {
-            throw new Error(`claim fee is unavailable for swap ${swap.id}`);
-        }
-
-        const output = findOutputByScript(
-            swap.assetReceive,
-            getTransaction(swap.assetReceive).fromHex(lockupTxHex),
-            decodeAddress(swap.assetReceive, swap.claimDetails.lockupAddress)
-                .script,
-        );
-        if (output === undefined) {
-            throw new Error(
-                `server lockup output is missing for swap ${swap.id}`,
-            );
-        }
-
-        const lockupAmount = await getOutputAmount(swap.assetReceive, {
-            ...output,
-            blindingPrivateKey: parseBlindingKey(swap, false),
-        } as never);
-        const receiveAmount = lockupAmount - (claimFee + 1);
-        if (receiveAmount <= 0) {
-            throw new Error(
-                `recovered receive amount is not positive for swap ${swap.id}`,
-            );
-        }
-
-        log.info(
-            `Recovered receive amount ${receiveAmount} for swap ${swap.id} from its server lockup`,
-        );
-        const recovered = await modifySwap<ChainSwap>(swap.id, (s) => {
-            s.receiveAmount = receiveAmount;
-            s.claimDetails.amount = lockupAmount;
-        });
-        if (recovered === null) {
-            throw new Error(`swap ${swap.id} is missing from storage`);
-        }
-
-        return recovered;
-    };
-
     const [claimingSwaps, setClaimingSwaps] = createSignal(new Set<string>(), {
         equals: false,
     });
@@ -248,58 +118,12 @@ const PayProvider = (props: { children: JSX.Element }) => {
         }
 
         if (
-            currentSwap.type === SwapType.Chain &&
-            data.status === swapStatusPending.TransactionClaimPending &&
-            coopClaimableSymbols.includes((currentSwap as ChainSwap).assetSend)
-        ) {
-            const chainSwap = currentSwap as ChainSwap;
-            pendingServerClaimHelp.add(chainSwap.id);
-
-            if (chainSwap.claimTx === undefined) {
-                log.info(
-                    `Deferring server claim help for Chain Swap ${chainSwap.id} until claimTx is known`,
-                );
-                return;
-            }
-
-            await maybeHelpServerClaim(chainSwap);
-            return;
-        }
-
-        if (isEvmSwap(currentSwap)) {
-            if (
-                data.status === swapStatusPending.TransactionMempool &&
-                data.transaction !== undefined
-            ) {
-                const lockupTxId = data.transaction.id;
-                if (lockupTxId === undefined) {
-                    return;
-                }
-
-                await modifySwap(swapId, (s) => {
-                    s.lockupTx = lockupTxId;
-                });
-            }
-
-            return;
-        }
-
-        if (
             (currentSwap.type === SwapType.Reverse &&
                 zeroConf() &&
                 data.status === swapStatusPending.TransactionMempool) || // necessary for the autoclaim when zeroConf is toggled with a pending swap
             data.status === swapStatusSuccess.InvoiceSettled
         ) {
             data.transaction = await getReverseTransaction(currentSwap.id);
-        } else if (
-            currentSwap.type === SwapType.Chain &&
-            (data.status === swapStatusSuccess.TransactionClaimed ||
-                (zeroConf() &&
-                    data.status === swapStatusPending.TransactionServerMempool)) // necessary for the autoclaim when zeroConf is toggled with a pending swap
-        ) {
-            data.transaction = (
-                await getChainSwapTransactions(currentSwap.id)
-            ).serverLock.transaction;
         }
 
         if (
@@ -319,44 +143,40 @@ const PayProvider = (props: { children: JSX.Element }) => {
                 });
 
                 const transaction = data.transaction as { hex: string };
-                const res = await withChainSwapQuoteLock(swapId, async () => {
-                    let claimableSwap = await getSwap<ReverseSwap | ChainSwap>(
-                        swapId,
-                    );
-                    if (
-                        claimableSwap === null ||
-                        claimableSwap.claimTx !== undefined
-                    ) {
-                        return undefined;
-                    }
-                    if (
-                        !isPositivePersistedAmount(claimableSwap.receiveAmount)
-                    ) {
-                        if (claimableSwap.type !== SwapType.Chain) {
+                const res = await navigator.locks.request(
+                    `claim:${swapId}`,
+                    async () => {
+                        const claimableSwap = await getSwap<ReverseSwap>(swapId);
+                        if (
+                            claimableSwap === null ||
+                            claimableSwap.claimTx !== undefined
+                        ) {
+                            return undefined;
+                        }
+                        if (
+                            !Number.isFinite(claimableSwap.receiveAmount) ||
+                            claimableSwap.receiveAmount <= 0
+                        ) {
                             throw new Error(
                                 `swap ${swapId} has an invalid persisted receive amount`,
                             );
                         }
-                        claimableSwap = await recoverChainSwapAmounts(
-                            claimableSwap as ChainSwap,
-                            transaction.hex,
-                        );
-                    }
 
-                    const result = await claim(
-                        deriveKey,
-                        claimableSwap,
-                        transaction,
-                        true,
-                    );
-                    if (result === undefined) {
-                        return undefined;
-                    }
-                    const claimedSwap = await modifySwap(result.id, (s) => {
-                        s.claimTx = result.claimTx;
-                    });
-                    return claimedSwap === null ? undefined : result;
-                });
+                        const result = await claim(
+                            deriveKey,
+                            claimableSwap,
+                            transaction,
+                            true,
+                        );
+                        const claimedSwap = await modifySwap(
+                            result.id,
+                            (s) => {
+                                s.claimTx = result.claimTx;
+                            },
+                        );
+                        return claimedSwap === null ? undefined : result;
+                    },
+                );
                 if (res === undefined) {
                     return;
                 }
@@ -380,12 +200,10 @@ const PayProvider = (props: { children: JSX.Element }) => {
                     ) {
                         return;
                     }
-                    const lockupTx = getTransaction(
-                        currentSwap.assetReceive,
-                    ).fromHex(data.transaction.hex);
+                    const lockupTx = parseTransaction(data.transaction.hex);
                     const vout = findSwapOutputVout(
                         deriveKey,
-                        currentSwap as ReverseSwap | ChainSwap,
+                        currentSwap as ReverseSwap,
                         lockupTx,
                     );
 
@@ -491,7 +309,6 @@ const PayProvider = (props: { children: JSX.Element }) => {
                         status: swap.status,
                         type: swap.type,
                         zeroConf: zeroConf(),
-                        swap,
                     })
                 ) {
                     try {
@@ -507,20 +324,6 @@ const PayProvider = (props: { children: JSX.Element }) => {
                     }
                 }
             }
-        }),
-    );
-
-    createEffect(
-        on([swap, swapStatus], ([currentSwap, currentStatus]) => {
-            if (
-                currentSwap === null ||
-                currentSwap.type !== SwapType.Chain ||
-                currentStatus !== swapStatusPending.TransactionClaimPending
-            ) {
-                return;
-            }
-
-            void maybeHelpServerClaim(currentSwap as ChainSwap);
         }),
     );
 

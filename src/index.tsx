@@ -15,25 +15,19 @@ import { Show } from "solid-js";
 import { render } from "solid-js/web";
 
 import { configureBoltzSwaps } from "./boltzSwapsConfig";
-import Chatwoot from "./chatwoot";
 import Footer from "./components/Footer";
 import { legacyRescueRedirects } from "./components/LegacyRescueRedirects";
 import Nav from "./components/Nav";
 import Notification from "./components/Notification";
 import { SwapChecker } from "./components/SwapChecker";
-import { SwapExecutionWorker } from "./components/SwapExecutionWorker";
-import { WalletConnect } from "./components/WalletConnect";
 import { config } from "./config";
 import { CreateProvider } from "./context/Create";
-import { FiatProvider } from "./context/Fiat";
 import { GlobalProvider } from "./context/Global";
 import { PayProvider } from "./context/Pay";
 import { RescueProvider } from "./context/Rescue";
-import { Web3SignerProvider } from "./context/Web3";
 import ClaimRescue from "./pages/ClaimRescue";
 import Create from "./pages/Create";
 import Error from "./pages/Error";
-import GasAbstractionSweepRescue from "./pages/GasAbstractionSweepRescue";
 import Hero from "./pages/Hero";
 import History from "./pages/History";
 import NotFound from "./pages/NotFound";
@@ -41,15 +35,9 @@ import Pay from "./pages/Pay";
 import Privacy from "./pages/Privacy";
 import RefundRescue from "./pages/RefundRescue";
 import Rescue from "./pages/Rescue";
-import RescueEvm from "./pages/RescueEvm";
 import Suspension from "./pages/Suspension";
 import Terms from "./pages/Terms";
-import Btcpay from "./pages/products/Btcpay";
-import Client from "./pages/products/Client";
-import Pro from "./pages/products/Pro";
-import Products from "./pages/products/Products";
 import "./style/index.scss";
-import "./utils/patches";
 
 setLogger(log);
 configureBoltzSwaps();
@@ -79,19 +67,10 @@ window.addEventListener("error", resourceErrorHandler, true);
 
 const urlParams = new URLSearchParams(window.location.search);
 const embeddedParam = urlParams.get("embedded");
-const themeParam = urlParams.get("theme");
 const parentOriginParam = urlParams.get("parentOrigin");
 
-const isEmbedded = embeddedParam === "true";
-const validThemes = ["default", "pro", "light"];
-const initialTheme = isEmbedded
-    ? validThemes.includes(themeParam || "")
-        ? themeParam!
-        : "default"
-    : config.isPro
-      ? "pro"
-      : "default";
-document.documentElement.setAttribute("boltz-theme", initialTheme);
+// There is a single dark theme
+document.documentElement.setAttribute("boltz-theme", "default");
 document.body.classList.remove("loading");
 
 const App = (props: RouteSectionProps) => {
@@ -104,35 +83,23 @@ const App = (props: RouteSectionProps) => {
         <GlobalProvider
             initialEmbeddedMode={isEmbedded}
             initialParentOrigin={parentOriginParam ?? undefined}>
-            <FiatProvider>
-                <Web3SignerProvider>
-                    <WalletConnect />
-                    <CreateProvider>
-                        <PayProvider>
-                            <RescueProvider>
-                                <SwapChecker />
-                                <SwapExecutionWorker />
-                                <Chatwoot />
-                                <Show when={!isEmbedded}>
-                                    <Nav
-                                        isPro={config.isPro}
-                                        network={config.network}
-                                    />
-                                </Show>
-                                <Show
-                                    when={!isEmbeddedRoot()}
-                                    fallback={<Create />}>
-                                    {props.children}
-                                </Show>
-                                <Notification />
-                                <Show when={!isEmbedded}>
-                                    <Footer />
-                                </Show>
-                            </RescueProvider>
-                        </PayProvider>
-                    </CreateProvider>
-                </Web3SignerProvider>
-            </FiatProvider>
+            <CreateProvider>
+                <PayProvider>
+                    <RescueProvider>
+                        <SwapChecker />
+                        <Show when={!isEmbedded}>
+                            <Nav network={config.network} />
+                        </Show>
+                        <Show when={!isEmbeddedRoot()} fallback={<Create />}>
+                            {props.children}
+                        </Show>
+                        <Notification />
+                        <Show when={!isEmbedded}>
+                            <Footer />
+                        </Show>
+                    </RescueProvider>
+                </PayProvider>
+            </CreateProvider>
         </GlobalProvider>
     );
 };
@@ -148,23 +115,8 @@ const cleanup = render(
                 path="/swap"
                 component={config.swapsSuspended ? Suspension : Create}
             />
-            <Route path="/products" component={Products} />
-            <Route path="/products/btcpay" component={Btcpay} />
-            <Route path="/products/client" component={Client} />
-            <Route path="/products/pro" component={Pro} />
-            {/* Compatibility with link in Breez:
-                                https://github.com/breez/breezmobile/blob/a1b0ffff902dfa2210af8fdb047b715535ff11e9/src/json/vendors.json#L30 */}
-            <Route path="/swapbox" component={Create} />
             <Route path="/swap/:id" component={Pay} />
             <Route path="/swap/:id/claim" component={ClaimRescue} />
-            <Route
-                path="/swap/rescue/evm/gas-abstraction/:asset/:address/:action"
-                component={GasAbstractionSweepRescue}
-            />
-            <Route
-                path="/swap/rescue/evm/:asset/:txHash/:action"
-                component={RescueEvm}
-            />
             <Route path="/error" component={() => <Error />} />
             <Route path="/rescue" component={Rescue} />
             <Route path="/rescue/claim/:id" component={ClaimRescue} />

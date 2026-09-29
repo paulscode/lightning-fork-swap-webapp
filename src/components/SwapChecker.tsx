@@ -36,7 +36,7 @@ export const SwapChecker = () => {
     const [pendingSwaps, setPendingSwaps] = createStore<string[]>([]);
 
     const updatePendingSwaps = (swap: SomeSwap, data: SwapUpdate) => {
-        if (![SwapType.Chain, SwapType.Reverse].includes(swap.type)) {
+        if (swap.type !== SwapType.Reverse) {
             return;
         }
 
@@ -109,10 +109,6 @@ export const SwapChecker = () => {
 
     onMount(async () => {
         const swapsToCheck = (await getSwaps()).filter((swap) => {
-            if (swap.type === SwapType.Commitment) {
-                return false;
-            }
-
             if (
                 swap.status === undefined ||
                 !swapStatusFinal.includes(swap.status)
@@ -122,9 +118,7 @@ export const SwapChecker = () => {
 
             return (
                 swap.claimTx === undefined &&
-                (swap.status === swapStatusSuccess.InvoiceSettled ||
-                    (swap.type === SwapType.Chain &&
-                        swap.status === swapStatusSuccess.TransactionClaimed))
+                swap.status === swapStatusSuccess.InvoiceSettled
             );
         });
 
@@ -140,9 +134,6 @@ export const SwapChecker = () => {
     createEffect(() => {
         const activeSwap = swap();
         if (activeSwap === undefined || activeSwap === null) {
-            return;
-        }
-        if (activeSwap.type === SwapType.Commitment) {
             return;
         }
         subscribeSwap(activeSwap.id);

@@ -9,7 +9,6 @@ import {
 } from "solid-js";
 
 import type { AssetType } from "../consts/Assets";
-import type { EvmRescueResult } from "../pages/external-rescue/types";
 import { type ECKeys, ECPair } from "../utils/ecpair";
 import { type RescueFile, deriveKey } from "../utils/rescueFile";
 
@@ -22,9 +21,6 @@ export type RescueContextType = {
 
     rescuableSwaps: Accessor<RestorableSwap[]>;
     setRescuableSwaps: Setter<RestorableSwap[]>;
-
-    evmRescuableSwaps: Accessor<EvmRescueResult[]>;
-    setEvmRescuableSwaps: Setter<EvmRescueResult[]>;
 
     validRescueKey: Accessor<boolean>;
     setValidRescueKey: Setter<boolean>;
@@ -41,9 +37,6 @@ export const RescueProvider = (props: { children: JSX.Element }) => {
     const [rescuableSwaps, setRescuableSwaps] = createSignal<RestorableSwap[]>(
         [],
     );
-    const [evmRescuableSwaps, setEvmRescuableSwaps] = createSignal<
-        EvmRescueResult[]
-    >([]);
     const [validRescueKey, setValidRescueKey] = createSignal<boolean>(false);
 
     const resetRescueKey = () => {
@@ -70,8 +63,6 @@ export const RescueProvider = (props: { children: JSX.Element }) => {
                 setRescueFile,
                 rescuableSwaps,
                 setRescuableSwaps,
-                evmRescuableSwaps,
-                setEvmRescuableSwaps,
                 validRescueKey,
                 setValidRescueKey,
                 resetRescueKey,

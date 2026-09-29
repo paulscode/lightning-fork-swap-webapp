@@ -3,14 +3,13 @@ import { Explorer } from "boltz-swaps/types";
 import log from "loglevel";
 
 import { config } from "../config";
-import { BTC, LBTC } from "../consts/Assets";
+import { BTC } from "../consts/Assets";
 import { getFeeEstimations as getFeeEstimationsFromExplorer } from "./blockchain";
 import { formatError } from "./errors";
 
 // HTLCs are time sensitive, so we need to add a floor to the fee estimations
 const feeFloors = {
     [BTC]: 2,
-    [LBTC]: 0.1,
 };
 
 const blockExplorerFeePriority = [Explorer.Mempool, Explorer.Esplora];
@@ -59,7 +58,7 @@ export const getFeeEstimationsFailover = async (asset: string) => {
         return feeEstimations[asset];
     } catch (e) {
         log.warn(
-            `failed to get fee estimations via Boltz API for ${asset}: ${formatError(e)}`,
+            `failed to get fee estimations via the API for ${asset}: ${formatError(e)}`,
         );
     }
 

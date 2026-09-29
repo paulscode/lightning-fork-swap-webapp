@@ -3,27 +3,19 @@ import {
     BiRegularDownload,
     BiRegularTrash,
 } from "solid-icons/bi";
-import { IoCheckmark, IoShareSocialOutline } from "solid-icons/io";
+import { IoCheckmark } from "solid-icons/io";
 import { Show, createSignal } from "solid-js";
 
 import { copyIconTimeout } from "../../consts/CopyContent";
 import { useGlobalContext } from "../../context/Global";
-import {
-    ChatwootNotReadyError,
-    isChatwootConfigured,
-    postLogsToChatwoot,
-} from "../../utils/chatwoot";
 import { downloadJson } from "../../utils/download";
 import { clipboard } from "../../utils/helper";
-import LoadingSpinner from "../LoadingSpinner";
 
 const Logs = () => {
     const iconSize = 16;
-    const { getLogs, clearLogs, notify, setSettingsMenu, t } =
-        useGlobalContext();
+    const { getLogs, clearLogs, t } = useGlobalContext();
 
     const [copied, setCopied] = createSignal(false);
-    const [posting, setPosting] = createSignal(false);
 
     const clear = async (evt: MouseEvent) => {
         if (confirm(t("delete_logs"))) {
@@ -40,66 +32,20 @@ const Logs = () => {
         setTimeout(() => setCopied(false), copyIconTimeout);
     };
 
-    const postToChatwoot = async (evt: MouseEvent) => {
-        evt.stopPropagation();
-
-        if (posting()) {
-            return;
-        }
-
-        setPosting(true);
-        try {
-            await postLogsToChatwoot(await getLogs());
-            setSettingsMenu(false);
-        } catch (error) {
-            notify(
-                "error",
-                error instanceof ChatwootNotReadyError
-                    ? t("chatwoot_not_ready")
-                    : error instanceof Error
-                      ? error.message
-                      : String(error),
-            );
-        } finally {
-            setPosting(false);
-        }
-    };
-
     const download = async (evt: MouseEvent) => {
         evt.stopPropagation();
-        downloadJson("boltz-logs", await getLogs(), true);
+        downloadJson("lightning-fork-swap-logs", await getLogs(), true);
     };
 
     return (
         <div class="logs-actions">
-            <Show
-                when={isChatwootConfigured()}
-                fallback={
-                    <span
-                        onClick={copy}
-                        class="btn-small"
-                        data-testid="logs-copy">
-                        <Show
-                            when={copied()}
-                            fallback={<BiRegularCopy size={iconSize} />}>
-                            <IoCheckmark size={iconSize} />
-                        </Show>
-                    </span>
-                }>
-                <span
-                    onClick={postToChatwoot}
-                    class="btn-small logs-share"
-                    attr:data-loading={posting() ? "true" : undefined}
-                    data-testid="logs-chatwoot">
-                    <span class="logs-share-content">
-                        <IoShareSocialOutline size={iconSize} />
-                        {t("share_with_support")}
-                    </span>
-                    <Show when={posting()}>
-                        <LoadingSpinner class="inner-spinner" />
-                    </Show>
-                </span>
-            </Show>
+            <span onClick={copy} class="btn-small" data-testid="logs-copy">
+                <Show
+                    when={copied()}
+                    fallback={<BiRegularCopy size={iconSize} />}>
+                    <IoCheckmark size={iconSize} />
+                </Show>
+            </span>
             <div class="logs-actions-icons">
                 <span
                     onClick={download}

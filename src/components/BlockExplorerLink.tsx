@@ -1,205 +1,38 @@
-import { bridgeRegistry } from "boltz-swaps/bridge";
-import { ExplorerKind, SwapType } from "boltz-swaps/types";
-import {
-    type Accessor,
-    Match,
-    Show,
-    Switch,
-    createMemo,
-    createResource,
-} from "solid-js";
+import { type Accessor, Show } from "solid-js";
 
-import { LBTC, isEvmAsset } from "../consts/Assets";
-import { useGlobalContext } from "../context/Global";
-import { getClaimTransactionBlindingData } from "../utils/claim";
 import {
     type SomeSwap,
-    getPostBridgeDetail,
     getRelevantAssetForSwap,
     getSwapAddress,
-    isEvmSwap,
 } from "../utils/swapCreator";
 import BlockExplorer, { BlockExplorerTargetKind } from "./BlockExplorer";
-
-const claimTxLabel = (explorer: ExplorerKind | undefined) =>
-    explorer === ExplorerKind.LayerZero || explorer === ExplorerKind.Cctp
-        ? "bridge_status"
-        : undefined;
-
-const getLockupTxHash = (swap: SomeSwap) =>
-    swap.lockupTx ?? swap.commitmentLockupTxHash;
-
-const ChainSwapLink = (props: {
-    swap: Accessor<SomeSwap>;
-    swapStatus: Accessor<string>;
-    blinded: Accessor<string | undefined>;
-}) => {
-    const hasBeenClaimed = () => props.swap().claimTx !== undefined;
-    const lockupTxHash = () => getLockupTxHash(props.swap());
-
-    const asset = () =>
-        hasBeenClaimed() ? props.swap().assetReceive : props.swap().assetSend;
-
-    const explorer = createMemo(() =>
-        bridgeRegistry.getExplorerKind(
-            getPostBridgeDetail(props.swap().bridge),
-        ),
-    );
-
-    return (
-        <Show
-            when={!hasBeenClaimed() && isEvmAsset(asset())}
-            fallback={
-                <BlockExplorer
-                    asset={asset()}
-                    kind={
-                        hasBeenClaimed()
-                            ? BlockExplorerTargetKind.Tx
-                            : BlockExplorerTargetKind.Address
-                    }
-                    id={
-                        hasBeenClaimed()
-                            ? props.swap().claimTx!
-                            : getSwapAddress(props.swap())
-                    }
-                    explorer={explorer()}
-                    typeLabel={
-                        hasBeenClaimed() ? claimTxLabel(explorer()) : undefined
-                    }
-                    blinded={props.blinded()}
-                />
-            }>
-            {/* Showing addresses makes no sense for EVM based chains.
-                The lockup tx is a regular EVM tx, not a LayerZero message. */}
-            <Show when={lockupTxHash()}>
-                <BlockExplorer
-                    asset={asset()}
-                    kind={BlockExplorerTargetKind.Tx}
-                    id={lockupTxHash()!}
-                    typeLabel={"lockup_tx"}
-                />
-            </Show>
-        </Show>
-    );
-};
 
 const BlockExplorerLinkInner = (props: {
     swap: Accessor<SomeSwap>;
     swapStatus: Accessor<string>;
-}) => {
-    const { deriveKey } = useGlobalContext();
-    const lockupTxHash = () => getLockupTxHash(props.swap());
-    const bridgeSendPending = () => {
-        const s = props.swap();
-        return (
-            s.bridge?.txHash !== undefined &&
-            s.lockupTx === undefined &&
-            s.commitmentLockupTxHash === undefined
-        );
-    };
-
-    // Liquid claim transactions are confidential. Build the explorer
-    // "#blinded=" fragment on demand so the claim link reveals its amount.
-    const [blinded] = createResource(
-        () =>
-            props.swap().assetReceive === LBTC &&
-            props.swap().claimTx !== undefined
-                ? props.swap()
-                : undefined,
-        (swap) => getClaimTransactionBlindingData(deriveKey, swap),
-    );
-
-    return (
-        <Show
-            when={!bridgeSendPending()}
-            fallback={
-                <BlockExplorer
-                    asset={props.swap().bridge!.sourceAsset}
-                    kind={BlockExplorerTargetKind.Tx}
-                    id={props.swap().bridge!.txHash!}
-                    explorer={bridgeRegistry.getExplorerKind(
-                        props.swap().bridge,
-                    )}
-                    typeLabel={"lockup_tx"}
-                />
-            }>
-            <Show
-                when={props.swap().type !== SwapType.Chain}
-                fallback={
-                    <ChainSwapLink
-                        swap={props.swap}
-                        swapStatus={props.swapStatus}
-                        blinded={blinded}
-                    />
-                }>
-                <Switch>
-                    <Match when={!isEvmSwap(props.swap())}>
-                        {/* Refund transactions are handled in SwapRefunded */}
-                        <Show
-                            when={
-                                getRelevantAssetForSwap(props.swap()) &&
-                                props.swapStatus() !== null &&
-                                props.swapStatus() !== "invoice.set" &&
-                                props.swapStatus() !== "swap.created"
-                            }>
-                            <BlockExplorer
-                                asset={getRelevantAssetForSwap(props.swap())}
-                                kind={
-                                    props.swap().claimTx !== undefined
-                                        ? BlockExplorerTargetKind.Tx
-                                        : BlockExplorerTargetKind.Address
-                                }
-                                id={
-                                    props.swap().claimTx !== undefined
-                                        ? props.swap().claimTx!
-                                        : getSwapAddress(props.swap())
-                                }
-                                explorer={bridgeRegistry.getExplorerKind(
-                                    props.swap().bridge,
-                                )}
-                                blinded={blinded()}
-                            />
-                        </Show>
-                    </Match>
-
-                    {/* Showing addresses makes no sense for EVM based chains */}
-                    <Match when={isEvmSwap(props.swap())}>
-                        <Show
-                            when={props.swap().claimTx !== undefined}
-                            fallback={
-                                <Show when={lockupTxHash()}>
-                                    <BlockExplorer
-                                        asset={getRelevantAssetForSwap(
-                                            props.swap(),
-                                        )}
-                                        kind={BlockExplorerTargetKind.Tx}
-                                        id={lockupTxHash()!}
-                                        typeLabel={"lockup_tx"}
-                                    />
-                                </Show>
-                            }>
-                            <BlockExplorer
-                                asset={getRelevantAssetForSwap(props.swap())}
-                                kind={BlockExplorerTargetKind.Tx}
-                                id={props.swap().claimTx!}
-                                explorer={bridgeRegistry.getExplorerKind(
-                                    props.swap().bridge,
-                                )}
-                                typeLabel={
-                                    claimTxLabel(
-                                        bridgeRegistry.getExplorerKind(
-                                            props.swap().bridge,
-                                        ),
-                                    ) ?? "claim_tx"
-                                }
-                            />
-                        </Show>
-                    </Match>
-                </Switch>
-            </Show>
-        </Show>
-    );
-};
+}) => (
+    // Refund transactions are handled in SwapRefunded
+    <Show
+        when={
+            props.swapStatus() !== null &&
+            props.swapStatus() !== "invoice.set" &&
+            props.swapStatus() !== "swap.created"
+        }>
+        <BlockExplorer
+            asset={getRelevantAssetForSwap(props.swap())}
+            kind={
+                props.swap().claimTx !== undefined
+                    ? BlockExplorerTargetKind.Tx
+                    : BlockExplorerTargetKind.Address
+            }
+            id={
+                props.swap().claimTx !== undefined
+                    ? props.swap().claimTx!
+                    : getSwapAddress(props.swap())
+            }
+        />
+    </Show>
+);
 
 const BlockExplorerLink = (props: {
     swap: Accessor<SomeSwap | null>;

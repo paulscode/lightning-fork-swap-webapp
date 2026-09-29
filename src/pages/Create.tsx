@@ -1,65 +1,40 @@
 import { useSearchParams } from "@solidjs/router";
 import { BigNumber } from "bignumber.js";
-import { getRpcUrls } from "boltz-swaps/config";
-import { isBridgeCapacityError } from "boltz-swaps/errors";
-import { AssetKind, NetworkTransport } from "boltz-swaps/types";
 import log from "loglevel";
-import { IoClose } from "solid-icons/io";
 import {
     Show,
     createEffect,
     createMemo,
-    createResource,
-    createSignal,
     on,
     onCleanup,
     onMount,
 } from "solid-js";
 
-import Accordion from "../components/Accordion";
 import AddressInput from "../components/AddressInput";
 import Asset from "../components/Asset";
-import AssetSelect from "../components/AssetSelect";
-import ConnectWallet from "../components/ConnectWallet";
 import CreateButton from "../components/CreateButton";
-import { FeeComparisonTable } from "../components/FeeComparisonTable";
 import Fees from "../components/Fees";
-import FiatAmount from "../components/FiatAmount";
 import InvoiceInput from "../components/InvoiceInput";
-import NetworkSelect from "../components/NetworkSelect";
 import QrScan from "../components/QrScan";
 import Reverse from "../components/Reverse";
 import SwapLimits from "../components/SwapLimits";
 import WeblnButton from "../components/WeblnButton";
 import SettingsCog from "../components/settings/SettingsCog";
 import SettingsMenu from "../components/settings/SettingsMenu";
-import { config } from "../config";
-import {
-    LN,
-    RBTC,
-    getNetworkTransport,
-    isWalletConnectableAsset,
-} from "../consts/Assets";
+import { LN, getAssetNetwork } from "../consts/Assets";
 import { Denomination, Side } from "../consts/Enums";
 import { useCreateContext } from "../context/Create";
-import { useFiatContext } from "../context/Fiat";
 import { useGlobalContext } from "../context/Global";
-import { useWeb3Signer } from "../context/Web3";
 import Pair, { RequiredInput } from "../utils/Pair";
-import { getAssetNativeBalance } from "../utils/chains/balance";
-import { canCommitSubmarineSendAmount } from "../utils/commitmentSwap";
-import { getConnectedMaximum } from "../utils/connectedMaximum";
 import {
     calculateDigits,
     convertAmount,
     formatAmount,
     formatDenomination,
-    formatNativeAmountForLog,
     getValidationRegex,
 } from "../utils/denomination";
 import { isMobile } from "../utils/helper";
 import { isDeferredInvoiceDestination } from "../utils/invoice";
-import { gasTopUpSupported, getGasTopUpNativeAmount } from "../utils/quoter";
 import ErrorWasm from "./ErrorWasm";
 
 // TODO: formatted amounts should be *instant* and not depend on quote being calculated
@@ -69,7 +44,6 @@ const Create = () => {
     let sendAmountRef: HTMLInputElement | undefined;
 
     const [searchParams, setSearchParams] = useSearchParams();
-    const [isAccordionOpen, setIsAccordionOpen] = createSignal(false);
 
     const {
         separator,
@@ -80,19 +54,11 @@ const Create = () => {
         webln,
         t,
         notify,
-        pairs,
-        regularPairs,
-        gasTopUp,
         embeddedMode,
     } = useGlobalContext();
-    const { fetchBtcPrice } = useFiatContext();
     const {
         pair,
         setPair,
-        getGasToken,
-        setGetGasToken,
-        assetSelection,
-        assetSelected,
         invoice,
         setInvoice,
         invoiceValid,
@@ -113,49 +79,25 @@ const Create = () => {
         minimum,
         maximum,
         limitsLoading,
-        amountValid,
         setAmountValid,
         boltzFee,
         minerFee,
-        onchainAddress,
         quoteLoading,
         setQuoteLoading,
         quoteError,
         setQuoteError,
         destinationLocked,
     } = useCreateContext();
-    const { connectedWallet, signer } = useWeb3Signer();
-
-    let quoteDebounceTimeout: number | undefined;
     let quoteRequestId = 0;
 
-    const connectedDestination = () => {
-        const walletAddress = connectedWallet()?.address;
-        const transport = getNetworkTransport(pair().toAsset);
-        const normalize = (address: string) =>
-            transport === NetworkTransport.Evm
-                ? address.toLowerCase()
-                : address;
-
-        return (
-            walletAddress !== undefined &&
-            onchainAddress() !== "" &&
-            normalize(onchainAddress()) === normalize(walletAddress)
-        );
-    };
-    const walletConnectAsset = () =>
-        isWalletConnectableAsset(pair().toAsset)
-            ? pair().toAsset
-            : pair().fromAsset;
     const receiveAmountQuoteLoading = createMemo(
         () => quoteLoading() && amountChanged() === Side.Send,
     );
     const sendAmountQuoteLoading = createMemo(
         () => quoteLoading() && amountChanged() === Side.Receive,
     );
-    const [maxAmountLoading, setMaxAmountLoading] = createSignal(false);
     const limitActionsLoading = createMemo(
-        () => limitsLoading() || quoteLoading() || maxAmountLoading(),
+        () => limitsLoading() || quoteLoading(),
     );
     const requiresInvoiceInput = createMemo(
         () =>
@@ -163,144 +105,7 @@ const Create = () => {
             (pair().requiredInput === RequiredInput.Unknown &&
                 pair().toAsset === LN),
     );
-    const canDeferInvoiceInput = createMemo(
-        () =>
-            requiresInvoiceInput() &&
-            canCommitSubmarineSendAmount(pair(), amountChanged()) &&
-            amountValid(),
-    );
-    const invoiceInputDisabled = createMemo(
-        () => canDeferInvoiceInput() && invoice() === "",
-    );
-    const gasTopUpTrigger = createMemo(() => {
-        const rpcUrls = getRpcUrls(pair().toAsset);
-        const gasTopUpEnabled = gasTopUp();
-        const supported = gasTopUpSupported(pair().toAsset);
-        const connected = connectedDestination();
-        const validAddress = addressValid();
-        const hasAddress = onchainAddress() !== "";
-        const hasRpcUrls = rpcUrls !== undefined;
-
-        return {
-            address: onchainAddress(),
-            enabled:
-                gasTopUpEnabled &&
-                supported &&
-                connected &&
-                validAddress &&
-                hasAddress &&
-                hasRpcUrls,
-            rpcUrls,
-            supported,
-            connected,
-            validAddress,
-            hasAddress,
-            hasRpcUrls,
-            gasTopUpEnabled,
-            asset: pair().toAsset,
-            hasPostBridge: pair().hasPostBridge,
-        };
-    });
-    createResource(
-        gasTopUpTrigger,
-        async ({
-            address,
-            enabled,
-            rpcUrls,
-            supported,
-            connected,
-            validAddress,
-            hasAddress,
-            hasRpcUrls,
-            gasTopUpEnabled,
-            asset,
-            hasPostBridge,
-        }) => {
-            if (!enabled || rpcUrls === undefined) {
-                log.info("Gas top-up auto-detect skipped", {
-                    asset,
-                    address,
-                    gasTopUpEnabled,
-                    supported,
-                    connected,
-                    validAddress,
-                    hasAddress,
-                    hasRpcUrls,
-                    hasPostBridge,
-                });
-                setGetGasToken(false);
-                return;
-            }
-
-            try {
-                log.info("Gas top-up auto-detect started", {
-                    asset,
-                    address,
-                    hasPostBridge,
-                    rpcUrlCount: rpcUrls.length,
-                });
-                const balance = await getAssetNativeBalance(asset, address);
-                const gasTokenCostWei = await getGasTopUpNativeAmount(asset);
-                log.info("Gas top-up balance check", {
-                    asset,
-                    address,
-                    balance: formatNativeAmountForLog(balance, asset),
-                    gasTokenCost: formatNativeAmountForLog(
-                        gasTokenCostWei,
-                        asset,
-                    ),
-                    connectedDestination: connectedDestination(),
-                });
-                if (balance < gasTokenCostWei && connectedDestination()) {
-                    if (
-                        hasPostBridge &&
-                        !(await pair().canPostBridgeNativeDrop(address))
-                    ) {
-                        log.info(
-                            "Gas top-up disabled because post-bridge native drop is unavailable",
-                            {
-                                asset,
-                                address,
-                            },
-                        );
-                        setGetGasToken(false);
-                        return;
-                    }
-
-                    log.info("Gas top-up enabled", {
-                        asset,
-                        address,
-                    });
-                    setGetGasToken(true);
-                    return;
-                }
-            } catch (error) {
-                log.warn("Gas top-up auto-detect failed", {
-                    asset,
-                    address,
-                    error,
-                });
-                setGetGasToken(false);
-                return;
-            }
-
-            log.info("Gas top-up disabled because balance is sufficient", {
-                asset,
-                address,
-            });
-            setGetGasToken(false);
-            return;
-        },
-        { initialValue: undefined },
-    );
-
-    const clearQuoteDebounce = () => {
-        if (quoteDebounceTimeout !== undefined) {
-            window.clearTimeout(quoteDebounceTimeout);
-            quoteDebounceTimeout = undefined;
-        }
-    };
-
+    // Quotes are computed locally from the pair data, so they resolve at once
     const loadingGuard = (fn: (isCurrent: () => boolean) => Promise<void>) => {
         const runQuote = async (isCurrent: () => boolean) => {
             setQuoteError(undefined);
@@ -311,11 +116,7 @@ const Create = () => {
                 if (!isCurrent()) {
                     return;
                 }
-                setQuoteError(
-                    isBridgeCapacityError(error)
-                        ? "error_bridge_capacity"
-                        : "error_no_quote",
-                );
+                setQuoteError("error_no_quote");
                 if (amountChanged() === Side.Receive) {
                     setSendAmount(BigNumber(0));
                 } else {
@@ -325,35 +126,13 @@ const Create = () => {
             }
         };
 
-        if (!pair().needsNetworkForQuote) {
-            ++quoteRequestId;
-            clearQuoteDebounce();
-            setQuoteLoading(false);
-            const id = quoteRequestId;
-            void runQuote(() => id === quoteRequestId);
-            return;
-        }
-
-        const requestId = ++quoteRequestId;
-        setQuoteLoading(true);
-        clearQuoteDebounce();
-
-        quoteDebounceTimeout = window.setTimeout(() => {
-            quoteDebounceTimeout = undefined;
-            void (async () => {
-                try {
-                    await runQuote(() => requestId === quoteRequestId);
-                } finally {
-                    if (requestId === quoteRequestId) {
-                        setQuoteLoading(false);
-                    }
-                }
-            })();
-        }, 500);
+        ++quoteRequestId;
+        setQuoteLoading(false);
+        const id = quoteRequestId;
+        void runQuote(() => id === quoteRequestId);
     };
 
     onCleanup(() => {
-        clearQuoteDebounce();
         setQuoteLoading(false);
     });
 
@@ -399,7 +178,6 @@ const Create = () => {
 
         if (isEmptyAmount(amount)) {
             ++quoteRequestId;
-            clearQuoteDebounce();
             setQuoteLoading(false);
             resetAmounts();
             validateAmount();
@@ -424,8 +202,6 @@ const Create = () => {
             const sendAmount = await pair().calculateSendAmount(
                 satAmount,
                 minerFee(),
-                getGasToken(),
-                onchainAddress(),
             );
             if (!isCurrent()) {
                 return;
@@ -447,7 +223,6 @@ const Create = () => {
 
         if (isEmptyAmount(amount)) {
             ++quoteRequestId;
-            clearQuoteDebounce();
             setQuoteLoading(false);
             resetAmounts();
             validateAmount();
@@ -466,9 +241,6 @@ const Create = () => {
             const newReceiveAmount = await pair().calculateReceiveAmount(
                 satAmount,
                 minerFee(),
-                undefined,
-                getGasToken(),
-                onchainAddress(),
             );
             if (!isCurrent()) {
                 return;
@@ -562,16 +334,7 @@ const Create = () => {
         }
 
         const amount = Number(sendAmount());
-        if (pair().canZeroAmount && amount === 0) {
-            setAmountValid(true);
-            return;
-        }
-
-        if (
-            amount > 0 &&
-            receiveAmount().isZero() &&
-            !canCommitSubmarineSendAmount(pair(), amountChanged())
-        ) {
+        if (amount > 0 && receiveAmount().isZero()) {
             setCustomValidity(t("error_zero_quote"), false);
             setAmountValid(false);
             return;
@@ -609,9 +372,6 @@ const Create = () => {
             const newReceiveAmount = await pair().calculateReceiveAmount(
                 BigNumber(amount),
                 minerFee(),
-                undefined,
-                getGasToken(),
-                onchainAddress(),
             );
             if (!isCurrent()) {
                 return;
@@ -622,50 +382,8 @@ const Create = () => {
         });
     };
 
-    const setMaxAmount = async () => {
-        const selectedPair = pair();
-        let connectedMaximum: BigNumber | undefined;
-
-        setMaxAmountLoading(true);
-        try {
-            connectedMaximum = await getConnectedMaximum({
-                fromAsset: selectedPair.fromAsset,
-                connectedWallet: connectedWallet(),
-                signer: signer(),
-            });
-        } catch (error) {
-            log.warn("failed to resolve connected wallet max amount", {
-                asset: selectedPair.fromAsset,
-                error,
-            });
-        } finally {
-            setMaxAmountLoading(false);
-        }
-
-        if (pair() !== selectedPair) {
-            return;
-        }
-
-        const limit = maximum();
-        const selectedAmount =
-            connectedMaximum === undefined ||
-            !connectedMaximum.isGreaterThan(0) ||
-            (limit > 0 && connectedMaximum.isGreaterThan(limit))
-                ? limit
-                : connectedMaximum.toNumber();
-        setAmount(selectedAmount);
-    };
-
-    const clearCommittedAmounts = () => {
-        if (!invoiceInputDisabled()) {
-            return;
-        }
-
-        ++quoteRequestId;
-        clearQuoteDebounce();
-        setQuoteLoading(false);
-        resetAmounts();
-        setAmountChanged(Side.Send);
+    const setMaxAmount = () => {
+        setAmount(maximum());
     };
 
     onMount(() => {
@@ -673,7 +391,7 @@ const Create = () => {
     });
 
     createEffect(
-        on([boltzFee, minerFee, pair, getGasToken, onchainAddress], () => {
+        on([boltzFee, minerFee, pair], () => {
             loadingGuard(async (isCurrent) => {
                 if (amountChanged() === Side.Receive) {
                     if (receiveAmount().isZero()) {
@@ -682,8 +400,6 @@ const Create = () => {
                         const result = await pair().calculateSendAmount(
                             receiveAmount(),
                             minerFee(),
-                            getGasToken(),
-                            onchainAddress(),
                         );
                         if (!isCurrent()) {
                             return;
@@ -694,9 +410,6 @@ const Create = () => {
                     const result = await pair().calculateReceiveAmount(
                         sendAmount(),
                         minerFee(),
-                        undefined,
-                        getGasToken(),
-                        onchainAddress(),
                     );
                     if (!isCurrent()) {
                         return;
@@ -708,16 +421,6 @@ const Create = () => {
             });
         }),
     );
-
-    createEffect(() => {
-        if (assetSelection() !== null) {
-            return;
-        }
-
-        const ref =
-            assetSelected() === Side.Send ? sendAmountRef : receiveAmountRef;
-        ref?.focus();
-    });
 
     createEffect(() => {
         const rAmount = Number(receiveAmount());
@@ -804,10 +507,6 @@ const Create = () => {
         }),
     );
 
-    createEffect(() => {
-        void fetchBtcPrice();
-    });
-
     return (
         <Show when={wasmSupported()} fallback={<ErrorWasm />}>
             <div class="frame">
@@ -815,39 +514,6 @@ const Create = () => {
                 <h2 class="frame-title" data-testid="create-swap-title">
                     {t("create_swap")}
                 </h2>
-                <Show
-                    when={
-                        config.isPro &&
-                        pairs() &&
-                        regularPairs() &&
-                        !embeddedMode()
-                    }>
-                    <Accordion
-                        title={t("swap_opportunities_accordion")}
-                        isOpen={isAccordionOpen()}
-                        onClick={() => setIsAccordionOpen(!isAccordionOpen())}>
-                        <FeeComparisonTable
-                            proPairs={pairs()!}
-                            regularPairs={regularPairs()!}
-                            onSelect={(opportunity) => {
-                                if (
-                                    pair().fromAsset !==
-                                        opportunity.assetSend ||
-                                    pair().toAsset !== opportunity.assetReceive
-                                ) {
-                                    setPair(
-                                        new Pair(
-                                            pair().pairs,
-                                            opportunity.assetSend,
-                                            opportunity.assetReceive,
-                                        ),
-                                    );
-                                }
-                                setIsAccordionOpen(false);
-                            }}
-                        />
-                    </Accordion>
-                </Show>
                 <div class="icons">
                     <div>
                         <Asset
@@ -864,10 +530,7 @@ const Create = () => {
                                         maximum={maximum()}
                                         maxLabel={t("max")}
                                         loading={limitActionsLoading()}
-                                        maximumEnabled={
-                                            maximum() > 0 ||
-                                            pair().canZeroAmount
-                                        }
+                                        maximumEnabled={maximum() > 0}
                                         onSelectAmount={setAmount}
                                         onSelectMaximum={setMaxAmount}
                                     />
@@ -902,7 +565,6 @@ const Create = () => {
                                     autocomplete="off"
                                     disabled={
                                         sendAmountQuoteLoading() ||
-                                        maxAmountLoading() ||
                                         destinationLocked()
                                     }
                                     classList={{
@@ -916,13 +578,9 @@ const Create = () => {
                                     onInput={(e) => changeSendAmount(e)}
                                 />
                             </div>
-                            <FiatAmount
-                                asset={() => pair().fromAsset}
-                                amount={BigNumber(sendAmount()).toNumber()}
-                                variant="label"
-                                for="sendAmount"
-                                loading={sendAmountQuoteLoading}
-                            />
+                            <label for="sendAmount" class="input-label">
+                                {getAssetNetwork(pair().fromAsset)}
+                            </label>
                         </div>
                     </div>
                     <Show when={!destinationLocked()}>
@@ -932,7 +590,6 @@ const Create = () => {
                         <Asset
                             side={Side.Receive}
                             signal={() => pair().toAsset}
-                            disabled={destinationLocked()}
                         />
                         <div class="amount-field input-with-label">
                             <div class="amount-input-wrap">
@@ -968,7 +625,6 @@ const Create = () => {
                                     autocomplete="off"
                                     disabled={
                                         receiveAmountQuoteLoading() ||
-                                        maxAmountLoading() ||
                                         destinationLocked()
                                     }
                                     classList={{
@@ -982,13 +638,9 @@ const Create = () => {
                                     onInput={(e) => changeReceiveAmount(e)}
                                 />
                             </div>
-                            <FiatAmount
-                                asset={() => pair().toAsset}
-                                amount={BigNumber(receiveAmount()).toNumber()}
-                                variant="label"
-                                for="receiveAmount"
-                                loading={receiveAmountQuoteLoading}
-                            />
+                            <label for="receiveAmount" class="input-label">
+                                {getAssetNetwork(pair().toAsset)}
+                            </label>
                         </div>
                     </div>
                 </div>
@@ -996,10 +648,9 @@ const Create = () => {
                 <hr class="spacer" />
                 <Show
                     when={
-                        (pair().requiredInput === RequiredInput.Address ||
-                            (pair().requiredInput === RequiredInput.Unknown &&
-                                pair().toAsset !== LN)) &&
-                        !isWalletConnectableAsset(pair().toAsset)
+                        pair().requiredInput === RequiredInput.Address ||
+                        (pair().requiredInput === RequiredInput.Unknown &&
+                            pair().toAsset !== LN)
                     }>
                     <Show when={!destinationLocked()}>
                         <AddressInput />
@@ -1007,84 +658,28 @@ const Create = () => {
                     </Show>
                 </Show>
                 <Show when={requiresInvoiceInput() && !destinationLocked()}>
-                    <Show when={webln() && !invoiceInputDisabled()}>
+                    <Show when={webln()}>
                         <WeblnButton />
                         <hr class="spacer" />
                     </Show>
-                    <Show
-                        when={invoiceInputDisabled()}
-                        fallback={<InvoiceInput />}>
-                        <div
-                            class="committed-invoice-row"
-                            data-testid="committed-invoice-row">
-                            <InvoiceInput
-                                class="committed-invoice-input"
-                                disabled={invoiceInputDisabled()}
-                                placeholder={t("commitment_invoice_deferred")}
-                            />
-                            <button
-                                type="button"
-                                class="btn-small invoice-slot-action"
-                                data-testid="committed-invoice-clear"
-                                aria-label={t("clear_amount")}
-                                onClick={clearCommittedAmounts}>
-                                <IoClose size={16} />
-                            </button>
-                        </div>
-                    </Show>
+                    <InvoiceInput />
                     <hr class="spacer" />
                 </Show>
-                <Show
-                    when={
-                        isMobile() &&
-                        !invoiceInputDisabled() &&
-                        !destinationLocked() &&
-                        (pair().toAsset === LN ||
-                            config.assets?.[pair().toAsset]?.type ===
-                                AssetKind.UTXO)
-                    }>
+                <Show when={isMobile() && !destinationLocked()}>
                     <QrScan />
-                    <hr class="spacer" />
-                </Show>
-                <Show
-                    when={[pair().fromAsset, pair().toAsset].some(
-                        isWalletConnectableAsset,
-                    )}>
-                    {/* We have no gas abstraction for RBTC */}
-                    <Show
-                        when={
-                            isWalletConnectableAsset(pair().toAsset) &&
-                            pair().toAsset !== RBTC &&
-                            !connectedDestination()
-                        }>
-                        <Show when={!destinationLocked()}>
-                            <hr class="spacer" />
-                            <AddressInput />
-                        </Show>
-                    </Show>
-                    <ConnectWallet
-                        asset={walletConnectAsset()}
-                        syncAddress={isWalletConnectableAsset(pair().toAsset)}
-                        hideWhenUnavailable={
-                            walletConnectAsset() === pair().toAsset
-                        }
-                        disabled={() => !pair().isRoutable}
-                    />
                     <hr class="spacer" />
                 </Show>
                 <CreateButton />
                 <Show when={embeddedMode()}>
                     <div class="embedded-branding">
                         <a
-                            href="https://boltz.exchange"
+                            href="https://lightningfork.com"
                             target="_blank"
                             rel="noopener noreferrer">
-                            Powered by Boltz
+                            Powered by Lightning Fork Swap
                         </a>
                     </div>
                 </Show>
-                <AssetSelect />
-                <NetworkSelect />
                 <SettingsMenu />
             </div>
         </Show>

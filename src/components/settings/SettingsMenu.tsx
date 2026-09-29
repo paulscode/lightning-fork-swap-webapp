@@ -1,22 +1,18 @@
 import { BiSolidHelpCircle } from "solid-icons/bi";
 import { BsCardText } from "solid-icons/bs";
 import { ImDisplay } from "solid-icons/im";
-import { IoClose, IoShield, IoSwapHorizontal } from "solid-icons/io";
+import { IoClose, IoShield } from "solid-icons/io";
 import { type JSXElement, Show, onCleanup, onMount } from "solid-js";
 
 import { useGlobalContext } from "../../context/Global";
 import type { DictKey } from "../../i18n/i18n";
 import "../../style/settings.scss";
 import { isMobile } from "../../utils/helper";
-import BitcoinOnly from "./BitcoinOnly";
 import Denomination from "./Denomination";
-import FiatCurrencySetting from "./FiatCurrencySetting";
-import GasTopUp from "./GasTopUp";
 import Logs from "./Logs";
 import PrivacyMode from "./PrivacyMode";
 import RescueFile from "./RescueKey";
 import Separator from "./Separator";
-import Slippage from "./Slippage";
 import Tooltip from "./Tooltip";
 import ZeroConf from "./ZeroConf";
 
@@ -102,37 +98,12 @@ const SettingsMenuContent = () => {
                     on:wheel={stopPropagation}>
                     <hr class="spacer" />
                     <Section
-                        title={t("swap")}
-                        icon={<IoSwapHorizontal size={20} />}>
-                        <Entry
-                            label={"bitcoin_only"}
-                            tooltipLabel={"bitcoin_only_tooltip"}
-                            settingElement={<BitcoinOnly />}
-                        />
-                        <Entry
-                            label={"slippage"}
-                            tooltipLabel={"slippage_tooltip"}
-                            settingElement={<Slippage />}
-                        />
-                        <Entry
-                            label={"gas_topup"}
-                            tooltipLabel={"gas_topup_tooltip"}
-                            settingElement={<GasTopUp />}
-                        />
-                    </Section>
-
-                    <Section
                         title={t("display")}
                         icon={<ImDisplay size={20} />}>
                         <Entry
                             label={"denomination"}
                             tooltipLabel={"denomination_tooltip"}
                             settingElement={<Denomination />}
-                        />
-                        <Entry
-                            label={"fiat_currency"}
-                            tooltipLabel={"fiat_currency_tooltip"}
-                            settingElement={<FiatCurrencySetting />}
                         />
                         <Entry
                             label={"decimal_separator"}

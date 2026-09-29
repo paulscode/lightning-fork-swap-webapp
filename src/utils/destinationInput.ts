@@ -1,17 +1,7 @@
 import type { Pairs } from "boltz-swaps/client";
-import { isKnownTokenAddress } from "boltz-swaps/evm";
 import { decodeInvoice } from "boltz-swaps/invoice";
-import { isValidSolanaAddress } from "boltz-swaps/solana";
-import { isValidTronAddress } from "boltz-swaps/tron";
-import { NetworkTransport } from "boltz-swaps/types";
-import { getAddress, isAddress } from "viem";
 
-import {
-    LN,
-    getNetworkTransport,
-    isBitcoinOnlyAsset,
-    isEvmAsset,
-} from "../consts/Assets";
+import { LN } from "../consts/Assets";
 import Pair from "./Pair";
 import { probeUserInput } from "./compat";
 import { btcToSat } from "./denomination";
@@ -40,9 +30,7 @@ export enum DestinationInputType {
 }
 
 export enum DestinationInputError {
-    TokenAddress = "token_address",
     UnknownAsset = "unknown_asset",
-    BitcoinOnly = "bitcoin_only",
     InvalidInvoice = "invalid_invoice",
     AmountCalculation = "amount_calculation",
     InvalidInput = "invalid_input",
@@ -77,7 +65,6 @@ const createSwitchedPair = (
     currentPair: Pair,
     actualAsset: string,
     pairs: Pairs | undefined,
-    regularPairs: Pairs | undefined,
 ) => {
     if (actualAsset === LN) {
         return new Pair(
@@ -86,7 +73,6 @@ const createSwitchedPair = (
                 ? currentPair.toAsset
                 : currentPair.fromAsset,
             LN,
-            regularPairs,
         );
     }
 
@@ -97,7 +83,7 @@ const createSwitchedPair = (
                 : currentPair.fromAsset
             : currentPair.toAsset;
 
-    return new Pair(pairs, fromAsset, actualAsset, regularPairs);
+    return new Pair(pairs, fromAsset, actualAsset);
 };
 
 const invalidResult = (
@@ -113,9 +99,7 @@ export const parseDestinationInput = async (
     inputValue: string,
     currentPair: Pair,
     pairs: Pairs | undefined,
-    regularPairs: Pairs | undefined,
     minerFee: number,
-    bitcoinOnly: boolean,
     isStale: () => boolean = () => false,
 ): Promise<DestinationInputResult> => {
     if (inputValue.length === 0) {
@@ -134,47 +118,6 @@ export const parseDestinationInput = async (
     const assetName = currentPair.toAsset;
 
     try {
-        if (isKnownTokenAddress(assetName, address)) {
-            return invalidResult(DestinationInputError.TokenAddress);
-        }
-
-        if (isEvmAsset(assetName) && isAddress(address)) {
-            return {
-                status: DestinationInputStatus.Valid,
-                nextPair: currentPair,
-                switched: false,
-                destination: {
-                    type: DestinationInputType.Address,
-                    address: getAddress(address),
-                },
-            };
-        }
-
-        const transport = getNetworkTransport(assetName);
-        if (
-            transport === NetworkTransport.Solana &&
-            isValidSolanaAddress(address)
-        ) {
-            return {
-                status: DestinationInputStatus.Valid,
-                nextPair: currentPair,
-                switched: false,
-                destination: { type: DestinationInputType.Address, address },
-            };
-        }
-
-        if (
-            transport === NetworkTransport.Tron &&
-            isValidTronAddress(address)
-        ) {
-            return {
-                status: DestinationInputStatus.Valid,
-                nextPair: currentPair,
-                switched: false,
-                destination: { type: DestinationInputType.Address, address },
-            };
-        }
-
         const actualAsset =
             probeUserInput(assetName, invoice) ??
             probeUserInput(assetName, address);
@@ -187,17 +130,9 @@ export const parseDestinationInput = async (
             return invalidResult(DestinationInputError.UnknownAsset);
         }
 
-        if (
-            actualAsset !== LN &&
-            bitcoinOnly &&
-            !isBitcoinOnlyAsset(actualAsset)
-        ) {
-            return invalidResult(DestinationInputError.BitcoinOnly);
-        }
-
         const switched = assetName !== actualAsset;
         const nextPair = switched
-            ? createSwitchedPair(currentPair, actualAsset, pairs, regularPairs)
+            ? createSwitchedPair(currentPair, actualAsset, pairs)
             : currentPair;
 
         let amount: DestinationAmount | undefined;

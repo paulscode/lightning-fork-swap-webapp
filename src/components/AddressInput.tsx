@@ -1,8 +1,8 @@
-import { SwapType } from "boltz-swaps/types";
+import { isMissingBlake2bFeatureError } from "boltz-swaps/invoice";
 import log from "loglevel";
 import { createEffect, on } from "solid-js";
 
-import { isEvmAsset } from "../consts/Assets";
+import { LN } from "../consts/Assets";
 import { Side } from "../consts/Enums";
 import { useCreateContext } from "../context/Create";
 import { useGlobalContext } from "../context/Global";
@@ -17,7 +17,7 @@ const AddressInput = () => {
     let inputRef!: HTMLInputElement;
     let validationRequest = 0;
 
-    const { t, notify, pairs, regularPairs, bitcoinOnly } = useGlobalContext();
+    const { t, notify, pairs } = useGlobalContext();
     const {
         pair,
         setPair,
@@ -50,9 +50,7 @@ const AddressInput = () => {
             inputValue,
             pair(),
             pairs(),
-            regularPairs(),
             minerFee(),
-            bitcoinOnly(),
             isStale,
         );
 
@@ -63,9 +61,11 @@ const AddressInput = () => {
                 )}`,
             );
 
-            const msg = t("invalid_address", {
-                asset: pair().toAsset,
-            });
+            const msg = isMissingBlake2bFeatureError(result.cause)
+                ? t("invoice_missing_blake2b")
+                : t("invalid_address", {
+                      asset: pair().toAsset,
+                  });
             input.classList.add("invalid");
             input.setCustomValidity(msg);
         }
@@ -98,8 +98,7 @@ const AddressInput = () => {
         on([amountValid, onchainAddress, pair], () => {
             if (
                 sendAmount().isGreaterThan(0) &&
-                pair().swapToCreate?.type !== SwapType.Submarine &&
-                !isEvmAsset(pair().toAsset) &&
+                pair().toAsset !== LN &&
                 onchainAddress() === ""
             ) {
                 setAddressValid(false);

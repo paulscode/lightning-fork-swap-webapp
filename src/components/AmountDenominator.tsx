@@ -1,13 +1,6 @@
-import { ETH } from "../consts/Assets";
-import { Currency, Denomination } from "../consts/Enums";
+import { Denomination } from "../consts/Enums";
 
-const iconDenominators = new Set<string>([
-    Denomination.Btc,
-    Denomination.Sat,
-    Currency.USD,
-    "usd",
-    "USDT",
-]);
+const iconDenominators = new Set<string>([Denomination.Btc, Denomination.Sat]);
 
 const joinClasses = (...classes: Array<string | undefined>) =>
     classes.filter((value): value is string => value !== undefined).join(" ");
@@ -26,15 +19,8 @@ const AmountDenominator = (props: AmountDenominatorProps) => {
                     data-denominator={props.value}
                 />
             ) : (
-                <span
-                    class={joinClasses(
-                        "denominator-text",
-                        props.value === ETH
-                            ? "denominator-text-symbol"
-                            : undefined,
-                        props.class,
-                    )}>
-                    {props.value === ETH ? "\u039E" : props.value}
+                <span class={joinClasses("denominator-text", props.class)}>
+                    {props.value}
                 </span>
             )}
         </>

@@ -3,41 +3,23 @@ import { useNavigate } from "@solidjs/router";
 import { BigNumber } from "bignumber.js";
 import { getSubmarinePreimage } from "boltz-swaps/client";
 import { assertPreimageHash, decodeInvoice } from "boltz-swaps/invoice";
-import { SwapPosition, SwapType } from "boltz-swaps/types";
+import { SwapType } from "boltz-swaps/types";
 import log from "loglevel";
-import {
-    type JSX,
-    Show,
-    createEffect,
-    createResource,
-    createSignal,
-} from "solid-js";
+import { Show, createEffect, createResource, createSignal } from "solid-js";
 
-import ExternalLink from "../components/ExternalLink";
-import { config } from "../config";
-import { getAssetNetwork, isEvmAsset } from "../consts/Assets";
+import CopyButton from "../components/CopyButton";
 import { useGlobalContext } from "../context/Global";
 import { usePayContext } from "../context/Pay";
 import { useModifySwap } from "../hooks/useModifySwap";
 import { formatAmount, formatDenomination } from "../utils/denomination";
 import { formatError } from "../utils/errors";
 import {
-    type ChainSwap,
-    type ReverseSwap,
     type SubmarineSwap,
     getFinalAssetReceive,
-    getPostBridgeDetail,
 } from "../utils/swapCreator";
 import Broadcasting from "./Broadcasting";
 
-const paymentValidationUrl = (invoice: string, preimage: string): string => {
-    const url = new URL(config.preimageValidation);
-    url.searchParams.append("invoice", invoice);
-    url.searchParams.append("preimage", preimage);
-    return url.toString();
-};
-
-const TransactionClaimed = (props: { bridgeStatusLink?: JSX.Element }) => {
+const TransactionClaimed = () => {
     const navigate = useNavigate();
 
     const { notify, t, denomination, separator } = useGlobalContext();
@@ -82,23 +64,14 @@ const TransactionClaimed = (props: { bridgeStatusLink?: JSX.Element }) => {
             return;
         }
 
-        // If it is a normal swap or a reverse one to RBTC we don't need to check for the claim transaction
-        // Else make sure the transaction was actually broadcast
-        setClaimBroadcast(
-            s.type !== SwapType.Reverse ||
-                isEvmAsset(s.assetReceive) ||
-                s.claimTx !== undefined,
-        );
+        // For reverse swaps, make sure the claim transaction was broadcast
+        setClaimBroadcast(s.type !== SwapType.Reverse || s.claimTx !== undefined);
     });
 
     const receiveAmount = () => {
-        const current = swap() as ChainSwap | ReverseSwap | SubmarineSwap;
+        const current = swap()!;
         return formatAmount(
-            BigNumber(
-                (current.dex?.position === SwapPosition.Post
-                    ? current.dex.quoteAmount
-                    : current.receiveAmount) ?? 0,
-            ),
+            BigNumber(current.receiveAmount ?? 0),
             denomination(),
             separator(),
             getFinalAssetReceive(current),
@@ -108,51 +81,26 @@ const TransactionClaimed = (props: { bridgeStatusLink?: JSX.Element }) => {
     const receiveDenomination = () =>
         formatDenomination(denomination(), getFinalAssetReceive(swap()!));
 
-    const postBridge = () => getPostBridgeDetail(swap()?.bridge);
-
     return (
         <div>
             <Show when={claimBroadcast() === true} fallback={<Broadcasting />}>
                 <h2>{t("congrats")}</h2>
-                <Show
-                    when={postBridge()}
-                    fallback={
-                        <p>
-                            {t("successfully_swapped", {
-                                amount: receiveAmount(),
-                                denomination: receiveDenomination(),
-                            })}
-                        </p>
-                    }>
-                    {(bridge) => (
-                        <>
-                            <p>
-                                {t("bridge_transfer_pending", {
-                                    amount: receiveAmount(),
-                                    denomination: receiveDenomination(),
-                                    network:
-                                        getAssetNetwork(
-                                            bridge().destinationAsset,
-                                        ) ?? bridge().destinationAsset,
-                                })}
-                            </p>
-                            {props.bridgeStatusLink}
-                        </>
-                    )}
-                </Show>
+                <p>
+                    {t("successfully_swapped", {
+                        amount: receiveAmount(),
+                        denomination: receiveDenomination(),
+                    })}
+                </p>
                 <hr />
                 <span class="btn" onClick={() => navigate("/swap")}>
                     {t("new_swap")}
                 </span>
                 <Show when={!preimage.loading && preimage() !== undefined}>
-                    <ExternalLink
-                        class="btn btn-explorer"
-                        href={paymentValidationUrl(
-                            (swap() as SubmarineSwap).invoice,
-                            preimage()!,
-                        )}>
-                        {t("validate_payment")}
-                    </ExternalLink>
+                    <CopyButton
+                        label="copy_preimage"
+                        btnClass="btn btn-light"
+                        data={preimage()!}
+                    />
                 </Show>
             </Show>
         </div>

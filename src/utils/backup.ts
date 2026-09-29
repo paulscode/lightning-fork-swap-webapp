@@ -3,7 +3,7 @@ import type { Accessor } from "solid-js";
 import { downloadJson } from "./download";
 import type { RescueFile } from "./rescueFile";
 
-const rescueFileNamePrefix = "boltz-rescue-key-DO-NOT-DELETE";
+const rescueFileNamePrefix = "lightning-fork-swap-rescue-key-DO-NOT-DELETE";
 
 export const getRescueFileName = (date = new Date()) =>
     `${rescueFileNamePrefix}-${Math.floor(date.getTime() / 1000)}`;

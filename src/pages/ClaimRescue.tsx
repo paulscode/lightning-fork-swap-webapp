@@ -3,8 +3,6 @@ import { hex } from "@scure/base";
 import { useParams } from "@solidjs/router";
 import { OutputType } from "boltz-core";
 import {
-    type ChainPairTypeTaproot,
-    type ChainSwapDetails,
     type RestorableSwap,
     type ReversePairTypeTaproot,
     type SwapStatusResponse,
@@ -26,16 +24,12 @@ import {
 import BlockExplorer, {
     BlockExplorerTargetKind,
 } from "../components/BlockExplorer";
-import {
-    isToUnconfidentialLiquid,
-    unconfidentialExtra,
-} from "../components/Fees";
 import LoadingSpinner from "../components/LoadingSpinner";
 import SwapHeader from "../components/SwapHeader";
 import { getSwapIconAssets } from "../components/SwapIcons";
 import { hiddenInformation } from "../components/settings/PrivacyMode";
 import SettingsMenu from "../components/settings/SettingsMenu";
-import { type AssetType, LN, isEvmAsset } from "../consts/Assets";
+import { type AssetType, LN } from "../consts/Assets";
 import { useCreateContext } from "../context/Create";
 import { useGlobalContext } from "../context/Global";
 import { useRescueContext } from "../context/Rescue";
@@ -45,7 +39,7 @@ import { formatError } from "../utils/errors";
 import { getPair } from "../utils/helper";
 import { extractAddress } from "../utils/invoice";
 import { derivePreimageFromRescueKey, getXpub } from "../utils/rescueFile";
-import type { ChainSwap, ReverseSwap, SomeSwap } from "../utils/swapCreator";
+import type { ReverseSwap, SomeSwap } from "../utils/swapCreator";
 
 export const verifyClaimPreimage = (
     preimage: Uint8Array,
@@ -69,10 +63,9 @@ export const mapClaimableSwap = ({
 }: {
     swap: RestorableSwap &
         Pick<SwapStatusResponse, "transaction"> & { preimage?: string };
-    pair: ChainPairTypeTaproot | ReversePairTypeTaproot;
+    pair: ReversePairTypeTaproot;
 }):
-    | (Partial<ChainSwap | ReverseSwap> &
-          Pick<SwapStatusResponse, "transaction">)
+    | (Partial<ReverseSwap> & Pick<SwapStatusResponse, "transaction">)
     | undefined => {
     if (swap === undefined) {
         return undefined;
@@ -83,60 +76,17 @@ export const mapClaimableSwap = ({
         return undefined;
     }
 
-    const unconfidentialExtraFee = isToUnconfidentialLiquid({
-        assetReceive: () => swap.to,
-        addressValid: () => true,
-        onchainAddress: () => claim.lockupAddress,
-    })
-        ? unconfidentialExtra
-        : 0;
-
-    if (swap.type === SwapType.Chain) {
-        const refund = swap.refundDetails;
-        if (refund === undefined && !isEvmAsset(swap.from)) {
-            return undefined;
-        }
-        return {
-            ...swap,
-            type: SwapType.Chain,
-            assetSend: swap.from,
-            assetReceive: swap.to,
-            receiveAmount:
-                claim.amount -
-                ((pair as ChainPairTypeTaproot).fees.minerFees.user.claim +
-                    unconfidentialExtraFee),
-            version: OutputType.Taproot,
-            claimPrivateKeyIndex: claim.keyIndex,
-            claimDetails: {
-                ...claim,
-                swapTree: claim.tree,
-            } as ChainSwapDetails,
-            ...(refund === undefined
-                ? {}
-                : {
-                      refundPrivateKeyIndex: refund.keyIndex,
-                      refundPrivateKey: refund.serverPublicKey,
-                      lockupDetails: {
-                          ...refund,
-                          swapTree: refund.tree,
-                      } as ChainSwapDetails,
-                  }),
-        };
-    } else if (swap.type === SwapType.Reverse) {
+    if (swap.type === SwapType.Reverse) {
         return {
             ...swap,
             type: SwapType.Reverse,
             assetSend: swap.from,
             assetReceive: swap.to,
             version: OutputType.Taproot,
-            blindingKey: claim.blindingKey,
             claimPrivateKeyIndex: claim.keyIndex,
             refundPublicKey: claim.serverPublicKey,
             swapTree: claim.tree,
-            receiveAmount:
-                claim.amount -
-                ((pair as ReversePairTypeTaproot).fees.minerFees.claim +
-                    unconfidentialExtraFee),
+            receiveAmount: claim.amount - pair.fees.minerFees.claim,
         };
     }
 
@@ -202,38 +152,6 @@ const ClaimRescue = () => {
                     );
                 }
 
-                return mapClaimableSwap({
-                    swap: {
-                        ...restorableSwap,
-                        preimage: hex.encode(
-                            derivePreimageFromRescueKey(
-                                rescue,
-                                claimDetails.keyIndex,
-                                restorableSwap.to as AssetType,
-                            ),
-                        ),
-                        status: swapStatus.status,
-                        transaction: {
-                            id: swapStatus.transaction.id,
-                            hex: swapStatus.transaction.hex,
-                        },
-                    },
-                    pair: reversePair,
-                });
-            }
-
-            if (restorableSwap.type === SwapType.Chain) {
-                const chainPair = getPair(
-                    pairs(),
-                    SwapType.Chain,
-                    restorableSwap.from,
-                    restorableSwap.to,
-                ) as ChainPairTypeTaproot;
-
-                if (chainPair === undefined) {
-                    throw Error(`failed to find a chain pair for ${params.id}`);
-                }
-
                 const derivedPreimage = derivePreimageFromRescueKey(
                     rescue,
                     claimDetails.keyIndex,
@@ -243,20 +161,18 @@ const ClaimRescue = () => {
                     derivedPreimage,
                     restorableSwap.preimageHash,
                 );
-                const derivedKey = hex.encode(derivedPreimage);
 
                 return mapClaimableSwap({
                     swap: {
                         ...restorableSwap,
-                        claimPrivateKey: derivedKey,
-                        preimage: derivedKey,
+                        preimage: hex.encode(derivedPreimage),
                         status: swapStatus.status,
                         transaction: {
                             id: swapStatus.transaction.id,
                             hex: swapStatus.transaction.hex,
                         },
                     },
-                    pair: chainPair,
+                    pair: reversePair,
                 });
             }
 
@@ -322,15 +238,12 @@ const ClaimRescue = () => {
             const res = await claim(
                 deriveKey,
                 {
-                    ...(swap as ReverseSwap | ChainSwap),
+                    ...(swap as ReverseSwap),
                     claimAddress: onchainAddress(),
                 },
                 swap.transaction as { hex: string },
                 true,
             );
-            if (res === undefined) {
-                throw new Error("claim failed");
-            }
             notify(
                 "success",
                 t("swap_completed", {

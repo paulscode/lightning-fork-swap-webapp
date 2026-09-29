@@ -1,303 +1,35 @@
 import { BigNumber } from "bignumber.js";
-import log from "loglevel";
 import { VsChevronRight } from "solid-icons/vs";
-import {
-    Show,
-    createMemo,
-    createResource,
-    createSignal,
-    onMount,
-} from "solid-js";
-import { formatUnits } from "viem";
+import { createMemo, createSignal } from "solid-js";
 
-import { config } from "../config";
-import {
-    BTC,
-    getAssetDisplaySymbol,
-    requireTokenConfig,
-} from "../consts/Assets";
-import type { Currency } from "../consts/Enums";
+import { BTC } from "../consts/Assets";
 import { useCreateContext } from "../context/Create";
-import { useFiatContext } from "../context/Fiat";
 import { useGlobalContext } from "../context/Global";
-import { BridgeMessagingFeeDisplayMode } from "../utils/Pair";
-import { formatAmount, formatDenomination } from "../utils/denomination";
-import {
-    convertToFiat,
-    getGasTokenPriceFailover,
-    hasGasTokenPriceLookup,
-} from "../utils/fiat";
-import { getPair } from "../utils/helper";
+import { formatAmount } from "../utils/denomination";
 import AmountDenominator from "./AmountDenominator";
-import { RoutingFee, getFeeHighlightClass } from "./Fees";
-
-const enum FeeFiatViewStatus {
-    Loading = "loading",
-    Error = "error",
-    Ok = "ok",
-}
-
-type FeeFiatView =
-    | { status: FeeFiatViewStatus.Loading }
-    | { status: FeeFiatViewStatus.Error }
-    | { status: FeeFiatViewStatus.Ok; amount: BigNumber };
-
-const TokenFee = (props: { token?: string }) => {
-    return (
-        <Show when={props.token}>
-            {(token) => (
-                <AmountDenominator value={getAssetDisplaySymbol(token())} />
-            )}
-        </Show>
-    );
-};
-
-const getBridgeMessagingFeeTokenDecimals = (
-    token: string | undefined,
-): number => {
-    if (token === undefined) {
-        return 18;
-    }
-
-    const assets = config.assets;
-    const directAssetConfig = assets?.[token];
-    const directDecimals =
-        directAssetConfig?.token?.decimals ??
-        directAssetConfig?.network?.nativeCurrency?.decimals;
-    if (directDecimals !== undefined) {
-        return directDecimals;
-    }
-
-    if (assets === undefined) {
-        return 18;
-    }
-
-    return (
-        Object.values(assets).find(
-            (assetConfig) => assetConfig.network?.gasToken === token,
-        )?.network?.nativeCurrency?.decimals ?? 18
-    );
-};
+import { RoutingFee } from "./Fees";
 
 const FeesCollapse = () => {
-    const { t, denomination, separator, regularPairs } = useGlobalContext();
-    const { btcPrice, fetchBtcPrice, fiatCurrency, usdToFiatRate } =
-        useFiatContext();
-    const { pair, receiveAmount, minerFee, sendAmount, boltzFee, getGasToken } =
+    const { t, denomination, separator } = useGlobalContext();
+    const { pair, receiveAmount, minerFee, sendAmount, boltzFee } =
         useCreateContext();
 
     const [feesExpanded, setFeesExpanded] = createSignal(false);
-
-    const bridgeMessagingFeeIncluded = createMemo(() => {
-        return (
-            pair().bridgeMessagingFeeDisplayMode ===
-            BridgeMessagingFeeDisplayMode.Details
-        );
-    });
-
-    const hasBridgeMessagingFeeTokenFiatLookup = createMemo(() => {
-        const token = pair().bridgeMessagingFeeToken;
-        return token !== undefined && hasGasTokenPriceLookup(token);
-    });
-
-    const [bridgeMessagingFeeTokenFiatPrice] = createResource<
-        BigNumber | Error | undefined,
-        { token: string; currency: Currency }
-    >(
-        () => {
-            const token = pair().bridgeMessagingFeeToken;
-            return token !== undefined && hasBridgeMessagingFeeTokenFiatLookup()
-                ? { token, currency: fiatCurrency() }
-                : undefined;
-        },
-        async ({ token, currency }) => {
-            try {
-                return await getGasTokenPriceFailover(token, currency);
-            } catch (error) {
-                log.warn("Failed to get gas token price", error);
-                return error instanceof Error
-                    ? error
-                    : new Error("Failed to get gas token price");
-            }
-        },
-    );
-
-    const bridgeMessagingFeeTokenDecimals = createMemo(() =>
-        getBridgeMessagingFeeTokenDecimals(pair().bridgeMessagingFeeToken),
-    );
 
     const boltzFeeAmount = createMemo(() => {
         if (!pair().isRoutable) {
             return BigNumber(0);
         }
 
+        // Recompute whenever a new quote comes in
         receiveAmount();
 
-        const boltzSwapSendAmount =
-            pair().boltzSwapSendAmountFromLatestQuote(sendAmount());
-        if (boltzSwapSendAmount === undefined) {
-            return BigNumber(0);
-        }
-
-        return pair().feeOnSend(boltzSwapSendAmount);
+        return pair().feeOnSend(sendAmount());
     });
 
-    const bridgeTransferFee = createMemo(() => {
-        if (!pair().isRoutable) {
-            return undefined;
-        }
-
-        receiveAmount();
-
-        return pair().bridgeTransferFeeFromLatestQuote(sendAmount());
-    });
-
-    const bridgeMessagingFee = createMemo(() => {
-        if (!pair().isRoutable) {
-            return undefined;
-        }
-
-        receiveAmount();
-
-        return pair().bridgeMessagingFeeFromLatestQuote(sendAmount());
-    });
-
-    const hasBridgeMessagingFee = createMemo(() => {
-        const fee = bridgeMessagingFee();
-        return fee !== undefined && fee > 0n;
-    });
-
-    const totalCollapsibleFeesFiatView = createMemo<FeeFiatView>(() => {
-        receiveAmount();
-
-        const rate = btcPrice();
-        const totalSatsFee = BigNumber(minerFee()).plus(boltzFeeAmount());
-
-        if (totalSatsFee.isGreaterThan(0)) {
-            if (rate === null) {
-                return { status: FeeFiatViewStatus.Loading };
-            }
-
-            if (rate instanceof Error) {
-                return { status: FeeFiatViewStatus.Error };
-            }
-        }
-
-        const btcFeesFiat =
-            rate instanceof BigNumber && totalSatsFee.isGreaterThan(0)
-                ? convertToFiat(totalSatsFee, rate)
-                : BigNumber(0);
-
-        let amount = btcFeesFiat;
-
-        const transferFee = bridgeTransferFee();
-        const transferFeeAsset = pair().bridgeTransferFeeAsset;
-        if (
-            transferFee !== undefined &&
-            !transferFee.isNaN() &&
-            transferFeeAsset !== undefined
-        ) {
-            const { decimals } = requireTokenConfig(transferFeeAsset);
-            const transferFeeUsd = transferFee.div(BigNumber(10).pow(decimals));
-            const usdToFiat = usdToFiatRate();
-
-            if (!(usdToFiat instanceof BigNumber)) {
-                return {
-                    status:
-                        rate === null
-                            ? FeeFiatViewStatus.Loading
-                            : FeeFiatViewStatus.Error,
-                };
-            }
-
-            amount = amount.plus(transferFeeUsd.multipliedBy(usdToFiat));
-        }
-
-        const messagingFee = bridgeMessagingFee();
-        const messagingFeeTokenFiatRate = bridgeMessagingFeeTokenFiatPrice();
-
-        if (bridgeMessagingFeeIncluded() && hasBridgeMessagingFee()) {
-            if (messagingFeeTokenFiatRate === undefined) {
-                if (!hasBridgeMessagingFeeTokenFiatLookup()) {
-                    return { status: FeeFiatViewStatus.Error };
-                }
-
-                return { status: FeeFiatViewStatus.Loading };
-            }
-
-            if (messagingFeeTokenFiatRate instanceof Error) {
-                return { status: FeeFiatViewStatus.Error };
-            }
-            if (messagingFee === undefined) {
-                return { status: FeeFiatViewStatus.Error };
-            }
-
-            amount = amount.plus(
-                BigNumber(
-                    formatUnits(
-                        messagingFee,
-                        bridgeMessagingFeeTokenDecimals(),
-                    ),
-                ).multipliedBy(messagingFeeTokenFiatRate),
-            );
-        }
-
-        return {
-            status: FeeFiatViewStatus.Ok,
-            amount,
-        };
-    });
-
-    const renderTotalCollapsibleFeesFiatView = () => {
-        const view = totalCollapsibleFeesFiatView();
-
-        switch (view.status) {
-            case FeeFiatViewStatus.Ok:
-                return (
-                    <span class="fees-toggle-value">
-                        ≈&nbsp;
-                        <span data-testid="fees-total-amount">
-                            {view.amount.toFixed(2)}
-                        </span>
-                        &nbsp;{fiatCurrency()}
-                    </span>
-                );
-
-            case FeeFiatViewStatus.Loading:
-                return (
-                    <span class="fees-toggle-value">
-                        <span class="skeleton" />
-                    </span>
-                );
-
-            case FeeFiatViewStatus.Error:
-                return (
-                    <span class="fees-toggle-value">
-                        {t("fiat_rate_not_available")}
-                    </span>
-                );
-
-            default: {
-                const exhaustiveCheck: never = view;
-                return exhaustiveCheck;
-            }
-        }
-    };
-
-    const formattedBridgeMessagingFee = createMemo(() => {
-        const fee = bridgeMessagingFee();
-        if (fee === undefined || fee <= 0n) {
-            return undefined;
-        }
-
-        return BigNumber(formatUnits(fee, bridgeMessagingFeeTokenDecimals()))
-            .toFixed(6)
-            .replace(/\.?0+$/, "");
-    });
-
-    onMount(() => {
-        void fetchBtcPrice();
-    });
+    const totalFees = createMemo(() =>
+        BigNumber(minerFee()).plus(boltzFeeAmount()),
+    );
 
     return (
         <>
@@ -313,7 +45,17 @@ const FeesCollapse = () => {
                     </span>
                     {t("swap_fees")}:
                 </span>
-                {renderTotalCollapsibleFeesFiatView()}
+                <span class="fees-toggle-value">
+                    <span data-testid="fees-total-amount">
+                        {formatAmount(
+                            totalFees(),
+                            denomination(),
+                            separator(),
+                            BTC,
+                        )}
+                    </span>
+                    <AmountDenominator value={denomination()} />
+                </span>
             </button>
             <div
                 class="fees-details-shell"
@@ -337,23 +79,7 @@ const FeesCollapse = () => {
                         </span>
                         <br />
                         {t("fee")} (
-                        <span
-                            class={
-                                config.isPro
-                                    ? getFeeHighlightClass(
-                                          boltzFee(),
-                                          pair().swapToCreate?.type ===
-                                              undefined
-                                              ? undefined
-                                              : getPair(
-                                                    regularPairs(),
-                                                    pair().swapToCreate!.type,
-                                                    pair().fromAsset,
-                                                    pair().toAsset,
-                                                )?.fees.percentage,
-                                      )
-                                    : undefined
-                            }>
+                        <span>
                             {boltzFee().toString().replaceAll(".", separator())}
                             %
                         </span>
@@ -370,88 +96,10 @@ const FeesCollapse = () => {
                             </span>
                             <AmountDenominator value={denomination()} />
                         </span>
-                        <Show
-                            when={
-                                bridgeTransferFee() !== undefined &&
-                                bridgeTransferFee()!.isGreaterThan(0) &&
-                                pair().bridgeTransferFeeAsset !== undefined
-                            }>
-                            <br />
-                            {t("bridge_transfer_fee")}:{" "}
-                            <span class="fee-amount">
-                                <span data-testid="bridge-transfer-fee">
-                                    {formatAmount(
-                                        bridgeTransferFee()!,
-                                        denomination(),
-                                        separator(),
-                                        pair().bridgeTransferFeeAsset!,
-                                        true,
-                                    )}
-                                </span>
-                                <AmountDenominator
-                                    value={formatDenomination(
-                                        denomination(),
-                                        pair().bridgeTransferFeeAsset!,
-                                    )}
-                                />
-                            </span>
-                        </Show>
-                        <Show
-                            when={
-                                pair().bridgeMessagingFeeDisplayMode ===
-                                    BridgeMessagingFeeDisplayMode.Details &&
-                                hasBridgeMessagingFee() &&
-                                formattedBridgeMessagingFee() !== undefined
-                            }>
-                            <br />
-                            {t("bridge_messaging_fee")}:{" "}
-                            <span class="fee-amount">
-                                <span
-                                    class="bridge-messaging-fee"
-                                    data-testid="bridge-messaging-fee">
-                                    {formattedBridgeMessagingFee()}
-                                </span>
-                                <TokenFee
-                                    token={pair().bridgeMessagingFeeToken}
-                                />
-                            </span>
-                        </Show>
-                        <Show
-                            when={
-                                getGasToken() &&
-                                config.assets?.[pair().toAsset]?.network
-                                    ?.gasToken
-                            }>
-                            <br />
-                            {t("gas_topup_label", {
-                                gasToken:
-                                    config.assets?.[pair().toAsset]?.network
-                                        ?.gasToken,
-                            })}
-                        </Show>
                     </label>
                 </div>
             </div>
             <RoutingFee />
-            <Show
-                when={
-                    pair().bridgeMessagingFeeDisplayMode ===
-                        BridgeMessagingFeeDisplayMode.Inline &&
-                    hasBridgeMessagingFee() &&
-                    formattedBridgeMessagingFee() !== undefined
-                }>
-                <span class="fees-extra-line">
-                    {t("bridge_messaging_fee")}:{" "}
-                    <span class="fee-amount">
-                        <span
-                            class="bridge-messaging-fee"
-                            data-testid="bridge-messaging-fee">
-                            {formattedBridgeMessagingFee()}
-                        </span>
-                        <TokenFee token={pair().bridgeMessagingFeeToken} />
-                    </span>
-                </span>
-            </Show>
         </>
     );
 };

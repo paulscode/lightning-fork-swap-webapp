@@ -1,4 +1,3 @@
-import { SwapType } from "boltz-swaps/types";
 import { type Accessor, Show } from "solid-js";
 
 import LoadingSpinner from "../components/LoadingSpinner";
@@ -25,9 +24,6 @@ const TransactionMempool = (props: { swap: Accessor<SomeSwap | null> }) => {
             <div>
                 <h2>{t("tx_in_mempool")}</h2>
                 <p>{t("tx_in_mempool_subline")}</p>
-                <Show when={props.swap()?.type === SwapType.Chain}>
-                    <h3>{t("tx_in_mempool_warning")}</h3>
-                </Show>
                 <LoadingSpinner />
             </div>
         </Show>

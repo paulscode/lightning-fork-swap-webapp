@@ -1,7 +1,5 @@
 import { makePersisted } from "@solid-primitives/storage";
-import { type Navigator, useNavigate } from "@solidjs/router";
 import BigNumber from "bignumber.js";
-import { isKnownTokenAddress } from "boltz-swaps/evm";
 import { decodeInvoice } from "boltz-swaps/invoice";
 import {
     type Accessor,
@@ -14,16 +12,8 @@ import {
     useContext,
 } from "solid-js";
 
-import { config } from "../config";
-import {
-    type AssetType,
-    BTC,
-    LBTC,
-    LN,
-    assets,
-    isBitcoinOnlyPair,
-} from "../consts/Assets";
-import { type AssetSelection, Side, UrlParam } from "../consts/Enums";
+import { type AssetType, BTC, LN, assets } from "../consts/Assets";
+import { Side, UrlParam } from "../consts/Enums";
 import type { DictKey } from "../i18n/i18n";
 import Pair, { RequiredInput } from "../utils/Pair";
 import { validateAddress } from "../utils/compat";
@@ -31,7 +21,7 @@ import { isInvoice, isLnurl } from "../utils/invoice";
 import { getUrlParam, resetUrlParam, urlParamIsSet } from "../utils/urlParams";
 import { useGlobalContext } from "./Global";
 
-const isValidForAsset = (asset: typeof BTC | typeof LBTC, address: string) => {
+const isValidForAsset = (asset: typeof BTC, address: string) => {
     try {
         return validateAddress(asset, address);
 
@@ -71,18 +61,6 @@ const handleDestination: Partial<
             return { destinationAsset: BTC, destination };
         },
     },
-    [LBTC]: {
-        isValid: (destination) => isValidForAsset(LBTC, destination),
-        action: (
-            destination,
-            { setOnchainAddress, setAssetReceive, setAddressValid },
-        ) => {
-            setOnchainAddress(destination);
-            setAssetReceive(LBTC);
-            setAddressValid(true);
-            return { destinationAsset: LBTC, destination };
-        },
-    },
     [LN]: {
         isValid: (destination) =>
             isInvoice(destination) || isLnurl(destination),
@@ -120,7 +98,7 @@ const setDestination = (
             }
         }
 
-        if (receiveAsset === BTC || receiveAsset === LBTC) {
+        if (receiveAsset === BTC) {
             setOnchainAddress(destination);
             setAssetReceive(receiveAsset);
             setAddressValid(false);
@@ -163,7 +141,6 @@ const handleUrlParams = (
     setAddressValid: Setter<boolean>,
     setInvoiceValid: Setter<boolean>,
     setDestinationLocked: Setter<boolean>,
-    navigate: Navigator,
 ) => {
     const setAssetReceive = (asset: string) => {
         setPair(new Pair(pair().pairs, pair().fromAsset, asset));
@@ -200,7 +177,7 @@ const handleUrlParams = (
         setPair(new Pair(pair().pairs, fromAsset, toAsset));
     }
 
-    // Lightning invoice amounts take precedence unless this is a LN addr or bolt12 offer
+    // Lightning invoice amounts take precedence unless this is a LN address
     if (
         destinationAsset !== LN ||
         destination === undefined ||
@@ -249,13 +226,6 @@ const handleUrlParams = (
         UrlParam.ParentOrigin,
     ];
 
-    if (
-        config.isPro &&
-        params.some((param) => urlParamIsSet(getUrlParam(param)))
-    ) {
-        navigate("/swap");
-    }
-
     params.forEach((param) => {
         if (urlParamIsSet(getUrlParam(param))) {
             resetUrlParam(param);
@@ -266,22 +236,12 @@ const handleUrlParams = (
 export type CreateContextType = {
     pair: Accessor<Pair>;
     setPair: Setter<Pair>;
-    getGasToken: Accessor<boolean | undefined>;
-    setGetGasToken: Setter<boolean | undefined>;
     invoice: Accessor<string>;
     setInvoice: Setter<string>;
     lnurl: Accessor<string>;
     setLnurl: Setter<string>;
-    bolt12Offer: Accessor<string | undefined>;
-    setBolt12Offer: Setter<string | undefined>;
     onchainAddress: Accessor<string>;
     setOnchainAddress: Setter<string>;
-    assetSelection: Accessor<AssetSelection | null>;
-    setAssetSelection: Setter<AssetSelection | null>;
-    assetSelected: Accessor<string>;
-    setAssetSelected: Setter<string>;
-    networkSelectCanonical: Accessor<string | undefined>;
-    setNetworkSelectCanonical: Setter<string | undefined>;
     valid: Accessor<boolean>;
     setValid: Setter<boolean>;
     invoiceValid: Accessor<boolean>;
@@ -313,8 +273,6 @@ export type CreateContextType = {
     setMinerFee: Setter<number>;
     setInvoiceError: Setter<DictKey | undefined>;
     invoiceError: Accessor<DictKey | undefined>;
-    bolt12Loading: Accessor<boolean>;
-    setBolt12Loading: Setter<boolean>;
     quoteLoading: Accessor<boolean>;
     setQuoteLoading: Setter<boolean>;
     quoteError: Accessor<DictKey | undefined>;
@@ -326,14 +284,10 @@ export type CreateContextType = {
 const CreateContext = createContext<CreateContextType>();
 
 const CreateProvider = (props: { children: JSX.Element }) => {
-    const navigate = useNavigate();
-    const { pairs, regularPairs, bitcoinOnly } = useGlobalContext();
+    const { pairs } = useGlobalContext();
 
     const [invoice, setInvoice] = createSignal<string>("");
     const [lnurl, setLnurl] = createSignal("");
-    const [bolt12Offer, setBolt12Offer] = createSignal<string | undefined>(
-        undefined,
-    );
     const [onchainAddress, setOnchainAddress] = createSignal("");
 
     // eslint-disable-next-line solid/reactivity
@@ -349,18 +303,6 @@ const CreateProvider = (props: { children: JSX.Element }) => {
     const [pair, setPair] = createSignal<Pair>(
         new Pair(undefined, assetFrom(), assetTo()),
     );
-    const [getGasToken, setGetGasToken] = createSignal<boolean | undefined>(
-        undefined,
-    );
-
-    // asset selection
-    const [assetSelection, setAssetSelection] =
-        createSignal<AssetSelection | null>(null);
-    const [assetSelected, setAssetSelected] = createSignal<string>("");
-    const [networkSelectCanonical, setNetworkSelectCanonical] = createSignal<
-        string | undefined
-    >(undefined);
-
     // validation
     const [valid, setValid] = createSignal(false);
     const [invoiceValid, setInvoiceValid] = createSignal(false);
@@ -369,46 +311,17 @@ const CreateProvider = (props: { children: JSX.Element }) => {
     const [invoiceError, setInvoiceError] = createSignal<DictKey | undefined>(
         undefined,
     );
-    const [bolt12Loading, setBolt12Loading] = createSignal(false);
     const [quoteLoading, setQuoteLoading] = createSignal(false);
     const [quoteError, setQuoteError] = createSignal<DictKey | undefined>(
         undefined,
     );
     const [destinationLocked, setDestinationLocked] = createSignal(false);
 
-    const resetDestinationState = () => {
-        if (destinationLocked()) {
-            return;
-        }
-        setInvoice("");
-        setInvoiceValid(false);
-        setInvoiceError(undefined);
-        setLnurl("");
-        setBolt12Offer(undefined);
-        setOnchainAddress("");
-        setAddressValid(false);
-    };
-
-    const normalizeBitcoinOnlyPair = (current: Pair) => {
-        if (isBitcoinOnlyPair(current.fromAsset, current.toAsset)) {
-            return current;
-        }
-
-        return new Pair(pairs(), LN, BTC, regularPairs());
-    };
-
-    const hasBlockedOnchainAddress = () =>
-        isKnownTokenAddress(pair().toAsset, onchainAddress());
-
     createEffect(() => {
         if (amountValid() && pair().isRoutable) {
             const requiredInput = pair().requiredInput;
-            const validDestinationAddress =
-                addressValid() && !hasBlockedOnchainAddress();
             if (
-                ((requiredInput === RequiredInput.Address ||
-                    requiredInput === RequiredInput.Web3) &&
-                    validDestinationAddress) ||
+                (requiredInput === RequiredInput.Address && addressValid()) ||
                 (requiredInput === RequiredInput.Invoice && invoiceValid())
             ) {
                 setValid(true);
@@ -418,22 +331,9 @@ const CreateProvider = (props: { children: JSX.Element }) => {
         setValid(false);
     });
 
-    createEffect(() => {
-        if (addressValid() && hasBlockedOnchainAddress()) {
-            setAddressValid(false);
-        }
-    });
-
     createEffect(
-        on([pairs, regularPairs], () => {
-            setPair(
-                new Pair(
-                    pairs(),
-                    pair().fromAsset,
-                    pair().toAsset,
-                    regularPairs(),
-                ),
-            );
+        on([pairs], () => {
+            setPair(new Pair(pairs(), pair().fromAsset, pair().toAsset));
         }),
     );
 
@@ -441,25 +341,6 @@ const CreateProvider = (props: { children: JSX.Element }) => {
         const latest = pair();
         setAssetFrom(latest.fromAsset);
         setAssetTo(latest.toAsset);
-    });
-
-    createEffect(() => {
-        if (!bitcoinOnly()) return;
-
-        const latest = pair();
-        const normalized = normalizeBitcoinOnlyPair(latest);
-        if (
-            latest.fromAsset === normalized.fromAsset &&
-            latest.toAsset === normalized.toAsset
-        ) {
-            return;
-        }
-
-        if (latest.toAsset !== normalized.toAsset) {
-            resetDestinationState();
-        }
-
-        setPair(normalized);
     });
 
     // amounts
@@ -498,7 +379,6 @@ const CreateProvider = (props: { children: JSX.Element }) => {
         setAddressValid,
         setInvoiceValid,
         setDestinationLocked,
-        navigate,
     );
 
     return (
@@ -506,22 +386,12 @@ const CreateProvider = (props: { children: JSX.Element }) => {
             value={{
                 pair,
                 setPair,
-                getGasToken,
-                setGetGasToken,
                 invoice,
                 setInvoice,
                 lnurl,
                 setLnurl,
-                bolt12Offer,
-                setBolt12Offer,
                 onchainAddress,
                 setOnchainAddress,
-                assetSelection,
-                setAssetSelection,
-                assetSelected,
-                setAssetSelected,
-                networkSelectCanonical,
-                setNetworkSelectCanonical,
                 valid,
                 setValid,
                 invoiceValid,
@@ -553,8 +423,6 @@ const CreateProvider = (props: { children: JSX.Element }) => {
                 setMinerFee,
                 invoiceError,
                 setInvoiceError,
-                bolt12Loading,
-                setBolt12Loading,
                 quoteLoading,
                 setQuoteLoading,
                 quoteError,

@@ -38,7 +38,7 @@ export const historyListAction = ({ t, swap }: { t: tFn; swap: Swap }) => {
 const History = () => {
     const navigate = useNavigate();
 
-    const { getSwaps, getRdnsAll, clearSwaps, t } = useGlobalContext();
+    const { getSwaps, clearSwaps, t } = useGlobalContext();
 
     const [swaps, setSwaps] = createSignal<SomeSwap[]>([]);
     const [currentPage, setCurrentPage] = createSignal(1);
@@ -59,7 +59,6 @@ const History = () => {
         downloadJson(getExportFileName(), {
             version: latestStorageVersion,
             swaps: await getSwaps(),
-            rdns: await getRdnsAll(),
         });
     };
 

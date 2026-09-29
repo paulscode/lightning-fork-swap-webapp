@@ -12,7 +12,6 @@ export const handleCreateSwapError = async (
     notify: notifyFn,
     t: tFn,
     pair: Accessor<Pair>,
-    regularPairs: Accessor<Pairs | undefined>,
     setPairs: Setter<Pairs | undefined>,
     setSendAmount: Setter<BigNumber>,
     setAmountChanged: Setter<Side>,
@@ -34,7 +33,6 @@ export const handleCreateSwapError = async (
             fresh,
             current.fromAsset,
             current.toAsset,
-            regularPairs(),
         );
         const newAmount = tooLow
             ? await refreshed.getMinimum()

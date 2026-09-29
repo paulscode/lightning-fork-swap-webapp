@@ -1,9 +1,7 @@
 import { BigNumber } from "bignumber.js";
-import { isBolt12Offer } from "boltz-swaps/invoice";
-import { SwapType } from "boltz-swaps/types";
 import { createEffect, on } from "solid-js";
 
-import { LN, isBitcoinOnlyAsset } from "../consts/Assets";
+import { LN } from "../consts/Assets";
 import { Side } from "../consts/Enums";
 import { useCreateContext } from "../context/Create";
 import { useGlobalContext } from "../context/Global";
@@ -29,7 +27,7 @@ const InvoiceInput = (props: InvoiceInputProps = {}) => {
     let inputRef!: HTMLInputElement;
     let validationRequest = 0;
 
-    const { t, notify, pairs, regularPairs, bitcoinOnly } = useGlobalContext();
+    const { t, notify, pairs } = useGlobalContext();
     const {
         pair,
         setPair,
@@ -45,9 +43,7 @@ const InvoiceInput = (props: InvoiceInputProps = {}) => {
         setReceiveAmount,
         setSendAmount,
         setOnchainAddress,
-        setBolt12Offer,
         setAddressValid,
-        setBolt12Loading,
         setQuoteLoading,
     } = useCreateContext();
 
@@ -58,15 +54,12 @@ const InvoiceInput = (props: InvoiceInputProps = {}) => {
     };
 
     const resetInvoiceState = () => {
-        setBolt12Offer(undefined);
         setInvoiceValid(false);
         setLnurl("");
     };
 
     const canSwitchToAsset = (asset: string | null): asset is string =>
-        asset !== LN &&
-        asset !== null &&
-        (!bitcoinOnly() || isBitcoinOnlyAsset(asset));
+        asset !== LN && asset !== null;
 
     const validateInput = (input: HTMLInputElement) => {
         const inputValue = input.value.trim();
@@ -130,9 +123,7 @@ const InvoiceInput = (props: InvoiceInputProps = {}) => {
             if (switchesToAsset) {
                 const fromAsset =
                     pair().fromAsset === actualAsset ? LN : pair().fromAsset;
-                setPair(
-                    new Pair(pairs(), fromAsset, actualAsset, regularPairs()),
-                );
+                setPair(new Pair(pairs(), fromAsset, actualAsset));
                 setInvoice("");
                 setOnchainAddress(address);
                 setAddressValid(true);
@@ -145,41 +136,22 @@ const InvoiceInput = (props: InvoiceInputProps = {}) => {
                 setInvoice(invoiceValue);
                 setLnurl(invoiceValue);
             } else {
-                setBolt12Loading(true);
-                let isBolt12: boolean;
-                try {
-                    isBolt12 = isBolt12Offer(invoiceValue);
-                } finally {
-                    if (!isStale()) {
-                        setBolt12Loading(false);
-                    }
-                }
+                // Throws for invoices without the BLAKE2b feature bit
+                const sats = validateInvoice(invoiceValue);
+                setAmountChanged(Side.Receive);
+                setQuoteLoading(true);
+                const sendAmount = await pair().calculateSendAmount(
+                    BigNumber(sats),
+                    minerFee(),
+                );
                 if (isStale()) {
                     return;
                 }
-
-                if (isBolt12) {
-                    resetInvoiceState();
-                    setInvoice(invoiceValue);
-                    setBolt12Offer(invoiceValue);
-                } else {
-                    const sats = validateInvoice(invoiceValue);
-                    setAmountChanged(Side.Receive);
-                    setQuoteLoading(true);
-                    const sendAmount = await pair().calculateSendAmount(
-                        BigNumber(sats),
-                        minerFee(),
-                    );
-                    if (isStale()) {
-                        return;
-                    }
-                    setReceiveAmount(BigNumber(sats));
-                    setSendAmount(sendAmount);
-                    setInvoice(invoiceValue);
-                    setBolt12Offer(undefined);
-                    setLnurl("");
-                    setInvoiceValid(true);
-                }
+                setReceiveAmount(BigNumber(sats));
+                setSendAmount(sendAmount);
+                setInvoice(invoiceValue);
+                setLnurl("");
+                setInvoiceValid(true);
             }
 
             if (isStale()) {
@@ -210,10 +182,7 @@ const InvoiceInput = (props: InvoiceInputProps = {}) => {
                     return;
                 }
 
-                if (
-                    pair().swapToCreate?.type === SwapType.Submarine ||
-                    pair().toAsset === LN
-                ) {
+                if (pair().toAsset === LN) {
                     await validate(inputRef, invoice().trim());
                 }
             },

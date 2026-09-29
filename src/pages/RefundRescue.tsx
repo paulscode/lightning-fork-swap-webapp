@@ -1,10 +1,6 @@
 import { useLocation, useNavigate, useParams } from "@solidjs/router";
 import { OutputType } from "boltz-core";
-import {
-    type ChainSwapDetails,
-    type RestorableSwap,
-    getSwapStatus,
-} from "boltz-swaps/client";
+import { type RestorableSwap, getSwapStatus } from "boltz-swaps/client";
 import { SwapType } from "boltz-swaps/types";
 import log from "loglevel";
 import {
@@ -26,12 +22,7 @@ import RefundEta from "../components/RefundEta";
 import SwapHeader from "../components/SwapHeader";
 import { getSwapIconAssets } from "../components/SwapIcons";
 import SettingsMenu from "../components/settings/SettingsMenu";
-import {
-    type AssetType,
-    type RefundableAssetType,
-    type blockChainsAssets,
-    isEvmAsset,
-} from "../consts/Assets";
+import type { AssetType, RefundableAssetType } from "../consts/Assets";
 import { swapStatusFailed } from "../consts/SwapStatus";
 import { useGlobalContext } from "../context/Global";
 import { usePayContext } from "../context/Pay";
@@ -44,7 +35,7 @@ import {
     getTimeoutEta,
 } from "../utils/rescue";
 import { deriveKey } from "../utils/rescueFile";
-import type { ChainSwap, SomeSwap, SubmarineSwap } from "../utils/swapCreator";
+import type { SomeSwap, SubmarineSwap } from "../utils/swapCreator";
 
 export const mapSwap = (
     swap?: RestorableSwap,
@@ -66,35 +57,10 @@ export const mapSwap = (
                 assetSend: swap.from,
                 assetReceive: swap.to,
                 version: OutputType.Taproot,
-                blindingKey: refund.blindingKey,
                 address: refund.lockupAddress,
                 refundPrivateKeyIndex: refund.keyIndex,
                 claimPublicKey: refund.serverPublicKey,
                 timeoutBlockHeight: refund.timeoutBlockHeight,
-            };
-        }
-        case SwapType.Chain: {
-            const refund = swap.refundDetails;
-            if (refund === undefined && !isEvmAsset(swap.from)) {
-                return undefined;
-            }
-            const { claimDetails, refundDetails, ...rest } = swap;
-            return {
-                ...rest,
-                type: SwapType.Chain,
-                assetSend: swap.from,
-                assetReceive: swap.to,
-                version: OutputType.Taproot,
-                claimPrivateKeyIndex: claimDetails?.keyIndex,
-                ...(refund === undefined
-                    ? {}
-                    : {
-                          refundPrivateKeyIndex: refund.keyIndex,
-                          lockupDetails: {
-                              ...refundDetails,
-                              swapTree: refund.tree,
-                          } as ChainSwapDetails,
-                      }),
             };
         }
         case SwapType.Reverse: {
@@ -174,9 +140,7 @@ const RefundRescue = () => {
         }
         return currentSwap.type === SwapType.Submarine
             ? currentSwap.address
-            : currentSwap.type === SwapType.Chain
-              ? currentSwap.lockupDetails?.lockupAddress
-              : undefined;
+            : undefined;
     };
 
     const failureTitle = (): DictKey | undefined => {
@@ -251,7 +215,7 @@ const RefundRescue = () => {
                             refundDetails.timeoutBlockHeight;
 
                         const timeoutEta = getTimeoutEta(
-                            mappedSwap.assetSend as blockChainsAssets,
+                            mappedSwap.assetSend,
                             timeoutBlockHeight,
                             currentBlockHeight,
                         );
@@ -353,11 +317,7 @@ const RefundRescue = () => {
                         <Match when={!waitForSwapTimeout()}>
                             <Show when={refundTxId() === ""}>
                                 <RefundButton
-                                    swap={
-                                        swap as Accessor<
-                                            SubmarineSwap | ChainSwap
-                                        >
-                                    }
+                                    swap={swap as Accessor<SubmarineSwap>}
                                     setRefundTxId={setRefundTxId}
                                     deriveKeyFn={(index: number) => {
                                         const rescue = rescueFile();

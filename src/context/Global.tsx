@@ -21,35 +21,25 @@ import {
 } from "solid-js";
 
 import { config } from "../config";
-import {
-    type AssetType,
-    LBTC,
-    getAssetDisplaySymbol,
-    getAssetNetwork,
-    isBridgeAsset,
-    isEvmAsset,
-} from "../consts/Assets";
+import type { AssetType } from "../consts/Assets";
 import { Denomination } from "../consts/Enums";
 import { detectLanguage } from "../i18n/detect";
 import dict, { type DictKey } from "../i18n/i18n";
 import { type ECKeys, ECPair } from "../utils/ecpair";
 import { formatError } from "../utils/errors";
-import { getRegularReferral, isMobile } from "../utils/helper";
+import { isMobile } from "../utils/helper";
 import { deleteOldLogs, injectLogWriter } from "../utils/logs";
 import { migrateStorage } from "../utils/migration";
 import { stringSerializer } from "../utils/persistence";
 import {
     type RescueFile,
     deriveKey,
-    deriveKeyGasAbstraction,
     generateRescueFile,
     getXpub,
 } from "../utils/rescueFile";
 import type { SomeSwap } from "../utils/swapCreator";
 import { checkWasmSupported } from "../utils/wasmSupport";
 import { detectWebLNProvider } from "../utils/webln";
-
-export const liquidUncooperativeExtra = 3;
 
 type NotificationType = "success" | "error";
 export type deriveKeyFn = (index: number, asset: AssetType) => ECKeys;
@@ -64,8 +54,6 @@ export type GlobalContextType = {
     setOnline: Setter<boolean>;
     pairs: Accessor<Pairs | undefined>;
     setPairs: Setter<Pairs | undefined>;
-    regularPairs: Accessor<Pairs | undefined>;
-    setRegularPairs: Setter<Pairs | undefined>;
     wasmSupported: Accessor<boolean>;
     setWasmSupported: Setter<boolean>;
     refundAddress: Accessor<string | null>;
@@ -92,14 +80,8 @@ export type GlobalContextType = {
     setSettingsMenu: Setter<boolean>;
     privacyMode: Accessor<boolean>;
     setPrivacyMode: Setter<boolean>;
-    slippage: Accessor<number>;
-    setSlippage: Setter<number>;
-    gasTopUp: Accessor<boolean>;
-    setGasTopUp: Setter<boolean>;
     zeroConf: Accessor<boolean>;
     setZeroConf: Setter<boolean>;
-    bitcoinOnly: Accessor<boolean>;
-    setBitcoinOnly: Setter<boolean>;
     embeddedMode: Accessor<boolean>;
     setEmbeddedMode: Setter<boolean>;
     parentOrigin: Accessor<string | undefined>;
@@ -108,7 +90,6 @@ export type GlobalContextType = {
     t: tFn;
     notify: notifyFn;
     fetchPairs: () => Promise<void>;
-    fetchRegularPairs: () => Promise<void>;
 
     getLogs: () => Promise<Record<string, string[]>>;
     clearLogs: () => Promise<void>;
@@ -124,24 +105,10 @@ export type GlobalContextType = {
     clearSwaps: () => Promise<void>;
     updateSwapStatus: (id: string, newStatus: string) => Promise<boolean>;
 
-    hardwareDerivationPath: Accessor<string>;
-    setHardwareDerivationPath: Setter<string>;
-
-    setRdns: (address: string, rdns: string) => Promise<string>;
-    getRdnsAll: () => Promise<{ address: string; rdns: string }[]>;
-    getRdnsForAddress: (address: string) => Promise<string | null>;
-
     newKey: newKeyFn;
     deriveKey: deriveKeyFn;
-    deriveKeyGasAbstraction: (
-        chainId: number,
-        rescueFile?: RescueFile,
-    ) => ECKeys;
     getXpub: () => string;
     setLastUsedKey: Setter<number>;
-    getLastUsedEvmIndex: (currency: string) => Promise<number>;
-    setLastUsedEvmIndex: (currency: string, value: number) => Promise<number>;
-    clearLastUsedEvmIndex: () => Promise<void>;
     rescueFile: Accessor<RescueFile | null>;
     setRescueFile: Setter<RescueFile | null>;
     rescueFileBackupDone: Accessor<boolean>;
@@ -157,9 +124,6 @@ const GlobalProvider = (props: {
 }) => {
     const [online, setOnline] = createSignal<boolean>(true);
     const [pairs, setPairs] = createSignal<Pairs | undefined>(undefined);
-    const [regularPairs, setRegularPairs] = createSignal<Pairs | undefined>(
-        undefined,
-    );
 
     const [wasmSupported, setWasmSupported] = createSignal<boolean>(true);
     const [refundAddress, setRefundAddress] = createSignal<string | null>(null);
@@ -257,34 +221,10 @@ const GlobalProvider = (props: {
         return ECPair.fromPrivateKey(new Uint8Array(derived.privateKey));
     };
 
-    const deriveKeyGasAbstractionWrapper = (
-        chainId: number,
-        rf?: RescueFile,
-    ) => {
-        const file = rf ?? rescueFile();
-        if (file === null) {
-            throw new Error("rescue file is not initialised");
-        }
-        const derived = deriveKeyGasAbstraction(file, chainId);
-        if (derived.privateKey === null) {
-            throw new Error("derived private key is null");
-        }
-        return ECPair.fromPrivateKey(new Uint8Array(derived.privateKey));
-    };
-
-    const newKey = async (asset: AssetType) => {
-        if (isEvmAsset(asset)) {
-            const index = await getLastUsedEvmIndex(asset);
-            await setLastUsedEvmIndex(asset, index + 1);
-            return {
-                index,
-                key: deriveKeyWrapper(index, asset),
-            };
-        }
-
+    const newKey = (asset: AssetType) => {
         const index = lastUsedKey();
         setLastUsedKey(index + 1);
-        return { index, key: deriveKeyWrapper(index, asset) };
+        return Promise.resolve({ index, key: deriveKeyWrapper(index, asset) });
     };
 
     const getXpubWrapper = () => {
@@ -296,33 +236,15 @@ const GlobalProvider = (props: {
     };
 
     const notify = (type: NotificationType, message: unknown) => {
-        const messageStr = formatError(message, i18n());
+        const messageStr = formatError(message);
 
         setNotificationType(type);
         setNotification(messageStr);
     };
 
-    const addUncooperativeExtra = (pairs: Pairs) => {
-        Object.values(pairs.chain).forEach((assetPairs) => {
-            if (assetPairs[LBTC]) {
-                assetPairs[LBTC].fees.minerFees.user.claim +=
-                    liquidUncooperativeExtra;
-            }
-        });
-
-        Object.values(pairs.reverse).forEach((assetPairs) => {
-            if (assetPairs[LBTC]) {
-                assetPairs[LBTC].fees.minerFees.claim +=
-                    liquidUncooperativeExtra;
-            }
-        });
-    };
-
     const fetchPairs = async () => {
         try {
             const data = await getPairs();
-
-            addUncooperativeExtra(data);
 
             log.debug("getpairs", data);
             setOnline(true);
@@ -330,24 +252,6 @@ const GlobalProvider = (props: {
         } catch (error) {
             log.error("Error fetching pairs", error);
             setOnline(false);
-            throw formatError(error);
-        }
-    };
-
-    const fetchRegularPairs = async () => {
-        try {
-            const data = await getPairs({
-                headers: {
-                    referral: getRegularReferral(),
-                },
-            });
-
-            addUncooperativeExtra(data);
-
-            log.debug("Regular pairs", data);
-            setRegularPairs(data);
-        } catch (error) {
-            log.error("Error fetching regular pairs", error);
             throw formatError(error);
         }
     };
@@ -385,7 +289,7 @@ const GlobalProvider = (props: {
         name: "swaps",
     });
 
-    migrateStorage(paramsForage, swapsForage).catch((e) =>
+    migrateStorage(paramsForage).catch((e) =>
         log.error("Storage migration failed:", e),
     );
 
@@ -457,40 +361,6 @@ const GlobalProvider = (props: {
         await swapsForage.clear();
     };
 
-    const rdnsForage = localforage.createInstance({
-        name: "rdns",
-    });
-
-    const setRdns = (address: string, rdns: string) =>
-        rdnsForage.setItem(address.toLowerCase(), rdns);
-
-    const lastUsedEvmIndexForage = localforage.createInstance({
-        name: "lastUsedEvmIndex",
-    });
-
-    const getLastUsedEvmIndex = async (currency: string): Promise<number> => {
-        const value = await lastUsedEvmIndexForage.getItem<number>(currency);
-        return value ?? 0;
-    };
-
-    const setLastUsedEvmIndex = (currency: string, value: number) =>
-        lastUsedEvmIndexForage.setItem(currency, value);
-
-    const clearLastUsedEvmIndex = () => lastUsedEvmIndexForage.clear();
-
-    const getRdnsAll = async () => {
-        const result: { address: string; rdns: string }[] = [];
-
-        await rdnsForage.iterate<string, unknown>((rdns, address) => {
-            result.push({ address, rdns });
-        });
-
-        return result;
-    };
-
-    const getRdnsForAddress = (address: string) =>
-        rdnsForage.getItem<string>(address.toLowerCase());
-
     setI18n(detectLanguage(i18nConfigured(), i18nUrl(), setI18nUrl));
     void detectWebLNProvider().then((state) => setWebln(state));
     setWasmSupported(checkWasmSupported());
@@ -503,43 +373,11 @@ const GlobalProvider = (props: {
         },
     );
 
-    const [slippage, setSlippage] = makePersisted(
-        // eslint-disable-next-line solid/reactivity
-        createSignal<number>(0.01),
-        {
-            name: "slippage",
-        },
-    );
-
-    const [gasTopUp, setGasTopUp] = makePersisted(
-        // eslint-disable-next-line solid/reactivity
-        createSignal<boolean>(true),
-        {
-            name: "gasTopUp",
-        },
-    );
-
     const [zeroConf, setZeroConf] = makePersisted(
         // eslint-disable-next-line solid/reactivity
         createSignal<boolean>(true),
         {
             name: "zeroConf",
-        },
-    );
-
-    const [hardwareDerivationPath, setHardwareDerivationPath] = makePersisted(
-        // eslint-disable-next-line solid/reactivity
-        createSignal<string>(""),
-        {
-            name: "hardwareDerivationPath",
-        },
-    );
-
-    const [bitcoinOnly, setBitcoinOnly] = makePersisted(
-        // eslint-disable-next-line solid/reactivity
-        createSignal<boolean>(false),
-        {
-            name: "bitcoinOnly",
         },
     );
 
@@ -568,26 +406,10 @@ const GlobalProvider = (props: {
             ) as never,
     );
 
-    const resolveDisplaySymbols = (
-        template: string,
-        values?: BaseTemplateArgs,
-    ) => {
-        if (typeof values?.asset === "string") {
-            const raw = values.asset;
-            let display = getAssetDisplaySymbol(raw);
-            if (isBridgeAsset(raw)) {
-                const network = getAssetNetwork(raw);
-                if (network) {
-                    display = `${display} (${network})`;
-                }
-            }
-            values = { ...values, asset: display };
-        }
-        return resolveTemplate(template, values);
-    };
-
     // eslint-disable-next-line solid/reactivity
-    const t = translator(dictLocale, resolveDisplaySymbols) as unknown as tFn;
+    const t = translator(dictLocale, (template: string, values?: BaseTemplateArgs) =>
+        resolveTemplate(template, values),
+    ) as unknown as tFn;
 
     return (
         <GlobalContext.Provider
@@ -596,8 +418,6 @@ const GlobalProvider = (props: {
                 setOnline,
                 pairs,
                 setPairs,
-                regularPairs,
-                setRegularPairs,
                 wasmSupported,
                 setWasmSupported,
                 refundAddress,
@@ -624,14 +444,8 @@ const GlobalProvider = (props: {
                 setSettingsMenu,
                 privacyMode,
                 setPrivacyMode,
-                slippage,
-                setSlippage,
-                gasTopUp,
-                setGasTopUp,
                 zeroConf,
                 setZeroConf,
-                bitcoinOnly,
-                setBitcoinOnly,
                 embeddedMode,
                 setEmbeddedMode,
                 parentOrigin,
@@ -640,7 +454,6 @@ const GlobalProvider = (props: {
                 t,
                 notify,
                 fetchPairs,
-                fetchRegularPairs,
                 getLogs,
                 clearLogs,
                 updateSwapStatus,
@@ -651,22 +464,13 @@ const GlobalProvider = (props: {
                 getSwaps,
                 clearSwaps,
 
-                setRdns,
-                getRdnsForAddress,
-                getRdnsAll,
-                hardwareDerivationPath,
-                setHardwareDerivationPath,
 
                 newKey,
                 rescueFile,
                 setRescueFile,
                 setLastUsedKey,
-                getLastUsedEvmIndex,
-                setLastUsedEvmIndex,
-                clearLastUsedEvmIndex,
                 getXpub: getXpubWrapper,
                 deriveKey: deriveKeyWrapper,
-                deriveKeyGasAbstraction: deriveKeyGasAbstractionWrapper,
 
                 rescueFileBackupDone,
                 setRescueFileBackupDone,

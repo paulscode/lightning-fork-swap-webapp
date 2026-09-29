@@ -1,12 +1,10 @@
 import { hex } from "@scure/base";
 import type {
-    ChainPairTypeTaproot,
     Pairs,
     ReversePairTypeTaproot,
     SubmarinePairTypeTaproot,
 } from "boltz-swaps/client";
 import { SwapType } from "boltz-swaps/types";
-import { Buffer } from "buffer";
 
 import { chooseUrl, config } from "../config";
 import { isTor } from "../configs/base";
@@ -14,13 +12,7 @@ import { type AssetType, BTC, LN } from "../consts/Assets";
 import type { deriveKeyFn } from "../context/Global";
 import { type ECKeys, ECPair } from "./ecpair";
 import { formatError } from "./errors";
-import {
-    type ChainSwap,
-    type ReverseSwap,
-    type SomeSwap,
-    type SubmarineSwap,
-    isEvmSwap,
-} from "./swapCreator";
+import type { SomeSwap } from "./swapCreator";
 
 export const defaultTimeoutDuration = isTor() ? 45_000 : 15_000;
 
@@ -30,33 +22,9 @@ export const isIos = () =>
 export const isMobile = () =>
     isIos() || !!navigator.userAgent.match(/android|blackberry/gi) || false;
 
-export const getRegularReferral = (): string =>
-    isMobile() ? "boltz_webapp_mobile" : "boltz_webapp_desktop";
-
-export const getReferral = (): string => {
-    if (config.isPro) {
-        return "pro";
-    }
-    return getRegularReferral();
-};
-
-export const parseBlindingKey = (swap: SomeSwap, isRefund: boolean) => {
-    let blindingKey: string | undefined;
-
-    switch (swap.type) {
-        case SwapType.Chain:
-            if (isRefund) {
-                blindingKey = (swap as ChainSwap).lockupDetails.blindingKey;
-            } else {
-                blindingKey = (swap as ChainSwap).claimDetails.blindingKey;
-            }
-            break;
-        default:
-            blindingKey = (swap as SubmarineSwap | ReverseSwap).blindingKey;
-    }
-
-    return blindingKey ? Buffer.from(blindingKey, "hex") : undefined;
-};
+// Sent as the referral header so the operator can tell web app swaps apart
+export const getReferral = (): string =>
+    isMobile() ? "lightning_fork_swap_mobile" : "lightning_fork_swap_desktop";
 
 export const cropString = (str: string, maxLen = 40, subStrSize = 19) => {
     if (str.length < maxLen) {
@@ -97,10 +65,7 @@ export const getApiUrl = (): string => {
 export const coalesceLn = (asset: string) => (asset === LN ? BTC : asset);
 
 export const getPair = <
-    T extends
-        | SubmarinePairTypeTaproot
-        | ReversePairTypeTaproot
-        | ChainPairTypeTaproot,
+    T extends SubmarinePairTypeTaproot | ReversePairTypeTaproot,
 >(
     pairs: Pairs | undefined,
     swapType: SwapType,
@@ -109,9 +74,6 @@ export const getPair = <
 ): T | undefined => {
     if (pairs === undefined) return undefined;
 
-    if (swapType === SwapType.Dex || swapType === SwapType.Commitment) {
-        return undefined;
-    }
     const pairSwapType = pairs[swapType];
     if (pairSwapType === undefined) return undefined;
     const pairAssetSend = pairSwapType[coalesceLn(assetSend)];
@@ -229,23 +191,9 @@ export const getDestinationAddress = (
         return "";
     }
 
-    if (swap.type === SwapType.Commitment) {
-        return "";
-    }
-
-    if (isEvmSwap(swap) && swap.signer !== undefined) {
-        return swap.signer;
-    }
-
     if (swap.type === SwapType.Submarine) {
-        const submarineSwap = swap as SubmarineSwap;
-        return submarineSwap.originalDestination || submarineSwap.invoice;
+        return swap.originalDestination || swap.invoice;
     }
 
-    if (swap.type === SwapType.Reverse || swap.type === SwapType.Chain) {
-        const chainSwap = swap as ReverseSwap | ChainSwap;
-        return chainSwap.originalDestination || chainSwap.claimAddress;
-    }
-
-    return (swap as SubmarineSwap).claimAddress!;
+    return swap.originalDestination || swap.claimAddress;
 };

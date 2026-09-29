@@ -18,9 +18,9 @@ export const isPairValid = (
             return pairs[SwapType.Submarine][assetSend][BTC] !== undefined;
         } else if (assetSend === LN) {
             return pairs[SwapType.Reverse][BTC][assetReceive] !== undefined;
-        } else {
-            return pairs[SwapType.Chain][assetSend][assetReceive] !== undefined;
         }
+
+        return false;
 
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
     } catch (e) {
