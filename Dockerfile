@@ -10,9 +10,8 @@ RUN bun ci --ignore-scripts
 
 ARG NETWORK=mainnet
 
-RUN bun --filter boltz-swaps generate
 RUN bun run $NETWORK
-RUN if [ "$NETWORK" = "pro" ]; then bun run build:pro; else bun run build:regular; fi
+RUN bun run build:regular
 
 FROM nginx:alpine AS final
 

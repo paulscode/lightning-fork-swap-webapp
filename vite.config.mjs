@@ -26,7 +26,7 @@ const packageJson = JSON.parse(
 const logMethods = new Set(["trace", "debug", "info", "warn", "error", "log"]);
 
 const logPersistenceTransformPlugin = () => ({
-    name: "boltz-log-persistence-transform",
+    name: "log-persistence-transform",
     enforce: "pre",
     transform(code, id) {
         const normalizedId = id.replaceAll("\\", "/").split("?")[0];
@@ -158,11 +158,9 @@ if (!fs.existsSync(configFile)) {
 ❌ Missing configuration file: src/config.ts
 
 Please run one of the following commands to generate a config file:
-    - \x1b[36mnpm run mainnet\x1b[0m
-    - \x1b[36mnpm run regtest\x1b[0m
-    - \x1b[36mnpm run beta\x1b[0m
-    - \x1b[36mnpm run pro\x1b[0m
-  
+    - \x1b[36mbun run mainnet\x1b[0m
+    - \x1b[36mbun run regtest\x1b[0m
+
 Then start the dev server again.
   `);
     process.exit(1);
@@ -204,18 +202,6 @@ export default defineConfig({
         cssCodeSplit: true,
         commonjsOptions: {
             transformMixedEsModules: true,
-        },
-        rollupOptions: {
-            output: {
-                manualChunks(id) {
-                    if (id.includes("/node_modules/viem/")) {
-                        return "viem";
-                    }
-                    if (id.includes("/@solana/web3.js/")) {
-                        return "solana-web3";
-                    }
-                },
-            },
         },
     },
     css: {
