@@ -1,9 +1,7 @@
 import { render, screen } from "@solidjs/testing-library";
 import userEvent from "@testing-library/user-event";
-import { NetworkTransport } from "boltz-swaps/types";
 
 import BackupDownloadContent from "../../src/components/BackupDownloadContent";
-import { useWeb3Signer } from "../../src/context/Web3";
 import i18n from "../../src/i18n/i18n";
 import { downloadRescueFile } from "../../src/utils/backup";
 import { isMobile } from "../../src/utils/helper";
@@ -18,14 +16,6 @@ vi.mock("../../src/utils/helper", async () => {
     return {
         ...actual,
         isMobile: vi.fn(),
-    };
-});
-
-vi.mock("../../src/context/Web3", async () => {
-    const actual = await vi.importActual("../../src/context/Web3");
-    return {
-        ...actual,
-        useWeb3Signer: vi.fn(),
     };
 });
 
@@ -54,12 +44,9 @@ describe("BackupDownloadContent", () => {
         localStorage.clear();
 
         vi.mocked(isMobile).mockReturnValue(false);
-        vi.mocked(useWeb3Signer).mockReturnValue({
-            browserWalletTransports: () => new Set(),
-        } as ReturnType<typeof useWeb3Signer>);
     });
 
-    test("should download the rescue key without showing mnemonic alternative by default", async () => {
+    test("should download the rescue key without showing mnemonic alternative on desktop", async () => {
         const user = userEvent.setup();
 
         renderComponent();
@@ -69,6 +56,7 @@ describe("BackupDownloadContent", () => {
         });
 
         expect(screen.queryByText(i18n.en.show_rescue_key_instead)).toBeNull();
+        expect(screen.queryByTestId("show-mnemonic-backup")).toBeNull();
 
         await user.click(
             screen.getByRole("button", { name: i18n.en.download_new_key }),
@@ -79,11 +67,25 @@ describe("BackupDownloadContent", () => {
         expect(onMnemonicRequested).not.toHaveBeenCalled();
     });
 
-    test("should show a mnemonic alternative for mobile browser-wallet clients while keeping download as the primary action", async () => {
+    test("should notify and not advance when the download fails", async () => {
+        const user = userEvent.setup();
+        vi.mocked(downloadRescueFile).mockImplementationOnce(() => {
+            throw new Error("download failed");
+        });
+
+        renderComponent();
+
+        await user.click(
+            screen.getByRole("button", { name: i18n.en.download_new_key }),
+        );
+
+        expect(onFileDownloaded).not.toHaveBeenCalled();
+        expect(globalSignals.notificationType()).toBe("error");
+        expect(globalSignals.notification()).toContain("download failed");
+    });
+
+    test("should show a mnemonic alternative on mobile while keeping download as the primary action", async () => {
         vi.mocked(isMobile).mockReturnValue(true);
-        vi.mocked(useWeb3Signer).mockReturnValue({
-            browserWalletTransports: () => new Set([NetworkTransport.Evm]),
-        } as ReturnType<typeof useWeb3Signer>);
 
         renderComponent();
 
@@ -97,65 +99,10 @@ describe("BackupDownloadContent", () => {
         );
     });
 
-    test("should show a mnemonic alternative for mobile Tron browser-wallet clients", () => {
-        vi.mocked(isMobile).mockReturnValue(true);
-        vi.mocked(useWeb3Signer).mockReturnValue({
-            browserWalletTransports: () => new Set([NetworkTransport.Tron]),
-        } as ReturnType<typeof useWeb3Signer>);
-
-        renderComponent();
-
-        expect(screen.getByTestId("show-mnemonic-backup")).toHaveTextContent(
-            i18n.en.show_rescue_key_instead,
-        );
-    });
-
-    test("should not show the mnemonic alternative on desktop with a Tron browser wallet", () => {
-        vi.mocked(isMobile).mockReturnValue(false);
-        vi.mocked(useWeb3Signer).mockReturnValue({
-            browserWalletTransports: () => new Set([NetworkTransport.Tron]),
-        } as ReturnType<typeof useWeb3Signer>);
-
-        renderComponent();
-
-        expect(screen.queryByTestId("show-mnemonic-backup")).toBeNull();
-    });
-
-    test("should not show the mnemonic alternative on mobile without an injected browser wallet", () => {
-        vi.mocked(isMobile).mockReturnValue(true);
-        vi.mocked(useWeb3Signer).mockReturnValue({
-            browserWalletTransports: () => new Set(),
-        } as ReturnType<typeof useWeb3Signer>);
-
-        renderComponent();
-
-        expect(screen.queryByTestId("show-mnemonic-backup")).toBeNull();
-    });
-
     test("should open the mnemonic flow from the secondary mobile action", async () => {
         const user = userEvent.setup();
 
         vi.mocked(isMobile).mockReturnValue(true);
-        vi.mocked(useWeb3Signer).mockReturnValue({
-            browserWalletTransports: () => new Set([NetworkTransport.Evm]),
-        } as ReturnType<typeof useWeb3Signer>);
-
-        renderComponent();
-
-        await user.click(screen.getByTestId("show-mnemonic-backup"));
-
-        expect(onMnemonicRequested).toHaveBeenCalledOnce();
-        expect(downloadRescueFile).not.toHaveBeenCalled();
-        expect(onFileDownloaded).not.toHaveBeenCalled();
-    });
-
-    test("should open the mnemonic flow from the secondary mobile action for Tron browser wallets", async () => {
-        const user = userEvent.setup();
-
-        vi.mocked(isMobile).mockReturnValue(true);
-        vi.mocked(useWeb3Signer).mockReturnValue({
-            browserWalletTransports: () => new Set([NetworkTransport.Tron]),
-        } as ReturnType<typeof useWeb3Signer>);
 
         renderComponent();
 

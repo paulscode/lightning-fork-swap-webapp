@@ -1,52 +1,35 @@
-import { render, screen } from "@solidjs/testing-library";
-import { BridgeKind, SwapPosition, SwapType } from "boltz-swaps/types";
+import { fireEvent, render, screen } from "@solidjs/testing-library";
+import { Explorer, SwapType } from "boltz-swaps/types";
 
-import { chooseUrl, config } from "../../src/config";
-import { config as mainnetConfig } from "../../src/configs/mainnet";
-import { USDC, USDT0 } from "../../src/consts/Assets";
+import { config } from "../../src/config";
+import { BTC, LN } from "../../src/consts/Assets";
+import i18n from "../../src/i18n/i18n";
 import SwapRefunded from "../../src/status/SwapRefunded";
 import type { SomeSwap } from "../../src/utils/swapCreator";
 import { TestComponent, contextWrapper, payContext } from "../helper";
 
-const refundTxId = "0xrefund";
+const navigate = vi.fn();
 
-const oftBridge = {
-    kind: BridgeKind.Oft,
-    sourceAsset: "USDT0-POL",
-    destinationAsset: USDT0,
-};
+vi.mock("@solidjs/router", async () => {
+    const actual = await vi.importActual("@solidjs/router");
+    return {
+        ...actual,
+        useNavigate: () => navigate,
+    };
+});
 
-const cctpBridge = {
-    kind: BridgeKind.Cctp,
-    sourceAsset: "USDC-POL",
-    destinationAsset: USDC,
-};
+const refundTxId = "refundtxid";
+const explorerUrl = "https://explorer.example";
 
-const swap = (assetSend: string, bridge?: object) =>
-    ({
-        type: SwapType.Submarine,
-        assetSend,
-        assetReceive: "BTC",
-        refundTx: refundTxId,
-        dex: { hops: [], position: SwapPosition.Pre, quoteAmount: 0 },
-        bridge,
-    }) as unknown as SomeSwap;
+const swap = {
+    id: "refunded",
+    type: SwapType.Submarine,
+    assetSend: BTC,
+    assetReceive: LN,
+    refundTx: refundTxId,
+} as unknown as SomeSwap;
 
-const preBridgedSwap = (bridge: typeof oftBridge, txHash?: string) =>
-    swap(bridge.destinationAsset, {
-        ...bridge,
-        position: SwapPosition.Pre,
-        txHash,
-    });
-
-const assetExplorerLink = (asset: string) =>
-    `${chooseUrl(config.assets![asset]!.blockExplorerUrl)}/tx/${refundTxId}`;
-
-const expectLink = async (href: string) => {
-    expect(await screen.findByRole("link")).toHaveAttribute("href", href);
-};
-
-const renderRefunded = (refunded: SomeSwap) => {
+const renderRefunded = (refunded: SomeSwap | null) => {
     render(
         () => (
             <>
@@ -60,37 +43,48 @@ const renderRefunded = (refunded: SomeSwap) => {
 };
 
 describe("SwapRefunded", () => {
+    const originalExplorer = config.assets![BTC].blockExplorerUrl;
+
     beforeEach(() => {
-        for (const { sourceAsset } of [oftBridge, cctpBridge]) {
-            config.assets![sourceAsset] ??= structuredClone(
-                mainnetConfig.assets![sourceAsset],
-            );
-        }
+        navigate.mockClear();
+        config.assets![BTC].blockExplorerUrl = {
+            id: Explorer.Esplora,
+            normal: explorerUrl,
+        };
     });
 
-    test("links a bridged back refund to the LayerZero explorer", async () => {
-        renderRefunded(preBridgedSwap(oftBridge, "0xbridge"));
-
-        await expectLink(`${config.layerZeroExplorerUrl}/tx/${refundTxId}`);
+    afterEach(() => {
+        config.assets![BTC].blockExplorerUrl = originalExplorer;
     });
 
-    test("links a bridged back refund to the CCTP explorer", async () => {
-        renderRefunded(preBridgedSwap(cctpBridge, "0xbridge"));
+    test("links the refund transaction on the lockup chain explorer", async () => {
+        renderRefunded(swap);
 
-        await expectLink(
-            `${config.cctpExplorerUrl}/messages?transactionHash=${refundTxId}`,
+        expect(await screen.findByRole("link")).toHaveAttribute(
+            "href",
+            `${explorerUrl}/tx/${refundTxId}`,
         );
+        expect(screen.getByText(i18n.en.refunded)).toBeInTheDocument();
     });
 
-    test("links to the lockup chain explorer without a bridge back", async () => {
-        renderRefunded(preBridgedSwap(oftBridge));
+    test("renders no explorer link without an explorer configured", () => {
+        config.assets![BTC].blockExplorerUrl = undefined;
+        renderRefunded(swap);
 
-        await expectLink(assetExplorerLink(USDT0));
+        expect(screen.getByText(i18n.en.refunded)).toBeInTheDocument();
+        expect(screen.queryByRole("link")).toBeNull();
     });
 
-    test("links to the lockup chain explorer without a bridge", async () => {
-        renderRefunded(swap(USDT0));
+    test("renders no explorer link without a swap", () => {
+        renderRefunded(null);
 
-        await expectLink(assetExplorerLink(USDT0));
+        expect(screen.queryByRole("link")).toBeNull();
+    });
+
+    test("navigates to a new swap", () => {
+        renderRefunded(swap);
+
+        fireEvent.click(screen.getByText(i18n.en.new_swap));
+        expect(navigate).toHaveBeenCalledWith("/swap");
     });
 });

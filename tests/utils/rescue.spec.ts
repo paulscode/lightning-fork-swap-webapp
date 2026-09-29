@@ -1,7 +1,7 @@
 import { SwapType } from "boltz-swaps/types";
 import { type Mock, beforeEach, vi } from "vitest";
 
-import { BTC, LBTC, RBTC, TBTC } from "../../src/consts/Assets";
+import { BTC } from "../../src/consts/Assets";
 import {
     swapStatusFailed,
     swapStatusFinal,
@@ -15,7 +15,6 @@ import {
     isSwapClaimable,
 } from "../../src/utils/rescue";
 import type {
-    ChainSwap,
     ReverseSwap,
     SomeSwap,
     SubmarineSwap,
@@ -123,61 +122,6 @@ describe("rescue", () => {
 
         test.each([
             {
-                name: "Chain: server confirmed",
-                type: SwapType.Chain,
-                status: swapStatusPending.TransactionServerConfirmed,
-                includeSuccess: undefined,
-                zeroConf: true,
-                expected: true,
-            },
-            {
-                name: "Chain: server mempool",
-                type: SwapType.Chain,
-                status: swapStatusPending.TransactionServerMempool,
-                includeSuccess: undefined,
-                zeroConf: true,
-                expected: true,
-            },
-            {
-                name: "Chain: success not included by default",
-                type: SwapType.Chain,
-                status: swapStatusSuccess.TransactionClaimed,
-                includeSuccess: undefined,
-                zeroConf: true,
-                expected: false,
-            },
-            {
-                name: "Chain: include success",
-                type: SwapType.Chain,
-                status: swapStatusSuccess.TransactionClaimed,
-                includeSuccess: true,
-                zeroConf: true,
-                expected: true,
-            },
-            {
-                name: "Chain: don't claim on TransactionServerMempool with zeroConf disabled",
-                type: SwapType.Chain,
-                status: swapStatusPending.TransactionServerMempool,
-                includeSuccess: true,
-                zeroConf: false,
-                expected: false,
-            },
-            {
-                name: "Chain: claim on TransactionServerConfirmed with zeroConf disabled",
-                type: SwapType.Chain,
-                status: swapStatusPending.TransactionServerConfirmed,
-                includeSuccess: true,
-                zeroConf: false,
-                expected: true,
-            },
-        ])("$name", ({ type, status, includeSuccess, zeroConf, expected }) => {
-            expect(
-                isSwapClaimable({ status, type, includeSuccess, zeroConf }),
-            ).toEqual(expected);
-        });
-
-        test.each([
-            {
                 name: "Submarine: confirmed",
                 type: SwapType.Submarine,
                 status: swapStatusPending.TransactionConfirmed,
@@ -203,9 +147,6 @@ describe("rescue", () => {
         });
 
         test.each([
-            { type: SwapType.Chain, includeSuccess: undefined },
-            { type: SwapType.Chain, includeSuccess: false },
-            { type: SwapType.Chain, includeSuccess: true },
             { type: SwapType.Reverse, includeSuccess: undefined },
             { type: SwapType.Reverse, includeSuccess: false },
             { type: SwapType.Reverse, includeSuccess: true },
@@ -228,21 +169,34 @@ describe("rescue", () => {
     });
 
     describe("hasSwapTimedOut", () => {
-        test("uses commitment lockup timeout block height", () => {
-            const swap = {
-                type: SwapType.Commitment,
-                timeoutBlockHeight: 123,
-            } as SomeSwap;
+        test.each([SwapType.Submarine, SwapType.Reverse])(
+            "uses the timeout block height of %s swaps",
+            (type) => {
+                const swap = { type, timeoutBlockHeight: 123 } as SomeSwap;
 
-            expect(hasSwapTimedOut(swap, 122)).toBe(false);
-            expect(hasSwapTimedOut(swap, 123)).toBe(true);
-        });
+                expect(hasSwapTimedOut(swap, 122)).toBe(false);
+                expect(hasSwapTimedOut(swap, 123)).toBe(true);
+                expect(hasSwapTimedOut(swap, 124)).toBe(true);
+            },
+        );
 
-        test("does not time out commitments without persisted timeout data", () => {
+        test("does not time out swaps without a timeout block height", () => {
             expect(
                 hasSwapTimedOut(
-                    { type: SwapType.Commitment } as SomeSwap,
+                    { type: SwapType.Submarine } as SomeSwap,
                     Number.MAX_SAFE_INTEGER,
+                ),
+            ).toBe(false);
+        });
+
+        test("does not time out when the block height is unknown", () => {
+            expect(
+                hasSwapTimedOut(
+                    {
+                        type: SwapType.Submarine,
+                        timeoutBlockHeight: 1,
+                    } as SomeSwap,
+                    undefined as unknown as number,
                 ),
             ).toBe(false);
         });
@@ -284,33 +238,9 @@ describe("rescue", () => {
                 ...overrides,
             }) as SubmarineSwap;
 
-        const createMockChainSwap = (
-            overrides: Partial<ChainSwap> = {},
-        ): ChainSwap =>
-            ({
-                type: SwapType.Chain,
-                ...overrides,
-            }) as ChainSwap;
-
         test("should return empty array for empty swaps array", async () => {
             const result = await createRescueList([], zeroConf);
             expect(result).toEqual([]);
-        });
-
-        test("claims an EVM-source chain swap without UTXO refund details", async () => {
-            const swap = createMockChainSwap({
-                id: "evm-source-chain-swap",
-                assetSend: TBTC,
-                assetReceive: LBTC,
-                status: swapStatusPending.TransactionServerConfirmed,
-            });
-
-            const result = await createRescueList([swap], zeroConf);
-
-            expect(result).toHaveLength(1);
-            expect(result[0].action).toBe(RescueAction.Claim);
-            expect(mockGetSwapUTXOs).not.toHaveBeenCalled();
-            expect(mockGetLockupTransaction).not.toHaveBeenCalled();
         });
 
         test("should return Successful action for final status swaps without UTXOs", async () => {
@@ -355,17 +285,17 @@ describe("rescue", () => {
                 createMockSubmarineSwap({
                     id: "swap-3",
                     status: swapStatusFinal[0],
-                    assetSend: LBTC,
+                    assetSend: BTC,
                 }),
                 createMockReverseSwap({
                     id: "swap-4",
                     status: swapStatusPending.SwapCreated,
-                    assetSend: LBTC,
+                    assetSend: BTC,
                 }),
                 createMockSubmarineSwap({
                     id: "swap-5",
                     status: swapStatusSuccess.TransactionClaimed,
-                    assetSend: LBTC,
+                    assetSend: BTC,
                 }),
             ];
 
@@ -425,18 +355,20 @@ describe("rescue", () => {
             expect(result[0].action).toBe(RescueAction.Refund);
         });
 
-        test("should not show RBTC as Refundable", async () => {
+        test("should not refund expired reverse swaps", async () => {
             const swaps = [
-                createMockSubmarineSwap({
-                    status: swapStatusPending.TransactionConfirmed,
+                createMockReverseSwap({
+                    status: swapStatusPending.SwapCreated,
                     timeoutBlockHeight: 900,
-                    assetSend: RBTC,
+                    assetSend: BTC,
                 }),
             ];
 
             const result = await createRescueList(swaps, zeroConf);
             expect(result).toHaveLength(1);
             expect(result[0].action).toBe(RescueAction.Pending);
+            expect(mockGetSwapUTXOs).not.toHaveBeenCalled();
+            expect(mockGetLockupTransaction).not.toHaveBeenCalled();
         });
 
         test.each([

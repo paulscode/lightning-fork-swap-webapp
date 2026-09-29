@@ -1,7 +1,7 @@
 import { fireEvent, render } from "@solidjs/testing-library";
 
 import Reverse from "../../src/components/Reverse";
-import { BTC, LBTC, LN } from "../../src/consts/Assets";
+import { BTC, LN } from "../../src/consts/Assets";
 import Pair from "../../src/utils/Pair";
 import { TestComponent, contextWrapper, signals } from "../helper";
 
@@ -48,12 +48,16 @@ describe("Reverse", () => {
             },
         );
 
-        signals.setOnchainAddress("2N17VNGbi4yUHtkD7vhrc8cpi9JGVmC8scn");
-        setPairAssets(LBTC, BTC);
+        signals.setOnchainAddress(
+            "bcrt1q7vq47xpsg3n3v7ks7xj3q2xg0e2k9f3xn2vy8q",
+        );
+        setPairAssets(LN, BTC);
 
         fireEvent.click(flip!);
 
         expect(signals.onchainAddress()).toEqual("");
+        expect(signals.pair().fromAsset).toEqual(BTC);
+        expect(signals.pair().toAsset).toEqual(LN);
     });
 
     test("should clear invoice on reverse", () => {

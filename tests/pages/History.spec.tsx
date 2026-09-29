@@ -7,23 +7,23 @@ import dict from "../../src/i18n/i18n";
 import History from "../../src/pages/History";
 import { latestStorageVersion } from "../../src/utils/migration";
 import { RescueAction } from "../../src/utils/rescue";
-import {
-    GasAbstractionType,
-    type SomeSwap,
-    createUniformGasAbstraction,
-} from "../../src/utils/swapCreator";
+import type { SomeSwap } from "../../src/utils/swapCreator";
+import { blake2bInvoice } from "../fixtures/invoices";
 import { TestComponent, contextWrapper } from "../helper";
 
-const { createRescueListMock, downloadJsonMock, iterateStoreMock } = vi.hoisted(
-    () => ({
-        createRescueListMock: vi.fn(),
-        downloadJsonMock: vi.fn(),
-        iterateStoreMock: vi.fn(),
-    }),
-);
+const {
+    clearStoreMock,
+    createRescueListMock,
+    downloadJsonMock,
+    iterateStoreMock,
+} = vi.hoisted(() => ({
+    clearStoreMock: vi.fn(),
+    createRescueListMock: vi.fn(),
+    downloadJsonMock: vi.fn(),
+    iterateStoreMock: vi.fn(),
+}));
 
 let storedSwaps: unknown[] = [];
-let storedRdns: { address: string; rdns: string }[] = [];
 
 vi.mock("../../src/utils/migration", async () => {
     const actual = await vi.importActual("../../src/utils/migration");
@@ -59,7 +59,10 @@ vi.mock("localforage", () => ({
             getItem: vi.fn().mockResolvedValue(null),
             setItem: vi.fn().mockResolvedValue(undefined),
             removeItem: vi.fn().mockResolvedValue(undefined),
-            clear: vi.fn().mockResolvedValue(undefined),
+            clear: vi.fn(() => {
+                clearStoreMock(config?.name);
+                return Promise.resolve();
+            }),
             keys: vi.fn().mockResolvedValue([]),
             iterate: vi.fn(
                 (callback: (value: unknown, key: string) => void) => {
@@ -79,10 +82,8 @@ const sampleSwap = {
     receiveAmount: 1,
     version: 1,
     date: Date.now(),
-    invoice: "lnbc1test",
-    claimPrivateKeyIndex: 3,
+    invoice: blake2bInvoice,
     refundPrivateKeyIndex: 7,
-    gasAbstraction: createUniformGasAbstraction(GasAbstractionType.None),
 };
 
 const renderHistory = () =>
@@ -103,7 +104,6 @@ describe("History", () => {
         vi.clearAllMocks();
         localStorage.clear();
         storedSwaps = [];
-        storedRdns = [];
         createRescueListMock.mockImplementation((swaps: SomeSwap[]) =>
             Promise.resolve(
                 swaps.map((swap) => ({
@@ -123,13 +123,6 @@ describe("History", () => {
                             swap,
                             (swap as { id?: string }).id ?? `swap-${index}`,
                         );
-                    });
-                    return;
-                }
-
-                if (name === "rdns") {
-                    storedRdns.forEach((entry) => {
-                        callback(entry.rdns, entry.address);
                     });
                 }
             },
@@ -194,7 +187,6 @@ describe("History", () => {
         ]) {
             expect(await screen.findByText(label)).toBeInTheDocument();
         }
-        expect(screen.queryByText(dict.en.view)).not.toBeInTheDocument();
 
         const rows = screen.getAllByTestId(/^swaplist-item-/);
         expect(rows[0]).toHaveAttribute("data-testid", "swaplist-item-claim");
@@ -248,10 +240,9 @@ describe("History", () => {
         });
     });
 
-    test("should export swaps and rdns without mnemonic data", async () => {
+    test("should export swaps without mnemonic data", async () => {
         const user = userEvent.setup();
         storedSwaps = [sampleSwap];
-        storedRdns = [{ address: "0xabc", rdns: "wallet.example" }];
 
         renderHistory();
 
@@ -274,8 +265,46 @@ describe("History", () => {
         expect(exportPayload).toEqual({
             version: latestStorageVersion,
             swaps: [sampleSwap],
-            rdns: storedRdns,
         });
         expect(exportPayload).not.toHaveProperty("mnemonic");
+    });
+
+    test("should clear the swap history after confirmation", async () => {
+        const user = userEvent.setup();
+        storedSwaps = [sampleSwap];
+        clearStoreMock.mockImplementation((name?: string) => {
+            if (name === "swaps") {
+                storedSwaps = [];
+            }
+        });
+        const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(true);
+
+        renderHistory();
+
+        await user.click(
+            await screen.findByRole("button", { name: dict.en.refund_clear }),
+        );
+
+        expect(confirmSpy).toHaveBeenCalledWith(dict.en.delete_storage);
+        expect(
+            await screen.findByText(dict.en.history_no_swaps),
+        ).toBeInTheDocument();
+        confirmSpy.mockRestore();
+    });
+
+    test("should keep the swap history when the confirmation is declined", async () => {
+        const user = userEvent.setup();
+        storedSwaps = [sampleSwap];
+        const confirmSpy = vi.spyOn(window, "confirm").mockReturnValue(false);
+
+        renderHistory();
+
+        await user.click(
+            await screen.findByRole("button", { name: dict.en.refund_clear }),
+        );
+
+        expect(clearStoreMock).not.toHaveBeenCalledWith("swaps");
+        expect(screen.queryByText(dict.en.history_no_swaps)).toBeNull();
+        confirmSpy.mockRestore();
     });
 });

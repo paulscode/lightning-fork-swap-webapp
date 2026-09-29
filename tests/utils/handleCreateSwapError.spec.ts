@@ -15,10 +15,9 @@ const { getPairsMock } = vi.hoisted(() => ({
     getPairsMock: vi.fn(),
 }));
 
-vi.mock("../../packages/boltz-swaps/src/client.ts", async () => {
-    const actual = await vi.importActual<typeof BoltzClientModule>(
-        "../../packages/boltz-swaps/src/client.ts",
-    );
+vi.mock("boltz-swaps/client", async () => {
+    const actual =
+        await vi.importActual<typeof BoltzClientModule>("boltz-swaps/client");
     return {
         ...actual,
         getPairs: getPairsMock,
@@ -50,7 +49,6 @@ describe("handleCreateSwapError", () => {
             notify,
             t,
             () => pair,
-            () => undefined,
             setPairs,
             setSendAmount,
             setAmountChanged,
@@ -120,5 +118,21 @@ describe("handleCreateSwapError", () => {
             BigNumber(75000),
         );
         expect(setPairs).toHaveBeenCalledWith(tighter);
+    });
+
+    test("clamps a submarine swap to the send amount for the minimum", async () => {
+        pair = new Pair(pairs, BTC, LN);
+
+        await expect(
+            call(new Error("100 is less than minimal of 50000")),
+        ).resolves.toBe(true);
+
+        const expected = await new Pair(pairs, BTC, LN).getMinimum();
+        expect(expected).toBeGreaterThanOrEqual(
+            pairs.submarine[BTC][BTC].limits.minimal,
+        );
+        expect(vi.mocked(setSendAmount).mock.calls[0][0]).toEqual(
+            BigNumber(expected),
+        );
     });
 });

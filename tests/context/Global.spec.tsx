@@ -2,12 +2,10 @@ import { render } from "@solidjs/testing-library";
 import type * as BoltzClientModule from "boltz-swaps/client";
 import { SwapType } from "boltz-swaps/types";
 
-import type * as ConfigModule from "../../src/config";
 import type { SomeSwap } from "../../src/utils/swapCreator";
 
-const { getPairsMock, configMock } = vi.hoisted(() => ({
+const { getPairsMock } = vi.hoisted(() => ({
     getPairsMock: vi.fn<typeof BoltzClientModule.getPairs>(),
-    configMock: { isPro: false } as { isPro: boolean },
 }));
 
 vi.mock("../../packages/boltz-swaps/src/client.ts", async () => {
@@ -25,30 +23,12 @@ vi.mock("../../src/utils/migration", () => ({
     migrateStorage: vi.fn().mockResolvedValue(undefined),
 }));
 
-vi.mock("../../src/config", async () => {
-    const actual =
-        await vi.importActual<typeof ConfigModule>("../../src/config");
-
-    return {
-        ...actual,
-        config: new Proxy(actual.config as object, {
-            get(target, prop) {
-                if (prop === "isPro") {
-                    return configMock.isPro;
-                }
-                return target[prop as keyof typeof target];
-            },
-        }),
-    };
-});
-
 const { GlobalProvider, useGlobalContext } =
     await import("../../src/context/Global");
 
 const emptyPairs = {
     [SwapType.Submarine]: {},
     [SwapType.Reverse]: {},
-    [SwapType.Chain]: {},
 } as unknown as Awaited<ReturnType<typeof BoltzClientModule.getPairs>>;
 
 describe("Global context", () => {
@@ -61,7 +41,6 @@ describe("Global context", () => {
 
     beforeEach(() => {
         getPairsMock.mockReset();
-        configMock.isPro = false;
     });
 
     afterEach(() => {
@@ -70,12 +49,7 @@ describe("Global context", () => {
     });
 
     describe("pair fetching", () => {
-        test("fetchRegularPairs uses the regular referral on the pro site", async () => {
-            // Regression: previously fetchRegularPairs called getReferral(),
-            // which on the pro site returns "pro" — making fetchPairs and
-            // fetchRegularPairs return identical data and breaking the
-            // FeeComparisonTable opportunity filter.
-            configMock.isPro = true;
+        test("fetchPairs stores the pairs and marks the backend online", async () => {
             getPairsMock.mockResolvedValue(emptyPairs);
 
             render(() => (
@@ -84,17 +58,17 @@ describe("Global context", () => {
                 </GlobalProvider>
             ));
 
-            await globalSignals.fetchRegularPairs();
+            globalSignals.setOnline(false);
+            await globalSignals.fetchPairs();
 
             expect(getPairsMock).toHaveBeenCalledTimes(1);
-            expect(getPairsMock).toHaveBeenCalledWith({
-                headers: { referral: "boltz_webapp_desktop" },
-            });
+            expect(getPairsMock).toHaveBeenCalledWith();
+            expect(globalSignals.pairs()).toEqual(emptyPairs);
+            expect(globalSignals.online()).toBe(true);
         });
 
-        test("fetchPairs and fetchRegularPairs send different referrals on the pro site", async () => {
-            configMock.isPro = true;
-            getPairsMock.mockResolvedValue(emptyPairs);
+        test("fetchPairs marks the backend offline and throws on failure", async () => {
+            getPairsMock.mockRejectedValue(new Error("backend down"));
 
             render(() => (
                 <GlobalProvider>
@@ -102,18 +76,11 @@ describe("Global context", () => {
                 </GlobalProvider>
             ));
 
-            await globalSignals.fetchPairs();
-            await globalSignals.fetchRegularPairs();
-
-            expect(getPairsMock).toHaveBeenCalledTimes(2);
-            // fetchPairs sends no override — fetcher will fall back to
-            // getReferral() which is "pro" on the pro site.
-            expect(getPairsMock).toHaveBeenNthCalledWith(1);
-            // fetchRegularPairs must explicitly override with the regular
-            // referral so the opportunity comparison sees non-pro rates.
-            expect(getPairsMock).toHaveBeenNthCalledWith(2, {
-                headers: { referral: "boltz_webapp_desktop" },
-            });
+            await expect(globalSignals.fetchPairs()).rejects.toEqual(
+                "backend down",
+            );
+            expect(globalSignals.online()).toBe(false);
+            expect(globalSignals.pairs()).toBeUndefined();
         });
     });
 

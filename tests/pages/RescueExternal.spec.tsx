@@ -1,77 +1,31 @@
-import {
-    fireEvent,
-    render,
-    screen,
-    waitFor,
-    within,
-} from "@solidjs/testing-library";
+import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
 import { userEvent } from "@testing-library/user-event";
 import { type RestorableSwap, getRestorableSwaps } from "boltz-swaps/client";
-import {
-    BridgeKind,
-    RskRescueMode,
-    SwapPosition,
-    SwapType,
-} from "boltz-swaps/types";
+import { SwapType } from "boltz-swaps/types";
 import { vi } from "vitest";
 
-import { LN, WBTC } from "../../src/consts/Assets";
+import { BTC, LN } from "../../src/consts/Assets";
+import { paginationLimit } from "../../src/consts/Pagination";
 import i18n from "../../src/i18n/i18n";
 import Rescue from "../../src/pages/Rescue";
 import { Results } from "../../src/pages/external-rescue/Results";
-import { mapRestorableSwaps } from "../../src/pages/external-rescue/scan";
+import {
+    getSwapDate,
+    mapRestorableSwaps,
+    sortResults,
+} from "../../src/pages/external-rescue/scan";
 import {
     BtcSearchState,
-    RescueResultSource,
+    type RescueResult,
 } from "../../src/pages/external-rescue/types";
 import { useExternalRescueSearch } from "../../src/pages/external-rescue/useExternalRescueSearch";
-import { ChatwootNotReadyError } from "../../src/utils/chatwoot";
 import { RescueAction } from "../../src/utils/rescue";
-import {
-    type SomeSwap,
-    getFinalAssetReceive,
-} from "../../src/utils/swapCreator";
-import { encryptSwapMetadata } from "../../src/utils/swapMetadata";
+import { getXpub } from "../../src/utils/rescueFile";
 import { TestComponent, contextWrapper, globalSignals } from "../helper";
-
-global.fetch = vi.fn(() =>
-    Promise.resolve({
-        ok: true,
-        headers: {
-            get: (name: string) => {
-                if (name === "content-type") {
-                    return "application/json";
-                }
-                return null;
-            },
-        },
-        json: () => Promise.resolve([]),
-        text: () => Promise.resolve("[]"),
-    } as Response),
-);
-
-Object.defineProperty(global.navigator, "locks", {
-    value: {
-        request: vi.fn((_name: string, callback: () => Promise<void>) =>
-            callback(),
-        ),
-    },
-    writable: true,
-    configurable: true,
-});
-
-/* eslint-disable  require-await,@typescript-eslint/require-await,@typescript-eslint/no-explicit-any */
 
 vi.mock("../../packages/boltz-swaps/src/client.ts", () => {
     return {
-        getLockupTransaction: vi.fn(() =>
-            Promise.resolve({
-                id: "1",
-                hex: "0x",
-                timeoutBlockHeight: 10,
-                timeoutEta: 10,
-            }),
-        ),
+        getLockupTransaction: vi.fn(),
         getRestorableSwaps: vi.fn(),
     };
 });
@@ -84,20 +38,121 @@ vi.mock("../../src/utils/rescue", async () => {
     };
 });
 
-const { postLogsToChatwootMock } = vi.hoisted(() => ({
-    postLogsToChatwootMock: vi.fn(),
-}));
+const mockGetRestorableSwaps = vi.mocked(getRestorableSwaps);
 
-vi.mock("../../src/utils/chatwoot", async () => {
-    const actual = await vi.importActual("../../src/utils/chatwoot");
-    return {
-        ...actual,
-        isChatwootConfigured: () => true,
-        postLogsToChatwoot: postLogsToChatwootMock,
-    };
+const mnemonic =
+    "horse olympic laundry marriage material private arch civil theory crew alone thank";
+
+const swapTree = {
+    claimLeaf: {
+        version: 192,
+        output: "a914aa856454ae0e8e8e0bf3e625421e13e168bd9d5d8820395d9749b27c5908e2e8e95237cf8d1c704c48b19e51f915c9986a1973925567ac",
+    },
+    refundLeaf: {
+        version: 192,
+        output: "208f7d52e62a440dec6c17cf929889df5abdbe85158834cf5d67e0f957b7ccee53ad02ca04b1",
+    },
+};
+
+const claimDetails = {
+    tree: swapTree,
+    keyIndex: 0,
+    lockupAddress:
+        "bcrt1ptwl8vqkgrxz9ydyv5zx8qluv2mpjkg58qry2xvf2qeek7l9uxpusm4tlgf",
+    serverPublicKey:
+        "02395d9749b27c5908e2e8e95237cf8d1c704c48b19e51f915c9986a1973925567",
+    timeoutBlockHeight: 1226,
+    amount: 10_000,
+};
+
+const pendingSwap: RestorableSwap = {
+    id: "pending-swap",
+    type: SwapType.Reverse,
+    status: "invoice.set",
+    createdAt: 1754409244,
+    from: LN,
+    to: BTC,
+    claimDetails,
+};
+
+const claimSwap: RestorableSwap = {
+    ...pendingSwap,
+    id: "claim-swap",
+    status: "transaction.confirmed",
+    createdAt: 1754409243,
+};
+
+const renderRescue = () =>
+    render(
+        () => (
+            <>
+                <TestComponent />
+                <Rescue />
+            </>
+        ),
+        {
+            wrapper: contextWrapper,
+        },
+    );
+
+const makeRescueFile = (content: string, name = "rescue.json") => {
+    const file = new File(["{}"], name, {
+        type: "application/json",
+    });
+    Object.defineProperty(file, "text", {
+        value: () => Promise.resolve(content),
+    });
+    return file;
+};
+
+const uploadRescueKey = async (user: ReturnType<typeof userEvent.setup>) => {
+    const uploadInput = await screen.findByTestId("refundUpload");
+    await user.upload(
+        uploadInput,
+        makeRescueFile(JSON.stringify({ mnemonic })),
+    );
+};
+
+const readyState = {
+    btc: {
+        loadedSwaps: 0,
+        searchState: BtcSearchState.Ready,
+        swaps: [],
+        listLoading: false,
+    },
+    file: {},
+    search: {
+        hasSearched: true,
+        isSearching: false,
+    },
+};
+
+const makeResult = (
+    id: string,
+    action: RescueAction,
+    sortValue = 1,
+): RescueResult => ({
+    key: id,
+    action,
+    actionable: ![
+        RescueAction.Successful,
+        RescueAction.Pending,
+        RescueAction.Failed,
+    ].includes(action),
+    sortValue,
+    swap: {
+        id,
+        type: SwapType.Reverse,
+        assetSend: LN,
+        assetReceive: BTC,
+        date: sortValue,
+    } as RescueResult["swap"],
 });
 
-const mockGetRestorableSwaps = vi.mocked(getRestorableSwaps);
+beforeEach(() => {
+    // Some tests navigate away; the test router only renders "/"
+    window.history.replaceState({}, "", "/");
+});
 
 describe("Rescue", () => {
     beforeEach(() => {
@@ -106,284 +161,68 @@ describe("Rescue", () => {
     });
 
     test("should render WASM error", async () => {
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <Rescue />
-                </>
-            ),
-            {
-                wrapper: contextWrapper,
-            },
-        );
+        renderRescue();
         globalSignals.setWasmSupported(false);
         expect(
             await screen.findAllByText(i18n.en.error_wasm),
         ).not.toBeUndefined();
     });
 
-    test("should render unified recovery method page without tabs", async () => {
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <Rescue />
-                </>
-            ),
-            {
-                wrapper: contextWrapper,
-            },
-        );
+    test("should render the rescue key method page", async () => {
+        renderRescue();
 
         expect(
             await screen.findByText(i18n.en.rescue_swaps),
         ).toBeInTheDocument();
-        expect(screen.queryByText("Bitcoin / Liquid")).not.toBeInTheDocument();
-        expect(screen.queryByText("EVM")).not.toBeInTheDocument();
+        expect(
+            screen.getByText(i18n.en.rescue_external_subtitle),
+        ).toBeInTheDocument();
+        expect(screen.getByTestId("refundUpload")).toBeInTheDocument();
 
         const searchButton = screen.getByRole("button", {
             name: i18n.en.rescue_external_select_method,
         });
         expect(searchButton).toBeDisabled();
-
-        const coverageAssets = document.querySelectorAll(
-            ".rescue-external-chip .asset",
-        );
-        expect(coverageAssets.length).toBeGreaterThan(0);
-        coverageAssets.forEach((asset) => {
-            expect(asset).not.toHaveAttribute("data-network");
-        });
-    });
-
-    test("should share logs via an accessible button with loading feedback", async () => {
-        const user = userEvent.setup();
-        let resolvePost!: () => void;
-        postLogsToChatwootMock.mockImplementation(
-            () =>
-                new Promise<void>((resolve) => {
-                    resolvePost = resolve;
-                }),
-        );
-
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <Rescue />
-                </>
-            ),
-            {
-                wrapper: contextWrapper,
-            },
-        );
-
-        const shareButton = await screen.findByTestId("rescue-share-logs");
-        expect(shareButton.tagName).toBe("BUTTON");
-
-        await user.click(shareButton);
-
-        await waitFor(() => {
-            expect(shareButton).toHaveAttribute("data-loading", "true");
-            expect(
-                within(shareButton).getByTestId("loading-spinner"),
-            ).toBeInTheDocument();
-        });
-
-        resolvePost();
-
-        await waitFor(() => {
-            expect(shareButton).not.toHaveAttribute("data-loading");
-        });
-        expect(
-            within(shareButton).queryByTestId("loading-spinner"),
-        ).not.toBeInTheDocument();
-        expect(postLogsToChatwootMock).toHaveBeenCalledTimes(1);
-    });
-
-    test("should show a translated error when the support chat is not ready", async () => {
-        const user = userEvent.setup();
-        postLogsToChatwootMock.mockRejectedValue(new ChatwootNotReadyError());
-
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <Rescue />
-                </>
-            ),
-            {
-                wrapper: contextWrapper,
-            },
-        );
-
-        await user.click(await screen.findByTestId("rescue-share-logs"));
-
-        await waitFor(() => {
-            expect(globalSignals.notification()).toBe(
-                i18n.en.chatwoot_not_ready,
-            );
-        });
     });
 
     test("should enable search after rescue key upload without auto-searching", async () => {
         const user = userEvent.setup();
 
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <Rescue />
-                </>
-            ),
-            {
-                wrapper: contextWrapper,
-            },
-        );
-
-        const uploadInput = await screen.findByTestId("refundUpload");
-        const rescueFile = new File(["{}"], "rescue.json", {
-            type: "application/json",
-        });
-        (rescueFile as any).text = async () =>
-            JSON.stringify({
-                mnemonic:
-                    "horse olympic laundry marriage material private arch civil theory crew alone thank",
-            });
-        await user.upload(uploadInput, rescueFile);
+        renderRescue();
+        await uploadRescueKey(user);
 
         expect(mockGetRestorableSwaps).not.toHaveBeenCalled();
+        expect(screen.getByText("rescue.json")).toBeInTheDocument();
         expect(
             screen.getByRole("button", { name: i18n.en.rescue }),
         ).toBeEnabled();
-        expect(
-            screen.getByText("BTC").closest(".rescue-external-chip"),
-        ).toHaveAttribute("data-active", "true");
     });
 
-    test("should update recovery requirement chips after rescue key upload", async () => {
+    test("should show an error and keep search disabled for an invalid rescue file", async () => {
         const user = userEvent.setup();
 
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <Rescue />
-                </>
-            ),
-            {
-                wrapper: contextWrapper,
-            },
+        renderRescue();
+
+        const uploadInput = await screen.findByTestId("refundUpload");
+        await user.upload(
+            uploadInput,
+            makeRescueFile(JSON.stringify({ mnemonic: "invalid words" })),
         );
 
-        const btcChip = (await screen.findByText("BTC")).closest(
-            ".rescue-external-chip",
-        ) as HTMLElement;
-        const lightningChip = screen
-            .getByText(LN)
-            .closest(".rescue-external-chip") as HTMLElement;
-        const tbtcChip = screen
-            .getByText("TBTC")
-            .closest(".rescue-external-chip") as HTMLElement;
-        const wbtcChip = screen
-            .getByText(WBTC)
-            .closest(".rescue-external-chip") as HTMLElement;
-        const rbtcRefundChip = screen
-            .getByText(`RBTC (${i18n.en.refund})`)
-            .closest(".rescue-external-chip") as HTMLElement;
-        const rbtcResumeChip = screen
-            .getByText(`RBTC (${i18n.en.rescue_external_resume})`)
-            .closest(".rescue-external-chip") as HTMLElement;
-
-        expect(btcChip).toHaveAttribute("data-active", "false");
-        expect(btcChip).toHaveAttribute(
-            "data-tooltip",
-            i18n.en.rescue_external_requires_rescue_key,
-        );
-        expect(tbtcChip).toHaveAttribute("data-active", "false");
-        expect(tbtcChip).toHaveAttribute(
-            "data-tooltip",
-            i18n.en.rescue_external_requires_rescue_key_wallet,
-        );
-        expect(wbtcChip).toHaveAttribute("data-active", "false");
-        expect(wbtcChip).toHaveAttribute(
-            "data-tooltip",
-            i18n.en.rescue_external_requires_rescue_key,
-        );
-
-        const uploadInput = screen.getByTestId("refundUpload");
-        const rescueFile = new File(["{}"], "rescue.json", {
-            type: "application/json",
-        });
-        (rescueFile as any).text = async () =>
-            JSON.stringify({
-                mnemonic:
-                    "horse olympic laundry marriage material private arch civil theory crew alone thank",
-            });
-        await user.upload(uploadInput, rescueFile);
-
-        expect(btcChip).toHaveAttribute("data-active", "true");
-        expect(btcChip).not.toHaveAttribute("data-tooltip");
-        expect(lightningChip).toHaveAttribute("data-active", "true");
-        expect(lightningChip).not.toHaveAttribute("data-tooltip");
-
-        expect(rbtcRefundChip).toHaveAttribute("data-active", "false");
-        expect(rbtcRefundChip).toHaveAttribute(
-            "data-tooltip",
-            i18n.en.rescue_external_requires_wallet,
-        );
         expect(
-            within(rbtcRefundChip).getByLabelText("Wallet required"),
-        ).toHaveAttribute("data-active", "false");
-
-        expect(tbtcChip).toHaveAttribute("data-active", "false");
-        expect(tbtcChip).toHaveAttribute(
-            "data-tooltip",
-            i18n.en.rescue_external_requires_rescue_key_wallet,
-        );
+            await screen.findByText(i18n.en.invalid_refund_file),
+        ).toBeInTheDocument();
         expect(
-            within(tbtcChip).getByLabelText("Rescue key required"),
-        ).toHaveAttribute("data-active", "true");
-        expect(
-            within(tbtcChip).getByLabelText("Wallet required"),
-        ).toHaveAttribute("data-active", "false");
-
-        expect(wbtcChip).toHaveAttribute("data-active", "true");
-        expect(wbtcChip).not.toHaveAttribute("data-tooltip");
-        expect(
-            within(wbtcChip).getByLabelText("Rescue key required"),
-        ).toHaveAttribute("data-active", "true");
-        expect(
-            within(wbtcChip).queryByLabelText("Wallet required"),
-        ).not.toBeInTheDocument();
-
-        expect(rbtcResumeChip).toHaveAttribute("data-active", "false");
-        expect(rbtcResumeChip).toHaveAttribute(
-            "data-tooltip",
-            i18n.en.rescue_external_requires_rescue_key_wallet,
-        );
-        expect(
-            within(rbtcResumeChip).getByLabelText("Rescue key required"),
-        ).toHaveAttribute("data-active", "true");
-        expect(
-            within(rbtcResumeChip).getByLabelText("Wallet required"),
-        ).toHaveAttribute("data-active", "false");
+            screen.getByRole("button", {
+                name: i18n.en.rescue_external_select_method,
+            }),
+        ).toBeDisabled();
     });
 
     test("should simplify manual rescue key entry on the unified page", async () => {
         const user = userEvent.setup();
 
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <Rescue />
-                </>
-            ),
-            {
-                wrapper: contextWrapper,
-            },
-        );
+        renderRescue();
 
         await user.click(await screen.findByTestId("enterMnemonicBtn"));
 
@@ -394,6 +233,33 @@ describe("Rescue", () => {
 
         await user.click(screen.getByTestId("backBtn"));
         expect(await screen.findByTestId("refundUpload")).toBeInTheDocument();
+    });
+
+    test("should query restorable swaps with the rescue key xpub page by page", async () => {
+        const user = userEvent.setup();
+        mockGetRestorableSwaps
+            .mockResolvedValueOnce([pendingSwap])
+            .mockResolvedValueOnce([claimSwap])
+            .mockResolvedValueOnce([]);
+
+        renderRescue();
+        await uploadRescueKey(user);
+        await user.click(screen.getByRole("button", { name: i18n.en.rescue }));
+
+        await screen.findByTestId("swaplist-item-claim-swap");
+
+        const xpub = getXpub({ mnemonic });
+        expect(mockGetRestorableSwaps).toHaveBeenCalledTimes(3);
+        expect(mockGetRestorableSwaps.mock.calls.map((c) => c[0])).toEqual([
+            xpub,
+            xpub,
+            xpub,
+        ]);
+        expect(mockGetRestorableSwaps.mock.calls.map((c) => c[1])).toEqual([
+            { startIndex: 0, limit: paginationLimit },
+            { startIndex: paginationLimit, limit: paginationLimit },
+            { startIndex: 2 * paginationLimit, limit: paginationLimit },
+        ]);
     });
 
     test("should hide recovery inputs while searching and restore them on back", async () => {
@@ -410,28 +276,8 @@ describe("Rescue", () => {
             },
         );
 
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <Rescue />
-                </>
-            ),
-            {
-                wrapper: contextWrapper,
-            },
-        );
-
-        const uploadInput = await screen.findByTestId("refundUpload");
-        const rescueFile = new File(["{}"], "rescue.json", {
-            type: "application/json",
-        });
-        (rescueFile as any).text = async () =>
-            JSON.stringify({
-                mnemonic:
-                    "horse olympic laundry marriage material private arch civil theory crew alone thank",
-            });
-        await user.upload(uploadInput, rescueFile);
+        renderRescue();
+        await uploadRescueKey(user);
         expect(screen.getByText("rescue.json")).toBeInTheDocument();
 
         await user.click(screen.getByRole("button", { name: i18n.en.rescue }));
@@ -440,8 +286,8 @@ describe("Rescue", () => {
             expect(screen.queryByTestId("refundUpload")).toBeNull();
         });
         expect(
-            screen.queryByRole("button", { name: i18n.en.connect_wallet }),
-        ).toBeNull();
+            screen.getByText(i18n.en.swaps_found.replace("{{ count }}", "0")),
+        ).toBeInTheDocument();
 
         await user.click(screen.getByRole("button", { name: i18n.en.back }));
 
@@ -454,43 +300,13 @@ describe("Rescue", () => {
     test("should not preserve uploaded rescue key after leaving the page", async () => {
         const user = userEvent.setup();
 
-        const firstRender = render(
-            () => (
-                <>
-                    <TestComponent />
-                    <Rescue />
-                </>
-            ),
-            {
-                wrapper: contextWrapper,
-            },
-        );
-
-        const uploadInput = await screen.findByTestId("refundUpload");
-        const rescueFile = new File(["{}"], "rescue.json", {
-            type: "application/json",
-        });
-        (rescueFile as any).text = async () =>
-            JSON.stringify({
-                mnemonic:
-                    "horse olympic laundry marriage material private arch civil theory crew alone thank",
-            });
-        await user.upload(uploadInput, rescueFile);
+        const firstRender = renderRescue();
+        await uploadRescueKey(user);
 
         expect(screen.getByText("rescue.json")).toBeInTheDocument();
         firstRender.unmount();
 
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <Rescue />
-                </>
-            ),
-            {
-                wrapper: contextWrapper,
-            },
-        );
+        renderRescue();
 
         expect(await screen.findByTestId("refundUpload")).toBeInTheDocument();
         expect(screen.queryByText("rescue.json")).toBeNull();
@@ -501,70 +317,41 @@ describe("Rescue", () => {
         ).toBeDisabled();
     });
 
+    test("should show a message when no swaps are found", async () => {
+        const user = userEvent.setup();
+        mockGetRestorableSwaps.mockResolvedValue([]);
+
+        renderRescue();
+        await uploadRescueKey(user);
+        await user.click(screen.getByRole("button", { name: i18n.en.rescue }));
+
+        expect(
+            await screen.findByText(i18n.en.no_swaps_found),
+        ).toBeInTheDocument();
+    });
+
+    test("should show the error when restoring swaps fails", async () => {
+        const user = userEvent.setup();
+        mockGetRestorableSwaps.mockRejectedValue(new Error("backend down"));
+
+        renderRescue();
+        await uploadRescueKey(user);
+        await user.click(screen.getByRole("button", { name: i18n.en.rescue }));
+
+        expect(
+            await screen.findByText(`${i18n.en.error}: backend down`),
+        ).toBeInTheDocument();
+    });
+
     test("should render one action-sorted result list", async () => {
         const user = userEvent.setup();
-        const swapTree = {
-            claimLeaf: {
-                version: 192,
-                output: "a914aa856454ae0e8e8e0bf3e625421e13e168bd9d5d8820395d9749b27c5908e2e8e95237cf8d1c704c48b19e51f915c9986a1973925567ac",
-            },
-            refundLeaf: {
-                version: 192,
-                output: "208f7d52e62a440dec6c17cf929889df5abdbe85158834cf5d67e0f957b7ccee53ad02ca04b1",
-            },
-        };
-        const claimDetails = {
-            tree: swapTree,
-            keyIndex: 0,
-            lockupAddress:
-                "bcrt1ptwl8vqkgrxz9ydyv5zx8qluv2mpjkg58qry2xvf2qeek7l9uxpusm4tlgf",
-            serverPublicKey:
-                "02395d9749b27c5908e2e8e95237cf8d1c704c48b19e51f915c9986a1973925567",
-            timeoutBlockHeight: 1226,
-            amount: 10_000,
-        };
-        const pendingSwap: RestorableSwap = {
-            id: "pending-swap",
-            type: SwapType.Reverse,
-            status: "invoice.set",
-            createdAt: 1754409244,
-            from: "BTC",
-            to: "L-BTC",
-            claimDetails,
-        };
-        const claimSwap: RestorableSwap = {
-            ...pendingSwap,
-            id: "claim-swap",
-            status: "transaction.confirmed",
-            createdAt: 1754409243,
-        };
 
         mockGetRestorableSwaps
             .mockResolvedValueOnce([pendingSwap, claimSwap])
             .mockResolvedValueOnce([]);
 
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <Rescue />
-                </>
-            ),
-            {
-                wrapper: contextWrapper,
-            },
-        );
-
-        const uploadInput = await screen.findByTestId("refundUpload");
-        const rescueFile = new File(["{}"], "rescue.json", {
-            type: "application/json",
-        });
-        (rescueFile as any).text = async () =>
-            JSON.stringify({
-                mnemonic:
-                    "horse olympic laundry marriage material private arch civil theory crew alone thank",
-            });
-        await user.upload(uploadInput, rescueFile);
+        renderRescue();
+        await uploadRescueKey(user);
         await user.click(screen.getByRole("button", { name: i18n.en.rescue }));
 
         await waitFor(() => {
@@ -581,316 +368,80 @@ describe("Rescue", () => {
             "data-testid",
             "swaplist-item-claim-swap",
         );
+        expect(rows[0]).toHaveTextContent(i18n.en.claim);
         expect(rows[1]).toHaveClass("disabled");
+        expect(rows[1]).toHaveTextContent(i18n.en.in_progress);
     });
 
-    test("should display the metadata final asset for routed restored swaps", async () => {
+    test("should open the claim page for claimable results only", async () => {
         const user = userEvent.setup();
-        const mnemonic =
-            "horse olympic laundry marriage material private arch civil theory crew alone thank";
-        const swapTree = {
-            claimLeaf: {
-                version: 192,
-                output: "a914aa856454ae0e8e8e0bf3e625421e13e168bd9d5d8820395d9749b27c5908e2e8e95237cf8d1c704c48b19e51f915c9986a1973925567ac",
-            },
-            refundLeaf: {
-                version: 192,
-                output: "208f7d52e62a440dec6c17cf929889df5abdbe85158834cf5d67e0f957b7ccee53ad02ca04b1",
-            },
-        };
-        const claimDetails = {
-            tree: swapTree,
-            keyIndex: 0,
-            lockupAddress:
-                "bcrt1ptwl8vqkgrxz9ydyv5zx8qluv2mpjkg58qry2xvf2qeek7l9uxpusm4tlgf",
-            serverPublicKey:
-                "02395d9749b27c5908e2e8e95237cf8d1c704c48b19e51f915c9986a1973925567",
-            timeoutBlockHeight: 1226,
-            amount: 10_000,
-        };
-        const swap: RestorableSwap = {
-            id: "metadata-swap",
-            type: SwapType.Chain,
-            status: "transaction.server.confirmed",
-            createdAt: 1754409244,
-            from: "L-BTC",
-            to: "TBTC",
-            claimDetails,
-            refundDetails: claimDetails,
-            metadata: await encryptSwapMetadata(mnemonic, {
-                swapId: "metadata-swap",
-                dex: {
-                    hops: [{ type: SwapType.Dex, from: "TBTC", to: "USDT0" }],
-                    position: SwapPosition.Post,
-                    quoteAmount: 10_000,
-                },
-                bridge: {
-                    sourceAsset: "USDT0",
-                    destinationAsset: "USDT0-SOL",
-                    kind: BridgeKind.Oft,
-                    position: SwapPosition.Post,
-                },
-            }),
-        };
-
-        const [mapped] = await mapRestorableSwaps([swap], mnemonic);
-        const mappedSwap = mapped as Partial<SomeSwap> & { to?: string };
-        expect(mappedSwap.to).toBe("TBTC");
-        expect(mappedSwap.assetReceive).toBe("TBTC");
-        const finalAssetReceive = getFinalAssetReceive(
-            mappedSwap as SomeSwap,
-            true,
-        );
-        expect(finalAssetReceive).toBe("USDT0-SOL");
 
         mockGetRestorableSwaps
-            .mockResolvedValueOnce([swap])
+            .mockResolvedValueOnce([pendingSwap, claimSwap])
             .mockResolvedValueOnce([]);
 
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <Rescue />
-                </>
-            ),
-            {
-                wrapper: contextWrapper,
-            },
-        );
-
-        const uploadInput = await screen.findByTestId("refundUpload");
-        const rescueFile = new File(["{}"], "rescue.json", {
-            type: "application/json",
-        });
-        (rescueFile as any).text = async () =>
-            JSON.stringify({
-                mnemonic,
-            });
-        await user.upload(uploadInput, rescueFile);
+        renderRescue();
+        await uploadRescueKey(user);
         await user.click(screen.getByRole("button", { name: i18n.en.rescue }));
 
-        const row = await screen.findByTestId("swaplist-item-metadata-swap");
-        expect(row).toHaveTextContent(i18n.en.in_progress);
-
-        const assets = row.querySelectorAll(".asset");
-        expect(assets).toHaveLength(2);
-        expect(assets[0]).toHaveAttribute("data-asset", "LBTC");
-        expect(assets[1]).toHaveAttribute("data-asset", "USDT");
-        expect(assets[1]).toHaveAttribute("data-network", "solana");
-    });
-
-    test("should display metadata swap assets for routed restored refund rows", () => {
-        const result = {
-            source: RescueResultSource.Restore,
-            key: "restore:metadata-refund-swap",
-            action: RescueAction.Refund,
-            actionable: true,
-            sortValue: 1,
-            swap: {
-                id: "metadata-refund-swap",
-                type: SwapType.Chain,
-                status: "transaction.lockupFailed",
-                date: 1,
-                assetSend: "TBTC",
-                assetReceive: "L-BTC",
-                dex: {
-                    hops: [
-                        {
-                            type: SwapType.Dex,
-                            from: "USDT0",
-                            to: "TBTC",
-                        },
-                    ],
-                    position: SwapPosition.Pre,
-                    quoteAmount: 13334,
-                },
-                bridge: {
-                    sourceAsset: "USDT0-SOL",
-                    destinationAsset: "USDT0",
-                    kind: BridgeKind.Oft,
-                    position: SwapPosition.Pre,
-                },
-            },
-        };
-
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <Results
-                        state={
-                            {
-                                btc: {
-                                    loadedSwaps: 0,
-                                    searchState: BtcSearchState.Ready,
-                                    listLoading: false,
-                                },
-                                evm: {
-                                    unmatchedRefundSwaps: 0,
-                                    unmatchedClaimSwaps: 0,
-                                },
-                                search: {
-                                    hasSearched: true,
-                                    isSearching: false,
-                                },
-                            } as any
-                        }
-                        results={
-                            {
-                                all: () => [result],
-                                current: () => [result],
-                                currentEvmProgress: () => undefined,
-                                currentPage: () => 1,
-                                displaySlotCount: () => 1,
-                                hasAny: () => true,
-                                open: vi.fn(),
-                                setCurrent: vi.fn(),
-                                setCurrentPage: vi.fn(),
-                            } as any
-                        }
-                    />
-                </>
-            ),
-            {
-                wrapper: contextWrapper,
-            },
+        const pendingRow = await screen.findByTestId(
+            "swaplist-item-pending-swap",
         );
+        fireEvent.click(pendingRow);
+        expect(window.location.pathname).toBe("/");
 
-        const row = screen.getByTestId("swaplist-item-metadata-refund-swap");
-        const assets = row.querySelectorAll(".asset");
-
-        expect(row).toHaveTextContent(i18n.en.refund);
-        expect(assets).toHaveLength(2);
-        expect(assets[0]).toHaveAttribute("data-asset", "USDT");
-        expect(assets[0]).toHaveAttribute("data-network", "solana");
-        expect(assets[1]).toHaveAttribute("data-asset", "LBTC");
-        expect(row.querySelector('[data-asset="TBTC"]')).toBeNull();
-    });
-
-    test("should show the restored swap id for enriched EVM rows and the tx hash otherwise", () => {
-        const enrichedTxHash = `0x${"a".repeat(64)}`;
-        const scannedTxHash = `0x${"b".repeat(64)}`;
-        const enriched = {
-            source: RescueResultSource.Evm,
-            key: `evm:claim:TBTC:${enrichedTxHash}`,
-            action: RescueAction.Claim,
-            evmAction: RskRescueMode.Claim,
-            actionable: true,
-            sortValue: 100,
-            swap: {
-                action: RskRescueMode.Claim,
-                asset: "TBTC",
-                blockNumber: 100,
-                transactionHash: enrichedTxHash,
-                restoredSwap: {
-                    id: "restored-evm-swap",
-                    type: SwapType.Reverse,
-                    status: "transaction.confirmed",
-                    createdAt: 1,
-                    from: "L-BTC",
-                    to: "TBTC",
-                    preimageHash: "bb",
-                },
-            },
-        };
-        const scanned = {
-            source: RescueResultSource.Evm,
-            key: `evm:refund:TBTC:${scannedTxHash}`,
-            action: RescueAction.Refund,
-            evmAction: RskRescueMode.Refund,
-            actionable: true,
-            sortValue: 99,
-            swap: {
-                action: RskRescueMode.Refund,
-                asset: "TBTC",
-                blockNumber: 99,
-                transactionHash: scannedTxHash,
-            },
-        };
-        const results = [enriched, scanned];
-        const openResult = vi.fn();
-
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <Results
-                        state={
-                            {
-                                btc: {
-                                    loadedSwaps: 0,
-                                    searchState: BtcSearchState.Ready,
-                                    listLoading: false,
-                                },
-                                evm: {
-                                    unmatchedRefundSwaps: 0,
-                                    unmatchedClaimSwaps: 0,
-                                },
-                                search: {
-                                    hasSearched: true,
-                                    isSearching: false,
-                                },
-                            } as any
-                        }
-                        results={
-                            {
-                                all: () => results,
-                                current: () => results,
-                                currentEvmProgress: () => undefined,
-                                currentPage: () => 1,
-                                displaySlotCount: () => results.length,
-                                hasAny: () => true,
-                                open: openResult,
-                                setCurrent: vi.fn(),
-                                setCurrentPage: vi.fn(),
-                            } as any
-                        }
-                    />
-                </>
-            ),
-            {
-                wrapper: contextWrapper,
-            },
-        );
-
-        const enrichedRow = screen.getByTestId(`swaplist-item-${enriched.key}`);
-        expect(
-            within(enrichedRow).getByText("restored-evm-swap"),
-        ).toBeInTheDocument();
-
-        fireEvent.click(enrichedRow);
-        expect(openResult).toHaveBeenCalledWith(enriched);
-
-        const scannedRow = screen.getByTestId(`swaplist-item-${scanned.key}`);
-        expect(
-            within(scannedRow).getByText("0xbbb...bbbbb"),
-        ).toBeInTheDocument();
-
-        fireEvent.click(scannedRow);
-        expect(openResult).toHaveBeenCalledWith(scanned);
-    });
-
-    test("should keep result rows clickable while a running scan pushes fresh result arrays", () => {
-        const firstTxHash = `0x${"c".repeat(64)}`;
-        const secondTxHash = `0x${"d".repeat(64)}`;
-        const makeResult = (transactionHash: string, blockNumber: number) => ({
-            source: RescueResultSource.Evm,
-            key: `evm:refund:TBTC:${transactionHash}`,
-            action: RescueAction.Refund,
-            evmAction: RskRescueMode.Refund,
-            actionable: true,
-            sortValue: blockNumber,
-            swap: {
-                action: RskRescueMode.Refund,
-                asset: "TBTC",
-                blockNumber,
-                transactionHash,
-            },
+        fireEvent.click(screen.getByTestId("swaplist-item-claim-swap"));
+        await waitFor(() => {
+            expect(window.location.pathname).toBe("/rescue/claim/claim-swap");
         });
+    });
+});
 
+describe("external rescue scan helpers", () => {
+    test("maps restorable swaps and drops the ones without details", () => {
+        const mapped = mapRestorableSwaps([
+            pendingSwap,
+            { ...pendingSwap, id: "no-details", claimDetails: undefined },
+        ]);
+
+        expect(mapped).toHaveLength(1);
+        expect(mapped[0]).toMatchObject({
+            id: "pending-swap",
+            type: SwapType.Reverse,
+            assetSend: LN,
+            assetReceive: BTC,
+        });
+    });
+
+    test("uses the local date before the restored creation time", () => {
+        expect(getSwapDate({ date: 5, createdAt: 1 })).toBe(5);
+        expect(getSwapDate({ createdAt: 2 })).toBe(2_000);
+        expect(getSwapDate({})).toBe(0);
+    });
+
+    test("sorts actionable results first and newest first within a priority", () => {
+        const sorted = sortResults([
+            makeResult("done", RescueAction.Successful, 5),
+            makeResult("pending", RescueAction.Pending, 4),
+            makeResult("old-refund", RescueAction.Refund, 1),
+            makeResult("claim", RescueAction.Claim, 2),
+            makeResult("failed", RescueAction.Failed, 3),
+        ]);
+
+        expect(sorted.map((r) => r.key)).toEqual([
+            "claim",
+            "old-refund",
+            "pending",
+            "done",
+            "failed",
+        ]);
+    });
+});
+
+describe("Results", () => {
+    test("should keep result rows clickable while fresh result arrays are pushed", () => {
         const open = vi.fn();
-        let setCurrent!: (results: any[]) => void;
+        let setCurrent!: (results: RescueResult[]) => void;
 
         const Harness = () => {
             const { results } = useExternalRescueSearch();
@@ -898,29 +449,15 @@ describe("Rescue", () => {
             return (
                 <Results
                     state={
-                        {
-                            btc: {
-                                loadedSwaps: 0,
-                                searchState: BtcSearchState.Ready,
-                                listLoading: false,
-                            },
-                            evm: {
-                                unmatchedRefundSwaps: 0,
-                                unmatchedClaimSwaps: 0,
-                            },
-                            search: {
-                                hasSearched: true,
-                                isSearching: true,
-                            },
-                        } as any
+                        readyState as ReturnType<
+                            typeof useExternalRescueSearch
+                        >["state"]
                     }
-                    results={
-                        {
-                            ...results,
-                            all: () => [makeResult(firstTxHash, 1)],
-                            open,
-                        } as any
-                    }
+                    results={{
+                        ...results,
+                        all: () => [makeResult("first", RescueAction.Refund)],
+                        open,
+                    }}
                 />
             );
         };
@@ -937,24 +474,70 @@ describe("Rescue", () => {
             },
         );
 
-        const row = screen.getByTestId(
-            `swaplist-item-evm:refund:TBTC:${firstTxHash}`,
-        );
+        const row = screen.getByTestId("swaplist-item-first");
 
-        // a scan event pushes a fresh slice of equivalent objects
-        setCurrent([makeResult(firstTxHash, 1), makeResult(secondTxHash, 2)]);
+        setCurrent([
+            makeResult("first", RescueAction.Refund, 1),
+            makeResult("second", RescueAction.Refund, 2),
+        ]);
 
-        expect(
-            screen.getByTestId(`swaplist-item-evm:refund:TBTC:${secondTxHash}`),
-        ).toBeInTheDocument();
-        expect(
-            screen.getByTestId(`swaplist-item-evm:refund:TBTC:${firstTxHash}`),
-        ).toBe(row);
+        expect(screen.getByTestId("swaplist-item-second")).toBeInTheDocument();
+        expect(screen.getByTestId("swaplist-item-first")).toBe(row);
 
         fireEvent.click(row);
         expect(open).toHaveBeenCalledTimes(1);
-        expect(open.mock.calls[0][0].key).toBe(
-            `evm:refund:TBTC:${firstTxHash}`,
+        expect((open.mock.calls[0][0] as RescueResult).key).toBe("first");
+    });
+
+    test("should show the loading progress while restoring", () => {
+        const results = {
+            all: () => [] as RescueResult[],
+            current: () => [] as RescueResult[],
+            currentPage: () => 1,
+            displaySlotCount: () => 0,
+            hasAny: () => false,
+            open: vi.fn(),
+            setCurrent: vi.fn(),
+            setCurrentPage: vi.fn(),
+        };
+
+        render(
+            () => (
+                <>
+                    <TestComponent />
+                    <Results
+                        state={
+                            {
+                                ...readyState,
+                                btc: {
+                                    ...readyState.btc,
+                                    loadedSwaps: 3,
+                                    searchState: BtcSearchState.Loading,
+                                },
+                                search: {
+                                    hasSearched: true,
+                                    isSearching: true,
+                                },
+                            } as ReturnType<
+                                typeof useExternalRescueSearch
+                            >["state"]
+                        }
+                        results={
+                            results as unknown as ReturnType<
+                                typeof useExternalRescueSearch
+                            >["results"]
+                        }
+                    />
+                </>
+            ),
+            {
+                wrapper: contextWrapper,
+            },
         );
+
+        expect(
+            screen.getByText(i18n.en.swaps_found.replace("{{ count }}", "3")),
+        ).toBeInTheDocument();
+        expect(screen.queryByText(i18n.en.no_swaps_found)).toBeNull();
     });
 });

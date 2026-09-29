@@ -7,7 +7,7 @@ import RefundButton from "../../src/components/RefundButton";
 import { BTC, LN } from "../../src/consts/Assets";
 import { getSwapUTXOs } from "../../src/utils/blockchain";
 import { refund } from "../../src/utils/rescue";
-import type { ChainSwap, SubmarineSwap } from "../../src/utils/swapCreator";
+import type { SubmarineSwap } from "../../src/utils/swapCreator";
 import {
     TestComponent,
     contextWrapper,
@@ -29,8 +29,8 @@ const mockGetSwapUTXOs = vi.mocked(getSwapUTXOs);
 
 const validAddress = "2N4Q5FhU2497BryFfUgbqkAJE87aKHUhXMp";
 
-const renderRefundButton = (swap: SubmarineSwap | ChainSwap) => {
-    const [swapAccessor] = createSignal<SubmarineSwap | ChainSwap>(swap);
+const renderRefundButton = (swap: SubmarineSwap) => {
+    const [swapAccessor] = createSignal<SubmarineSwap>(swap);
     render(
         () => (
             <>
@@ -62,11 +62,11 @@ describe("RefundButton", () => {
     });
 
     test("should render RefundButton", () => {
-        const [swap] = createSignal<SubmarineSwap | ChainSwap | null>(null);
+        const [swap] = createSignal<SubmarineSwap | null>(null);
         render(
             () => (
                 <RefundButton
-                    swap={swap as Accessor<SubmarineSwap | ChainSwap>}
+                    swap={swap as Accessor<SubmarineSwap>}
                     setRefundTxId={(() => "") as Setter<string>}
                 />
             ),
@@ -77,7 +77,7 @@ describe("RefundButton", () => {
     });
 
     test("button should be active after pasting valid address", async () => {
-        const [swap] = createSignal<SubmarineSwap | ChainSwap>({
+        const [swap] = createSignal<SubmarineSwap>({
             version: OutputType.Taproot,
             id: "swap",
             assetSend: BTC,
@@ -118,7 +118,7 @@ describe("RefundButton", () => {
 
     test("button should be inactive after pasting the lock address", async () => {
         const lockupAddress = "2N4Q5FhU2497BryFfUgbqkAJE87aKHUhXMp";
-        const [swap] = createSignal<SubmarineSwap | ChainSwap>({
+        const [swap] = createSignal<SubmarineSwap>({
             version: 1,
             date: 1620000000,
             id: "swap",
@@ -165,7 +165,7 @@ describe("RefundButton", () => {
     });
 
     test("button should be inactive after pasting an invalid address", async () => {
-        const [swap] = createSignal<SubmarineSwap | ChainSwap>({
+        const [swap] = createSignal<SubmarineSwap>({
             version: OutputType.Taproot,
             id: "swap",
             assetSend: BTC,
@@ -284,4 +284,33 @@ describe("RefundButton", () => {
             { id: "real-utxo", hex: "real-hex" },
         ]);
     });
+
+    test.each([
+        ["bad-txns-inputs-missingorspent", "Swap already refunded"],
+        ["Transaction already in block chain", "Swap already refunded"],
+        ["non-final", "Locktime requirement not satisfied"],
+    ])(
+        "maps the broadcast error %s to a readable notification",
+        async (error, message) => {
+            mockRefund.mockRejectedValue(error);
+            mockGetSwapUTXOs.mockResolvedValue([]);
+
+            renderRefundButton({
+                version: OutputType.Taproot,
+                id: "swap",
+                assetSend: BTC,
+                assetReceive: LN,
+                type: SwapType.Submarine,
+            } as SubmarineSwap);
+            payContext.setRefundableUTXOs([{ id: "utxo", hex: "hex" }]);
+
+            await submitRefund();
+
+            await waitFor(() =>
+                expect(globalSignals.notification()).toBe(message),
+            );
+            expect(globalSignals.notificationType()).toBe("error");
+            expect(mockRefund).toHaveBeenCalledTimes(1);
+        },
+    );
 });

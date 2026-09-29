@@ -13,7 +13,7 @@ const { apiUrlState, networkState, getReferralMock, setBoltzSwapsConfigMock } =
         setBoltzSwapsConfigMock: vi.fn(),
     }));
 
-vi.mock("boltz-swaps", () => ({
+vi.mock("boltz-swaps/config", () => ({
     setBoltzSwapsConfig: setBoltzSwapsConfigMock,
 }));
 

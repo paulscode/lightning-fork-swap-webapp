@@ -1,4 +1,4 @@
-import { decodeInvoice } from "boltz-swaps/invoice";
+import { MissingBlake2bFeatureError, decodeInvoice } from "boltz-swaps/invoice";
 import { vi } from "vitest";
 
 import { validateInvoice } from "../../src/utils/validation";
@@ -21,12 +21,7 @@ describe("validateInvoice", () => {
         decodeInvoiceMock.mockReset();
     });
 
-    test.each([
-        "invalid invoice",
-        "invalid bolt12 invoice",
-        "missing bolt11 payment hash",
-        "missing bolt12 payment hash",
-    ])(
+    test.each(["invalid invoice", "missing bolt11 payment hash"])(
         "maps SDK decode error %p to the invalid_invoice i18n key",
         (sdkError) => {
             decodeInvoiceMock.mockImplementation(() => {
@@ -38,6 +33,28 @@ describe("validateInvoice", () => {
             );
         },
     );
+
+    test("maps a missing BLAKE2b feature bit to invoice_missing_blake2b", () => {
+        const sdkError = new MissingBlake2bFeatureError();
+        decodeInvoiceMock.mockImplementation(() => {
+            throw sdkError;
+        });
+
+        expect(() => validateInvoice("lnbcrt1sha256chain")).toThrow(
+            expect.objectContaining({
+                message: "invoice_missing_blake2b",
+                cause: sdkError,
+            }),
+        );
+    });
+
+    test("does not decode input that is neither an invoice nor an LNURL", async () => {
+        const invoiceModule = await import("../../src/utils/invoice");
+        vi.mocked(invoiceModule.isInvoice).mockReturnValueOnce(false);
+
+        expect(() => validateInvoice("garbage")).toThrow("invalid_invoice");
+        expect(decodeInvoiceMock).not.toHaveBeenCalled();
+    });
 
     test("throws invalid_0_amount for a zero-amount invoice", () => {
         decodeInvoiceMock.mockReturnValue({ satoshis: 0 } as never);

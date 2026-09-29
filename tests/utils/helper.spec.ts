@@ -3,22 +3,18 @@ import { hex } from "@scure/base";
 import type { Pairs } from "boltz-swaps/client";
 import { SwapType } from "boltz-swaps/types";
 
-import type * as ConfigModule from "../../src/config";
-import { BTC } from "../../src/consts/Assets";
+import { BTC, LN } from "../../src/consts/Assets";
 import { ECPair } from "../../src/utils/ecpair";
 import {
+    coalesceLn,
+    cropString,
     formatAddress,
     getDestinationAddress,
     getPair,
     getReferral,
-    getRegularReferral,
     parsePrivateKey,
 } from "../../src/utils/helper";
-import type {
-    ChainSwap,
-    ReverseSwap,
-    SubmarineSwap,
-} from "../../src/utils/swapCreator";
+import type { ReverseSwap, SubmarineSwap } from "../../src/utils/swapCreator";
 
 vi.mock("../../src/utils/ecpair", () => {
     return {
@@ -29,44 +25,23 @@ vi.mock("../../src/utils/ecpair", () => {
     };
 });
 
-const { configMock } = vi.hoisted(() => ({
-    configMock: { isPro: false } as { isPro: boolean },
-}));
-
-vi.mock("../../src/config", async () => {
-    const actual =
-        await vi.importActual<typeof ConfigModule>("../../src/config");
-
-    return {
-        ...actual,
-        config: new Proxy(actual.config as object, {
-            get(target, prop) {
-                if (prop === "isPro") {
-                    return configMock.isPro;
-                }
-                return target[prop as keyof typeof target];
-            },
-        }),
-    };
-});
-
 describe("helper", () => {
     test.each`
         swapType       | assetSend     | assetReceive  | expected
         ${"submarine"} | ${"notFound"} | ${"notFound"} | ${undefined}
-        ${"submarine"} | ${"BTC"}      | ${"BTC"}      | ${undefined}
-        ${"submarine"} | ${"L-BTC"}    | ${"L-BTC"}    | ${undefined}
-        ${"submarine"} | ${"L-BTC"}    | ${"BTC"}      | ${{ pair: 1 }}
-        ${"reverse"}   | ${"BTC"}      | ${"BTC"}      | ${undefined}
-        ${"reverse"}   | ${"L-BTC"}    | ${"BTC"}      | ${undefined}
-        ${"reverse"}   | ${"BTC"}      | ${"L-BTC"}    | ${{ pair: 2 }}
-        ${"chain"}     | ${"BTC"}      | ${"L-BTC"}    | ${{ pair: 3 }}
+        ${"submarine"} | ${BTC}        | ${LN}         | ${{ pair: 1 }}
+        ${"submarine"} | ${BTC}        | ${BTC}        | ${{ pair: 1 }}
+        ${"submarine"} | ${LN}         | ${BTC}        | ${{ pair: 1 }}
+        ${"submarine"} | ${BTC}        | ${"other"}    | ${undefined}
+        ${"reverse"}   | ${LN}         | ${BTC}        | ${{ pair: 2 }}
+        ${"reverse"}   | ${"other"}    | ${BTC}        | ${undefined}
+        ${"chain"}     | ${BTC}        | ${BTC}        | ${undefined}
     `(
         "should get pair from config, expect: `$expected` from `$swapType: $assetSend > $assetReceive`",
         ({ swapType, assetSend, assetReceive, expected }) => {
             const config = {
                 submarine: {
-                    "L-BTC": {
+                    BTC: {
                         BTC: {
                             pair: 1,
                         },
@@ -74,15 +49,8 @@ describe("helper", () => {
                 },
                 reverse: {
                     BTC: {
-                        "L-BTC": {
+                        BTC: {
                             pair: 2,
-                        },
-                    },
-                },
-                chain: {
-                    BTC: {
-                        "L-BTC": {
-                            pair: 3,
                         },
                     },
                 },
@@ -93,6 +61,24 @@ describe("helper", () => {
             );
         },
     );
+
+    test("getPair returns undefined without pairs", () => {
+        expect(getPair(undefined, SwapType.Submarine, BTC, LN)).toBeUndefined();
+    });
+
+    test("coalesceLn maps LN to BTC and leaves other assets alone", () => {
+        expect(coalesceLn(LN)).toEqual(BTC);
+        expect(coalesceLn(BTC)).toEqual(BTC);
+        expect(coalesceLn("other")).toEqual("other");
+    });
+
+    test("cropString keeps short strings and crops long ones", () => {
+        expect(cropString("short")).toEqual("short");
+        const long = "a".repeat(20) + "b".repeat(20);
+        expect(cropString(long)).toEqual(
+            `${"a".repeat(19)}...${"b".repeat(19)}`,
+        );
+    });
 
     describe("parsePrivateKey", () => {
         test("should use derive function when keyIndex is provided", () => {
@@ -159,70 +145,48 @@ describe("helper", () => {
             const swap = {
                 type: SwapType.Submarine,
                 assetReceive: "BTC",
-                invoice: "lnbc1234567890abcdefghijklmnopqrstuvwxyz1234567890",
-                originalDestination: "user@getalby.com",
+                invoice: "lnbcrt1234567890abcdefghijklmnopqrstuvwxyz1234567890",
+                originalDestination: "user@example.com",
             } as SubmarineSwap;
 
-            expect(getDestinationAddress(swap)).toBe("user@getalby.com");
+            expect(getDestinationAddress(swap)).toBe("user@example.com");
         });
 
         test("should fallback to invoice for submarine swap without originalDestination", () => {
             const swap = {
                 type: SwapType.Submarine,
                 assetReceive: "BTC",
-                invoice: "lnbc1234567890abcdefghijklmnopqrstuvwxyz1234567890",
+                invoice: "lnbcrt1234567890abcdefghijklmnopqrstuvwxyz1234567890",
             } as SubmarineSwap;
 
             expect(getDestinationAddress(swap)).toBe(
-                "lnbc1234567890abcdefghijklmnopqrstuvwxyz1234567890",
+                "lnbcrt1234567890abcdefghijklmnopqrstuvwxyz1234567890",
             );
         });
 
-        test("should return originalDestination for chain swap (MRH case)", () => {
-            const swap = {
-                type: SwapType.Chain,
-                assetReceive: "L-BTC",
-                claimAddress: "liquid1qabcdefghijklmnopqrstuvwxyz",
-                originalDestination: "user@getalby.com",
-            } as ChainSwap;
-
-            expect(getDestinationAddress(swap)).toBe("user@getalby.com");
-        });
-
-        test("should fallback to claimAddress for chain swap without originalDestination", () => {
-            const swap = {
-                type: SwapType.Chain,
-                assetReceive: "L-BTC",
-                claimAddress: "liquid1qabcdefghijklmnopqrstuvwxyz",
-            } as ChainSwap;
-
-            expect(getDestinationAddress(swap)).toBe(
-                "liquid1qabcdefghijklmnopqrstuvwxyz",
-            );
-        });
-
-        test("returns the connected signer for an EVM reverse swap", () => {
+        test("should return originalDestination for a reverse swap", () => {
             const swap = {
                 type: SwapType.Reverse,
-                assetReceive: "RBTC",
-                signer: "0x000000000000000000000000000000000000beef",
-                claimAddress: "0x000000000000000000000000000000000000dEad",
-            } as unknown as ReverseSwap;
+                assetReceive: BTC,
+                claimAddress: "bcrt1q6agtc4dnjvly869zcgad6u6q2caccvpx83n8ad",
+                originalDestination:
+                    "bitcoin:bcrt1q6agtc4dnjvly869zcgad6u6q2caccvpx83n8ad",
+            } as ReverseSwap;
 
             expect(getDestinationAddress(swap)).toBe(
-                "0x000000000000000000000000000000000000beef",
+                "bitcoin:bcrt1q6agtc4dnjvly869zcgad6u6q2caccvpx83n8ad",
             );
         });
 
-        test("falls back to claimAddress for an EVM reverse swap without signer", () => {
+        test("should fallback to claimAddress for a reverse swap", () => {
             const swap = {
                 type: SwapType.Reverse,
-                assetReceive: "RBTC",
-                claimAddress: "0x000000000000000000000000000000000000dEad",
-            } as unknown as ReverseSwap;
+                assetReceive: BTC,
+                claimAddress: "bcrt1q6agtc4dnjvly869zcgad6u6q2caccvpx83n8ad",
+            } as ReverseSwap;
 
             expect(getDestinationAddress(swap)).toBe(
-                "0x000000000000000000000000000000000000dEad",
+                "bcrt1q6agtc4dnjvly869zcgad6u6q2caccvpx83n8ad",
             );
         });
 
@@ -243,35 +207,24 @@ describe("helper", () => {
         };
 
         afterEach(() => {
-            configMock.isPro = false;
             setUserAgent(originalUserAgent);
         });
 
-        test("getRegularReferral returns desktop referral on desktop", () => {
+        test("getReferral returns desktop referral on desktop", () => {
             setUserAgent("Mozilla/5.0 (X11; Linux x86_64)");
-            expect(getRegularReferral()).toBe("boltz_webapp_desktop");
+            expect(getReferral()).toBe("lightning_fork_swap_desktop");
         });
 
-        test("getRegularReferral returns mobile referral on mobile", () => {
+        test("getReferral returns mobile referral on Android", () => {
             setUserAgent("Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36");
-            expect(getRegularReferral()).toBe("boltz_webapp_mobile");
+            expect(getReferral()).toBe("lightning_fork_swap_mobile");
         });
 
-        test("getRegularReferral ignores config.isPro", () => {
-            configMock.isPro = true;
-            setUserAgent("Mozilla/5.0 (X11; Linux x86_64)");
-            expect(getRegularReferral()).toBe("boltz_webapp_desktop");
-        });
-
-        test("getReferral returns 'pro' when config.isPro is true", () => {
-            configMock.isPro = true;
-            expect(getReferral()).toBe("pro");
-        });
-
-        test("getReferral returns regular referral when config.isPro is false", () => {
-            configMock.isPro = false;
-            setUserAgent("Mozilla/5.0 (X11; Linux x86_64)");
-            expect(getReferral()).toBe("boltz_webapp_desktop");
+        test("getReferral returns mobile referral on iOS", () => {
+            setUserAgent(
+                "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)",
+            );
+            expect(getReferral()).toBe("lightning_fork_swap_mobile");
         });
     });
 });

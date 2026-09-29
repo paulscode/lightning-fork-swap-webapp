@@ -1,8 +1,8 @@
-import { Explorer } from "boltz-swaps/types";
-import { beforeEach, vi } from "vitest";
+import { type Asset, Explorer } from "boltz-swaps/types";
+import { afterEach, beforeEach, vi } from "vitest";
 
 import { config } from "../../src/config";
-import { BTC, LBTC } from "../../src/consts/Assets";
+import { BTC } from "../../src/consts/Assets";
 import { getFeeEstimationsFailover } from "../../src/utils/fees";
 
 const mockGetFeeEstimationsFromBoltz = vi.fn();
@@ -19,8 +19,18 @@ vi.mock("../../src/utils/blockchain", () => ({
 
 describe("fees", () => {
     describe("getFeeEstimationsFailover", () => {
+        let originalApis: Asset["blockExplorerApis"];
+
         beforeEach(() => {
             vi.clearAllMocks();
+            originalApis = config.assets![BTC].blockExplorerApis;
+            config.assets![BTC].blockExplorerApis = [
+                { id: Explorer.Esplora, normal: "https://esplora.example" },
+            ];
+        });
+
+        afterEach(() => {
+            config.assets![BTC].blockExplorerApis = originalApis;
         });
 
         test("should prefer Boltz API", async () => {
@@ -47,17 +57,18 @@ describe("fees", () => {
             expect(feeEstimations).toEqual(expected);
             expect(mockGetFeeEstimationsFromBoltz).toHaveBeenCalled();
             expect(mockGetFeeEstimationsFromBlockchain).toHaveBeenCalled();
-            expect(mockGetFeeEstimationsFromBlockchain).toHaveBeenCalledWith(
-                config.assets![BTC].blockExplorerApis![0],
-            );
+            expect(mockGetFeeEstimationsFromBlockchain).toHaveBeenCalledWith({
+                id: Explorer.Esplora,
+                normal: "https://esplora.example",
+            });
         });
 
         test.each`
-            asset   | explorerFee | expectedFee
-            ${BTC}  | ${1}        | ${2}
-            ${LBTC} | ${0.05}     | ${0.1}
+            asset  | explorerFee | expectedFee
+            ${BTC} | ${1}        | ${2}
+            ${BTC} | ${3.5}      | ${3.5}
         `(
-            "should apply floor for $asset on explorer fallback",
+            "should apply floor for $asset on explorer fallback ($explorerFee)",
             async ({ asset, explorerFee, expectedFee }) => {
                 mockGetFeeEstimationsFromBoltz.mockRejectedValue(
                     new Error("boltz down"),
@@ -96,6 +107,38 @@ describe("fees", () => {
             } finally {
                 config.assets![BTC].blockExplorerApis = originalApis;
             }
+        });
+
+        test("should query mempool before esplora", async () => {
+            config.assets![BTC].blockExplorerApis = [
+                { id: Explorer.Esplora, normal: "https://esplora.example" },
+                { id: Explorer.Mempool, normal: "https://mempool.example" },
+            ];
+            mockGetFeeEstimationsFromBoltz.mockRejectedValue(
+                new Error("boltz down"),
+            );
+            mockGetFeeEstimationsFromBlockchain.mockResolvedValue(4);
+
+            await expect(getFeeEstimationsFailover(BTC)).resolves.toEqual(4);
+            expect(mockGetFeeEstimationsFromBlockchain).toHaveBeenCalledTimes(
+                1,
+            );
+            expect(mockGetFeeEstimationsFromBlockchain).toHaveBeenCalledWith({
+                id: Explorer.Mempool,
+                normal: "https://mempool.example",
+            });
+        });
+
+        test("should throw when no explorer is configured", async () => {
+            config.assets![BTC].blockExplorerApis = [];
+            mockGetFeeEstimationsFromBoltz.mockRejectedValue(
+                new Error("boltz down"),
+            );
+
+            await expect(getFeeEstimationsFailover(BTC)).rejects.toThrow(
+                /could not get fallback fee estimations/i,
+            );
+            expect(mockGetFeeEstimationsFromBlockchain).not.toHaveBeenCalled();
         });
 
         test("should throw when all explorers fail", async () => {

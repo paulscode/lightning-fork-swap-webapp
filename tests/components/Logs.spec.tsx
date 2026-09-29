@@ -1,85 +1,64 @@
 import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
 
 import Logs from "../../src/components/settings/Logs";
-import i18n from "../../src/i18n/i18n";
-import { ChatwootNotReadyError } from "../../src/utils/chatwoot";
-import { TestComponent, contextWrapper, globalSignals } from "../helper";
+import { downloadJson } from "../../src/utils/download";
+import { clipboard } from "../../src/utils/helper";
+import { TestComponent, contextWrapper } from "../helper";
 
-const { chatwootConfiguredMock, postLogsToChatwootMock } = vi.hoisted(() => ({
-    chatwootConfiguredMock: vi.fn(() => false),
-    postLogsToChatwootMock: vi.fn(),
+vi.mock("../../src/utils/download", () => ({
+    downloadJson: vi.fn(),
 }));
 
-vi.mock("../../src/utils/chatwoot", async () => {
-    const actual = await vi.importActual("../../src/utils/chatwoot");
-    return {
-        ...actual,
-        isChatwootConfigured: chatwootConfiguredMock,
-        postLogsToChatwoot: postLogsToChatwootMock,
-    };
+vi.mock("../../src/utils/helper", async () => {
+    const actual = await vi.importActual("../../src/utils/helper");
+    return { ...actual, clipboard: vi.fn() };
 });
+
+const renderLogs = () =>
+    render(
+        () => (
+            <>
+                <TestComponent />
+                <Logs />
+            </>
+        ),
+        { wrapper: contextWrapper },
+    );
 
 describe("Logs", () => {
     beforeEach(() => {
-        chatwootConfiguredMock.mockReturnValue(false);
-        postLogsToChatwootMock.mockReset();
+        vi.clearAllMocks();
     });
 
-    test("should show download on all platforms", async () => {
-        render(() => <Logs />, {
-            wrapper: contextWrapper,
-        });
+    test("should show download and copy on all platforms", async () => {
+        renderLogs();
 
         await screen.findByTestId("logs-download");
-    });
-
-    test("should show copy when Chatwoot is not configured", async () => {
-        render(() => <Logs />, {
-            wrapper: contextWrapper,
-        });
-
         await screen.findByTestId("logs-copy");
-        expect(screen.queryByTestId("logs-chatwoot")).toBeNull();
     });
 
-    test("should post logs to Chatwoot instead of showing copy when configured", async () => {
-        chatwootConfiguredMock.mockReturnValue(true);
-        postLogsToChatwootMock.mockResolvedValue(undefined);
+    test("should copy the logs as JSON", async () => {
+        renderLogs();
 
-        render(() => <Logs />, {
-            wrapper: contextWrapper,
-        });
-
-        expect(screen.queryByTestId("logs-copy")).toBeNull();
-        fireEvent.click(await screen.findByTestId("logs-chatwoot"));
+        fireEvent.click(await screen.findByTestId("logs-copy"));
 
         await waitFor(() => {
-            expect(postLogsToChatwootMock).toHaveBeenCalledOnce();
+            expect(clipboard).toHaveBeenCalledOnce();
         });
+        const copied = vi.mocked(clipboard).mock.calls[0][0];
+        expect(typeof JSON.parse(copied)).toBe("object");
     });
 
-    test("should show a translated error when the support chat is not ready", async () => {
-        chatwootConfiguredMock.mockReturnValue(true);
-        postLogsToChatwootMock.mockRejectedValue(new ChatwootNotReadyError());
+    test("should download the logs", async () => {
+        renderLogs();
 
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <Logs />
-                </>
-            ),
-            {
-                wrapper: contextWrapper,
-            },
+        fireEvent.click(await screen.findByTestId("logs-download"));
+
+        await waitFor(() => {
+            expect(downloadJson).toHaveBeenCalledOnce();
+        });
+        expect(vi.mocked(downloadJson).mock.calls[0][0]).toBe(
+            "lightning-fork-swap-logs",
         );
-
-        fireEvent.click(await screen.findByTestId("logs-chatwoot"));
-
-        await waitFor(() => {
-            expect(globalSignals.notification()).toBe(
-                i18n.en.chatwoot_not_ready,
-            );
-        });
     });
 });

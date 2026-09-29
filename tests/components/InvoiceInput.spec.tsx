@@ -1,83 +1,52 @@
 import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
 import { BigNumber } from "bignumber.js";
+import type * as InvoiceModule from "boltz-swaps/invoice";
 import { vi } from "vitest";
 
 import InvoiceInput from "../../src/components/InvoiceInput";
-import { BTC, LBTC, LN } from "../../src/consts/Assets";
-import { Side } from "../../src/consts/Enums";
+import { BTC, LN } from "../../src/consts/Assets";
+import dict from "../../src/i18n/i18n";
 import Pair from "../../src/utils/Pair";
 import { extractInvoice, invoicePrefix } from "../../src/utils/invoice";
 import {
-    TestComponent,
-    contextWrapper,
-    globalSignals,
-    signals,
-} from "../helper";
+    blake2bInvoice,
+    invoiceAmount,
+    sha256Invoice,
+} from "../fixtures/invoices";
+import { TestComponent, contextWrapper, signals } from "../helper";
 
-vi.mock("boltz-swaps/invoice", async () => {
-    const actual = await vi.importActual("boltz-swaps/invoice");
+const zeroAmountInvoice = "lnbcrt1zeroamount";
+const staleQuoteInvoice = "lnbcrt1stalequote";
+
+// Under jsdom, bolt11's signature recovery rejects its own Buffers (the
+// Uint8Array check sees a different realm), so real invoices cannot be decoded
+// here. This stand-in behaves like the SDK's decodeInvoice for the fixtures:
+// it accepts the BLAKE2b-chain invoice and throws the SDK's
+// MissingBlake2bFeatureError for the SHA256-chain one. The real decoding of
+// both fixtures is covered in tests/utils/validation.spec.ts.
+vi.mock("boltz-swaps/invoice", async (importOriginal) => {
+    const actual = await importOriginal<typeof InvoiceModule>();
+    const fixtures = await import("../fixtures/invoices");
     return {
         ...actual,
         decodeInvoice: vi.fn((input: string) => {
-            if (input.startsWith("lnzeroamt")) {
-                return { satoshis: 0 };
+            const decoded = (satoshis: number) => ({
+                type: actual.InvoiceType.Bolt11,
+                satoshis,
+                preimageHash: "00".repeat(32),
+            });
+            switch (input) {
+                case fixtures.blake2bInvoice:
+                    return decoded(fixtures.invoiceAmount);
+                case fixtures.sha256Invoice:
+                    throw new actual.MissingBlake2bFeatureError();
+                case "lnbcrt1zeroamount":
+                    return decoded(0);
+                case "lnbcrt1stalequote":
+                    return decoded(1000);
+                default:
+                    throw new Error("invalid invoice");
             }
-            return { satoshis: 1000 };
-        }),
-        isBolt12Offer: vi.fn((offer: string) => {
-            return offer.startsWith("lno1");
-        }),
-    };
-});
-
-vi.mock("../../src/utils/validation", async () => {
-    const actual = await vi.importActual("../../src/utils/validation");
-    const validateInvoice = vi.fn((inputValue: string) => {
-        if (inputValue.startsWith("lnzeroamt")) {
-            throw new Error("invalid_0_amount");
-        }
-        if (inputValue.startsWith("ln")) {
-            return 1000;
-        }
-        throw new Error("invalid_invoice");
-    });
-
-    return {
-        ...actual,
-        validateInvoice,
-    };
-});
-
-vi.mock("../../src/utils/compat", async () => {
-    const actual = await vi.importActual("../../src/utils/compat");
-    return {
-        ...actual,
-        probeUserInput: vi.fn((expectedAsset: string, input: string) => {
-            if (!input || input.length === 0) {
-                return null;
-            }
-            if (
-                input.startsWith("bc1") ||
-                input.startsWith("bcrt1") ||
-                input.startsWith("tb1")
-            ) {
-                return BTC;
-            }
-            if (
-                input.startsWith("el1") ||
-                input.startsWith("ert1") ||
-                input.startsWith("ex1")
-            ) {
-                return LBTC;
-            }
-            if (
-                expectedAsset !== "" &&
-                expectedAsset === LN &&
-                input.length > 0
-            ) {
-                return LN;
-            }
-            return null;
         }),
     };
 });
@@ -93,6 +62,10 @@ const setPairAssets = (fromAsset: string, toAsset: string) => {
 describe("InvoiceInput", () => {
     test.each`
         expected | invoice
+        ${true}  | ${blake2bInvoice}
+        ${true}  | ${`${invoicePrefix}${blake2bInvoice}`}
+        ${true}  | ${blake2bInvoice.toUpperCase()}
+        ${false} | ${sha256Invoice}
         ${false} | ${"m@some.domain"}
         ${false} | ${"lnurl1dp68gurn8ghj7mrww4exctndd93ksct9dscnqvf39eshgtmpwp5j7mrww4excuqgy84zh"}
         ${false} | ${"invalid"}
@@ -150,75 +123,6 @@ describe("InvoiceInput", () => {
         expect(input.value).toEqual(lnurl);
     });
 
-    test("should keep BOLT12 offers when the send amount changes", async () => {
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <InvoiceInput />
-                </>
-            ),
-            { wrapper: contextWrapper },
-        );
-        setPairAssets(BTC, LN);
-
-        const input = (await screen.findByTestId(
-            "invoice",
-        )) as HTMLInputElement;
-        const offer =
-            "lno1qgsqvgnwgcg35z6ee2h3yczraddm72xrfua9uve2rlrm9deu7xyfzrc2qqtzzqcxyaupvt8xstdrl8vlun9ch2t28a94hq80agu6usv02rxvetfm3c";
-
-        fireEvent.input(input, {
-            target: { value: offer },
-        });
-
-        await waitFor(() => {
-            expect(signals.bolt12Offer()).toEqual(offer);
-        });
-
-        signals.setAmountChanged(Side.Send);
-        signals.setSendAmount(BigNumber(10_000));
-        signals.setReceiveAmount(BigNumber(9_900));
-        signals.setAmountValid(true);
-
-        await waitFor(() => {
-            expect(signals.invoice()).toEqual(offer);
-            expect(input.value).toEqual(offer);
-        });
-    });
-
-    test("should clear amounts when changing to a BOLT12 offer", async () => {
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <InvoiceInput />
-                </>
-            ),
-            { wrapper: contextWrapper },
-        );
-        setPairAssets(BTC, LN);
-
-        signals.setSendAmount(BigNumber(10_000));
-        signals.setReceiveAmount(BigNumber(9_900));
-
-        const input = (await screen.findByTestId(
-            "invoice",
-        )) as HTMLInputElement;
-        const offer =
-            "lno1qgsqvgnwgcg35z6ee2h3yczraddm72xrfua9uve2rlrm9deu7xyfzrc2qqtzzqcxyaupvt8xstdrl8vlun9ch2t28a94hq80agu6usv02rxvetfm3c";
-
-        fireEvent.input(input, {
-            target: { value: offer },
-        });
-
-        await waitFor(() => {
-            expect(signals.bolt12Offer()).toEqual(offer);
-            expect(signals.sendAmount().isZero()).toEqual(true);
-            expect(signals.receiveAmount().isZero()).toEqual(true);
-        });
-    });
-
     test.each`
         lnurl
         ${`${invoicePrefix}m@some.domain`}
@@ -249,9 +153,9 @@ describe("InvoiceInput", () => {
     });
 
     test.each`
-        asset   | input
-        ${BTC}  | ${"bcrt1q7vq47xpsg4t080205edaulc3sdsjpdxy9svhr3"}
-        ${LBTC} | ${"el1qq2yjqfz9evc3c5m0rzw0cdtfcdfl5kmcf9xsskpsgza34zhezxzq7y6y4dnldxhtd935k8dn63n8cywy3jlzuvftycsmytjmu"}
+        asset  | input
+        ${BTC} | ${"bcrt1q7vq47xpsg4t080205edaulc3sdsjpdxy9svhr3"}
+        ${BTC} | ${"2NDkcnHAnugU1aQ5bv522MeZTgv6tQs2rt8"}
     `("should switch asset based on input $input", async ({ asset, input }) => {
         render(
             () => (
@@ -278,52 +182,8 @@ describe("InvoiceInput", () => {
         expect(signals.onchainAddress()).toEqual(input);
     });
 
-    test.each`
-        parameter      | bip21Uri                                                                                                                                                                                                                                                                                                                                                                                                                          | expectedValue
-        ${"lightning"} | ${"bitcoin:bcrt1q0zjymfy94ctjdegxascl8l253p0ppl5fzz46qm?amount=0.00001&label=sbddesign%3A%20For%20lunch%20Tuesday&message=For%20lunch%20Tuesday&lightning=lnbcrt4294u1pjlmqy7pp5g9tj83k3k54ajzktdv8dq5nqsc8336j4f0v3wphq37x8hklntsxsdqqcqzzsxqyz5vqsp53qupg459fzdhajwjmzs8vd3elge0rmkzkmrmnpeuwy6kme47ns4q9qyyssqvncgzrmmghmtxu9m7wvw0yvtgckz4078xwam7exjpka2c89ga0y3jenhv6hhzuccj9hkl7a7f20nuslh3wqa4lfduq76ycxaf3w56zcq32d5fv"} | ${"lnbcrt4294u1pjlmqy7pp5g9tj83k3k54ajzktdv8dq5nqsc8336j4f0v3wphq37x8hklntsxsdqqcqzzsxqyz5vqsp53qupg459fzdhajwjmzs8vd3elge0rmkzkmrmnpeuwy6kme47ns4q9qyyssqvncgzrmmghmtxu9m7wvw0yvtgckz4078xwam7exjpka2c89ga0y3jenhv6hhzuccj9hkl7a7f20nuslh3wqa4lfduq76ycxaf3w56zcq32d5fv"}
-        ${"lno"}       | ${"bitcoin:bcrt1q0zjymfy94ctjdegxascl8l253p0ppl5fzz46qm?amount=0.00001&label=sbddesign%3A%20For%20lunch%20Tuesday&message=For%20lunch%20Tuesday&lno=lno1qgsqvgnwgcg35z6ee2h3yczraddm72xrfua9uve2rlrm9deu7xyfzrc2qqtzzqcxyaupvt8xstdrl8vlun9ch2t28a94hq80agu6usv02rxvetfm3c"}                                                                                                                                                      | ${"lno1qgsqvgnwgcg35z6ee2h3yczraddm72xrfua9uve2rlrm9deu7xyfzrc2qqtzzqcxyaupvt8xstdrl8vlun9ch2t28a94hq80agu6usv02rxvetfm3c"}
-    `(
-        "should extract $parameter from BIP21 URI",
-        async ({ bip21Uri, expectedValue, parameter }) => {
-            render(
-                () => (
-                    <>
-                        <TestComponent />
-                        <InvoiceInput />
-                    </>
-                ),
-                { wrapper: contextWrapper },
-            );
-
-            setPairAssets(BTC, LN);
-
-            const invoiceInput = (await screen.findByTestId(
-                "invoice",
-            )) as HTMLInputElement;
-
-            fireEvent.input(invoiceInput, {
-                target: { value: bip21Uri },
-            });
-
-            if (parameter === "lightning") {
-                await waitFor(() => {
-                    expect(signals.invoice()).toEqual(expectedValue);
-                    expect(signals.invoiceValid()).toEqual(true);
-                });
-            } else {
-                await waitFor(() => {
-                    expect(signals.bolt12Offer()).toEqual(expectedValue);
-                    expect(signals.invoice()).toEqual(expectedValue);
-                });
-            }
-        },
-    );
-
-    test("should extract lno from BIP21 URI without address", async () => {
-        const bip21Uri =
-            "bitcoin:?lno=lno1qgsqvgnwgcg35z6ee2h3yczraddm72xrfua9uve2rlrm9deu7xyfzrc2qqtzzqcxyaupvt8xstdrl8vlun9ch2t28a94hq80agu6usv02rxvetfm3c";
-        const expectedBolt12Offer =
-            "lno1qgsqvgnwgcg35z6ee2h3yczraddm72xrfua9uve2rlrm9deu7xyfzrc2qqtzzqcxyaupvt8xstdrl8vlun9ch2t28a94hq80agu6usv02rxvetfm3c";
+    test("should extract the lightning invoice from a BIP21 URI", async () => {
+        const bip21Uri = `bitcoin:bcrt1q0zjymfy94ctjdegxascl8l253p0ppl5fzz46qm?amount=0.00001&label=lunch&lightning=${blake2bInvoice}`;
 
         render(
             () => (
@@ -346,9 +206,41 @@ describe("InvoiceInput", () => {
         });
 
         await waitFor(() => {
-            expect(signals.bolt12Offer()).toEqual(expectedBolt12Offer);
-            expect(signals.invoice()).toEqual(expectedBolt12Offer);
+            expect(signals.invoice()).toEqual(blake2bInvoice);
+            expect(signals.invoiceValid()).toEqual(true);
+            expect(signals.receiveAmount()).toEqual(BigNumber(invoiceAmount));
         });
+    });
+
+    test("should reject a SHA256-chain invoice inside a BIP21 URI", async () => {
+        const bip21Uri = `bitcoin:bcrt1q0zjymfy94ctjdegxascl8l253p0ppl5fzz46qm?lightning=${sha256Invoice}`;
+
+        render(
+            () => (
+                <>
+                    <TestComponent />
+                    <InvoiceInput />
+                </>
+            ),
+            { wrapper: contextWrapper },
+        );
+
+        setPairAssets(BTC, LN);
+
+        const invoiceInput = (await screen.findByTestId(
+            "invoice",
+        )) as HTMLInputElement;
+
+        fireEvent.input(invoiceInput, {
+            target: { value: bip21Uri },
+        });
+
+        await waitFor(() => {
+            expect(signals.invoiceError()).toEqual("invoice_missing_blake2b");
+            expect(signals.invoiceValid()).toEqual(false);
+        });
+        // The lightning invoice takes precedence over the on-chain address
+        expect(signals.pair().toAsset).toEqual(LN);
     });
 
     test("should extract address from BIP21 URI and switch to on-chain", async () => {
@@ -410,7 +302,7 @@ describe("InvoiceInput", () => {
             )) as HTMLInputElement;
 
             fireEvent.input(input, {
-                target: { value: "lnzeroamt1pjtest" },
+                target: { value: zeroAmountInvoice },
             });
 
             await waitFor(() => {
@@ -421,7 +313,11 @@ describe("InvoiceInput", () => {
         },
     );
 
-    test("should keep bitcoin-only mode on bitcoin assets when pasting another chain address", async () => {
+    test.each`
+        input
+        ${"bc1qylh3u67j673h6y6alv70m0pl2yz53tzhvxgg7u"}
+        ${"not an invoice"}
+    `("should reject $input without switching direction", async ({ input }) => {
         render(
             () => (
                 <>
@@ -432,17 +328,14 @@ describe("InvoiceInput", () => {
             { wrapper: contextWrapper },
         );
 
-        globalSignals.setBitcoinOnly(true);
         setPairAssets(BTC, LN);
 
-        const input = (await screen.findByTestId(
+        const invoiceInput = (await screen.findByTestId(
             "invoice",
         )) as HTMLInputElement;
 
-        fireEvent.input(input, {
-            target: {
-                value: "el1qq2yjqfz9evc3c5m0rzw0cdtfcdfl5kmcf9xsskpsgza34zhezxzq7y6y4dnldxhtd935k8dn63n8cywy3jlzuvftycsmytjmu",
-            },
+        fireEvent.input(invoiceInput, {
+            target: { value: input },
         });
 
         await waitFor(() => {
@@ -450,7 +343,100 @@ describe("InvoiceInput", () => {
             expect(signals.pair().toAsset).toEqual(LN);
             expect(signals.onchainAddress()).toEqual("");
             expect(signals.invoiceValid()).toEqual(false);
+            expect(signals.invoiceError()).toEqual("invalid_invoice");
+            expect(invoiceInput.className).toContain("invalid");
+        });
+    });
+
+    describe("BLAKE2b feature bit", () => {
+        const renderInput = async () => {
+            render(
+                () => (
+                    <>
+                        <TestComponent />
+                        <InvoiceInput />
+                    </>
+                ),
+                { wrapper: contextWrapper },
+            );
+            setPairAssets(BTC, LN);
+
+            return (await screen.findByTestId("invoice")) as HTMLInputElement;
+        };
+
+        test("rejects a pasted SHA256-chain invoice with invoice_missing_blake2b", async () => {
+            const input = await renderInput();
+
+            fireEvent.input(input, {
+                target: { value: sha256Invoice },
+            });
+
+            await waitFor(() => {
+                expect(signals.invoiceError()).toEqual(
+                    "invoice_missing_blake2b",
+                );
+            });
+            expect(signals.invoiceValid()).toEqual(false);
             expect(input.className).toContain("invalid");
+            expect(input.validationMessage).toEqual(
+                dict.en.invoice_missing_blake2b,
+            );
+            // The pasted invoice stays visible so the user sees what was wrong
+            expect(input.value).toEqual(sha256Invoice);
+        });
+
+        test("rejects a SHA256-chain invoice with a lightning: prefix", async () => {
+            const input = await renderInput();
+
+            fireEvent.input(input, {
+                target: { value: `${invoicePrefix}${sha256Invoice}` },
+            });
+
+            await waitFor(() => {
+                expect(signals.invoiceError()).toEqual(
+                    "invoice_missing_blake2b",
+                );
+            });
+            expect(signals.invoiceValid()).toEqual(false);
+        });
+
+        test("accepts a pasted BLAKE2b-chain invoice", async () => {
+            const input = await renderInput();
+
+            fireEvent.input(input, {
+                target: { value: blake2bInvoice },
+            });
+
+            await waitFor(() => {
+                expect(signals.invoiceValid()).toEqual(true);
+            });
+            expect(signals.invoiceError()).toBeUndefined();
+            expect(signals.invoice()).toEqual(blake2bInvoice);
+            expect(signals.receiveAmount()).toEqual(BigNumber(invoiceAmount));
+            expect(input.className).not.toContain("invalid");
+            expect(input.validationMessage).toEqual("");
+        });
+
+        test("clears the error when a SHA256-chain invoice is replaced by a BLAKE2b one", async () => {
+            const input = await renderInput();
+
+            fireEvent.input(input, {
+                target: { value: sha256Invoice },
+            });
+            await waitFor(() => {
+                expect(signals.invoiceError()).toEqual(
+                    "invoice_missing_blake2b",
+                );
+            });
+
+            fireEvent.input(input, {
+                target: { value: blake2bInvoice },
+            });
+            await waitFor(() => {
+                expect(signals.invoiceValid()).toEqual(true);
+            });
+            expect(signals.invoiceError()).toBeUndefined();
+            expect(input.className).not.toContain("invalid");
         });
     });
 
@@ -489,7 +475,7 @@ describe("InvoiceInput", () => {
         )) as HTMLInputElement;
 
         fireEvent.input(input, {
-            target: { value: "lnbcrt1stalequote" },
+            target: { value: staleQuoteInvoice },
         });
 
         await waitFor(() => {

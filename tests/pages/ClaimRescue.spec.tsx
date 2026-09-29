@@ -4,14 +4,14 @@ import type * as SolidRouter from "@solidjs/router";
 import { render, screen, waitFor } from "@solidjs/testing-library";
 import { OutputType } from "boltz-core";
 import type {
-    ChainPairTypeTaproot,
     RestorableSwap,
+    ReversePairTypeTaproot,
     SwapStatusResponse,
 } from "boltz-swaps/client";
 import { SwapType } from "boltz-swaps/types";
 import { vi } from "vitest";
 
-import { LBTC, TBTC } from "../../src/consts/Assets";
+import { BTC, LN } from "../../src/consts/Assets";
 import dict from "../../src/i18n/i18n";
 import ClaimRescue, {
     mapClaimableSwap,
@@ -42,49 +42,81 @@ describe("ClaimRescue", () => {
         );
     });
 
-    test("constructs an L-BTC claim when the EVM source has no UTXO refund details", () => {
-        const tree = {
-            claimLeaf: { output: "claim", version: 0xc0 },
-            refundLeaf: { output: "refund", version: 0xc0 },
-        };
-        const swap: RestorableSwap &
-            Pick<SwapStatusResponse, "transaction"> & { preimage: string } = {
-            id: swapId,
-            type: SwapType.Chain,
-            status: "transaction.server.confirmed",
-            createdAt: 1,
-            from: TBTC,
-            to: LBTC,
-            preimage: "11".repeat(32),
-            transaction: { id: "server-lock", hex: "00" },
-            claimDetails: {
-                amount: 10_000,
-                blindingKey: "22".repeat(32),
-                keyIndex: 7,
-                lockupAddress: "lq1claim",
-                serverPublicKey: `02${"33".repeat(32)}`,
-                timeoutBlockHeight: 1_000,
-                tree,
-            },
-        };
-        const pair = {
-            fees: { minerFees: { user: { claim: 2 } } },
-        } as ChainPairTypeTaproot;
+    const tree = {
+        claimLeaf: { output: "claim", version: 0xc0 },
+        refundLeaf: { output: "refund", version: 0xc0 },
+    };
+    const pair = {
+        fees: { minerFees: { claim: 2, lockup: 3 } },
+    } as ReversePairTypeTaproot;
+    const makeSwap = (
+        overrides: Partial<RestorableSwap> = {},
+    ): RestorableSwap &
+        Pick<SwapStatusResponse, "transaction"> & { preimage: string } => ({
+        id: swapId,
+        type: SwapType.Reverse,
+        status: "transaction.confirmed",
+        createdAt: 1,
+        from: LN,
+        to: BTC,
+        preimage: "11".repeat(32),
+        transaction: { id: "server-lock", hex: "00" },
+        claimDetails: {
+            amount: 10_000,
+            keyIndex: 7,
+            lockupAddress: "bcrt1claim",
+            serverPublicKey: `02${"33".repeat(32)}`,
+            timeoutBlockHeight: 1_000,
+            tree,
+        },
+        ...overrides,
+    });
 
-        const mapped = mapClaimableSwap({ swap, pair });
-        expect(mapped).toMatchObject({
-            type: SwapType.Chain,
-            assetSend: TBTC,
-            assetReceive: LBTC,
+    test("constructs a reverse swap claim from the restored claim details", () => {
+        const swap = makeSwap();
+
+        expect(mapClaimableSwap({ swap, pair })).toMatchObject({
+            id: swapId,
+            type: SwapType.Reverse,
+            assetSend: LN,
+            assetReceive: BTC,
             version: OutputType.Taproot,
             claimPrivateKeyIndex: 7,
-            claimDetails: {
-                ...swap.claimDetails,
-                swapTree: tree,
-            },
+            refundPublicKey: swap.claimDetails!.serverPublicKey,
+            swapTree: tree,
+            receiveAmount: 10_000 - 2,
+            preimage: swap.preimage,
+            transaction: { id: "server-lock", hex: "00" },
         });
-        expect(mapped).not.toHaveProperty("lockupDetails");
-        expect(mapped).not.toHaveProperty("refundPrivateKeyIndex");
+    });
+
+    test("returns undefined without claim details or a claim amount", () => {
+        expect(
+            mapClaimableSwap({
+                swap: makeSwap({ claimDetails: undefined }),
+                pair,
+            }),
+        ).toBeUndefined();
+        expect(
+            mapClaimableSwap({
+                swap: makeSwap({
+                    claimDetails: {
+                        ...makeSwap().claimDetails!,
+                        amount: undefined,
+                    },
+                }),
+                pair,
+            }),
+        ).toBeUndefined();
+    });
+
+    test("returns undefined for submarine swaps", () => {
+        expect(
+            mapClaimableSwap({
+                swap: makeSwap({ type: SwapType.Submarine, from: BTC, to: LN }),
+                pair,
+            }),
+        ).toBeUndefined();
     });
 
     test("renders the error UI without crashing when the swap cannot be constructed", async () => {

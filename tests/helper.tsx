@@ -38,32 +38,24 @@ export const TestComponent = () => {
     return "";
 };
 
-const createContextWrapper =
-    // Kept for call-site compatibility; nothing is fetched on mount anymore
-    (_noFetch: boolean) => (props: { children: JSX.Element }) => {
-        const App = () => (
-            <GlobalProvider>
-                <CreateProvider>
-                    <PayProvider>
-                        <RescueProvider>
-                            <Router>
-                                <Route
-                                    path="/"
-                                    component={() => props.children}
-                                />
-                            </Router>
-                        </RescueProvider>
-                    </PayProvider>
-                </CreateProvider>
-            </GlobalProvider>
-        );
+export const contextWrapper = (props: { children: JSX.Element }) => {
+    const App = () => (
+        <GlobalProvider>
+            <CreateProvider>
+                <PayProvider>
+                    <RescueProvider>
+                        <Router>
+                            <Route path="/" component={() => props.children} />
+                        </Router>
+                    </RescueProvider>
+                </PayProvider>
+            </CreateProvider>
+        </GlobalProvider>
+    );
 
-        return (
-            <Router root={App}>
-                <Route path="/" component={() => props.children} />
-            </Router>
-        );
-    };
-
-export const contextWrapper = createContextWrapper(true);
-export const fetchingContextWrapper = createContextWrapper(false);
+    return (
+        <Router root={App}>
+            <Route path="/" component={() => props.children} />
+        </Router>
+    );
+};

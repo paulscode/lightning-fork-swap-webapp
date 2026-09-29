@@ -1,7 +1,7 @@
 import BigNumber from "bignumber.js";
 import { getConfiguredNetwork } from "boltz-swaps/config";
 
-import { BTC, LBTC, LN } from "../../src/consts/Assets";
+import { BTC, LN } from "../../src/consts/Assets";
 import { Denomination, InvoiceValidation } from "../../src/consts/Enums";
 import { formatAmount, formatDenomination } from "../../src/utils/denomination";
 import {
@@ -14,6 +14,7 @@ import {
     isInvoice,
     isLnurl,
 } from "../../src/utils/invoice";
+import { blake2bInvoice, sha256Invoice } from "../fixtures/invoices";
 
 describe("invoice", () => {
     test.each`
@@ -51,7 +52,7 @@ describe("invoice", () => {
         result   | prefix
         ${true}  | ${"bitcoin:"}
         ${true}  | ${"BITCOIN:"}
-        ${true}  | ${"liquidnetwork:"}
+        ${false} | ${"liquidnetwork:"}
         ${false} | ${"liquid:"}
         ${false} | ${"boltz:"}
     `("should be bip21 $prefix -> $result", ({ result, prefix }) => {
@@ -59,42 +60,37 @@ describe("invoice", () => {
     });
 
     test.each`
-        bip21                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             | invoice
-        ${"bitcoin:BC1QYLH3U67J673H6Y6ALV70M0PL2YZ53TZHVXGG7U?amount=0.00001&label=sbddesign%3A%20For%20lunch%20Tuesday&message=For%20lunch%20Tuesday&lightning=LNBC10U1P3PJ257PP5YZTKWJCZ5FTL5LAXKAV23ZMZEKAW37ZK6KMV80PK4XAEV5QHTZ7QDPDWD3XGER9WD5KWM36YPRX7U3QD36KUCMGYP282ETNV3SHJCQZPGXQYZ5VQSP5USYC4LK9CHSFP53KVCNVQ456GANH60D89REYKDNGSMTJ6YW3NHVQ9QYYSSQJCEWM5CJWZ4A6RFJX77C490YCED6PEMK0UPKXHY89CMM7SCT66K8GNEANWYKZGDRWRFJE69H9U5U0W57RRCSYSAS7GADWMZXC8C6T0SPJAZUP6"}                                                                                                                          | ${"lnbc10u1p3pj257pp5yztkwjcz5ftl5laxkav23zmzekaw37zk6kmv80pk4xaev5qhtz7qdpdwd3xger9wd5kwm36yprx7u3qd36kucmgyp282etnv3shjcqzpgxqyz5vqsp5usyc4lk9chsfp53kvcnvq456ganh60d89reykdngsmtj6yw3nhvq9qyyssqjcewm5cjwz4a6rfjx77c490yced6pemk0upkxhy89cmm7sct66k8gneanwykzgdrwrfje69h9u5u0w57rrcsysas7gadwmzxc8c6t0spjazup6"}
-        ${"liquidnetwork:el1qq2hwpl8uvskkjrznyltjlamk86nh7r69amjmj2kvfwe7pxmfjxl5wjnhvd5am8s7mnv5rtnwflkcgfwesnz2gz8qau0ghppzehf4grt89szq8tex5keq?amount=0.00100135&label=Send%20to%20BTC%20lightning&assetid=5ac9f65c0efcc4775e0baec4ec03abdde22473cd3cf33c0419ca290e0751b225&lightning=lnbc10u1p3pj257pp5yztkwjcz5ftl5laxkav23zmzekaw37zk6kmv80pk4xaev5qhtz7qdpdwd3xger9wd5kwm36yprx7u3qd36kucmgyp282etnv3shjcqzpgxqyz5vqsp5usyc4lk9chsfp53kvcnvq456ganh60d89reykdngsmtj6yw3nhvq9qyyssqjcewm5cjwz4a6rfjx77c490yced6pemk0upkxhy89cmm7sct66k8gneanwykzgdrwrfje69h9u5u0w57rrcsysas7gadwmzxc8c6t0spjazup6"} | ${"lnbc10u1p3pj257pp5yztkwjcz5ftl5laxkav23zmzekaw37zk6kmv80pk4xaev5qhtz7qdpdwd3xger9wd5kwm36yprx7u3qd36kucmgyp282etnv3shjcqzpgxqyz5vqsp5usyc4lk9chsfp53kvcnvq456ganh60d89reykdngsmtj6yw3nhvq9qyyssqjcewm5cjwz4a6rfjx77c490yced6pemk0upkxhy89cmm7sct66k8gneanwykzgdrwrfje69h9u5u0w57rrcsysas7gadwmzxc8c6t0spjazup6"}
+        bip21                                                                                                                                                                                                                                                                                                                                                                                                                                                                      | invoice
+        ${"bitcoin:BCRT1Q78QTNJRT53GAUK6H2W32WANE62JJG2GVVAL6W5?amount=0.00001&label=sbddesign%3A%20For%20lunch%20Tuesday&message=For%20lunch%20Tuesday&lightning=LNBC10U1P3PJ257PP5YZTKWJCZ5FTL5LAXKAV23ZMZEKAW37ZK6KMV80PK4XAEV5QHTZ7QDPDWD3XGER9WD5KWM36YPRX7U3QD36KUCMGYP282ETNV3SHJCQZPGXQYZ5VQSP5USYC4LK9CHSFP53KVCNVQ456GANH60D89REYKDNGSMTJ6YW3NHVQ9QYYSSQJCEWM5CJWZ4A6RFJX77C490YCED6PEMK0UPKXHY89CMM7SCT66K8GNEANWYKZGDRWRFJE69H9U5U0W57RRCSYSAS7GADWMZXC8C6T0SPJAZUP6"} | ${"lnbc10u1p3pj257pp5yztkwjcz5ftl5laxkav23zmzekaw37zk6kmv80pk4xaev5qhtz7qdpdwd3xger9wd5kwm36yprx7u3qd36kucmgyp282etnv3shjcqzpgxqyz5vqsp5usyc4lk9chsfp53kvcnvq456ganh60d89reykdngsmtj6yw3nhvq9qyyssqjcewm5cjwz4a6rfjx77c490yced6pemk0upkxhy89cmm7sct66k8gneanwykzgdrwrfje69h9u5u0w57rrcsysas7gadwmzxc8c6t0spjazup6"}
     `("should trim bip21 lightning invoice", ({ bip21, invoice }) => {
         expect(extractInvoice(bip21)).toEqual(invoice);
     });
 
     test.each`
-        bip21                                                                                                                                                                                                                                                                    | address
-        ${"bitcoin:BC1QYLH3U67J673H6Y6ALV70M0PL2YZ53TZHVXGG7U?amount=0.00001&label=sbddesign%3A%20For%20lunch%20Tuesday&message=For%20lunch%20Tuesday"}                                                                                                                          | ${"BC1QYLH3U67J673H6Y6ALV70M0PL2YZ53TZHVXGG7U"}
-        ${"liquidnetwork:el1qq2hwpl8uvskkjrznyltjlamk86nh7r69amjmj2kvfwe7pxmfjxl5wjnhvd5am8s7mnv5rtnwflkcgfwesnz2gz8qau0ghppzehf4grt89szq8tex5keq?amount=0.00100135&label=Send%20to%20BTC%20lightning&assetid=5ac9f65c0efcc4775e0baec4ec03abdde22473cd3cf33c0419ca290e0751b225"} | ${"el1qq2hwpl8uvskkjrznyltjlamk86nh7r69amjmj2kvfwe7pxmfjxl5wjnhvd5am8s7mnv5rtnwflkcgfwesnz2gz8qau0ghppzehf4grt89szq8tex5keq"}
-        ${"bitcoin:3G4bhXLN64wGN6efUd4MoHjmxBWrUNacPY?amount=0.00183723&label=Send%20to%20BTC%20lightning"}                                                                                                                                                                      | ${"3G4bhXLN64wGN6efUd4MoHjmxBWrUNacPY"}
-        ${"liquidnetwork:VJL8BMWCv7HUq4dgCBJAQA1gHTWibWXPTjP1vXF92doTmpnD7a6b24t7epT3fXNi8nJfW2vYdLLf15vo"}                                                                                                                                                                      | ${"VJL8BMWCv7HUq4dgCBJAQA1gHTWibWXPTjP1vXF92doTmpnD7a6b24t7epT3fXNi8nJfW2vYdLLf15vo"}
+        bip21                                                                                                                                             | address
+        ${"bitcoin:BCRT1Q78QTNJRT53GAUK6H2W32WANE62JJG2GVVAL6W5?amount=0.00001&label=sbddesign%3A%20For%20lunch%20Tuesday&message=For%20lunch%20Tuesday"} | ${"BCRT1Q78QTNJRT53GAUK6H2W32WANE62JJG2GVVAL6W5"}
+        ${"bitcoin:2NDkcnHAnugU1aQ5bv522MeZTgv6tQs2rt8?amount=0.00183723&label=Send%20to%20BTC%20lightning"}                                              | ${"2NDkcnHAnugU1aQ5bv522MeZTgv6tQs2rt8"}
     `("should trim bip21 address: $bip21", ({ bip21, address }) => {
         expect(extractAddress(bip21)).toEqual(address);
     });
 
     test.each`
         bip21
-        ${"bitcoin:BC1QYLH3U67J673H6Y6ALV70M0PL2YZ53TZHVXGG7U?amount=0.00001&label=sbddesign%3A%20For%20lunch%20Tuesday&message=For%20lunch%20Tuesday"}
-        ${"liquidnetwork:el1qq2hwpl8uvskkjrznyltjlamk86nh7r69amjmj2kvfwe7pxmfjxl5wjnhvd5am8s7mnv5rtnwflkcgfwesnz2gz8qau0ghppzehf4grt89szq8tex5keq?amount=0.00100135&label=Send%20to%20BTC%20lightning&assetid=5ac9f65c0efcc4775e0baec4ec03abdde22473cd3cf33c0419ca290e0751b225"}
+        ${"bitcoin:BCRT1Q78QTNJRT53GAUK6H2W32WANE62JJG2GVVAL6W5?amount=0.00001&label=sbddesign%3A%20For%20lunch%20Tuesday&message=For%20lunch%20Tuesday"}
     `("should not return invoice on bip21 address: $bip21", ({ bip21 }) => {
         expect(extractInvoice(bip21)).toEqual(null);
     });
 
     test.each`
-        data                                                                               | amount
-        ${"bitcoin:BC1QYLH3U67J673H6Y6ALV70M0PL2YZ53TZHVXGG7U?amount=0.00001&label=lunch"} | ${BigNumber("0.00001")}
-        ${"liquidnetwork:ert1qhtlluwskenvrf4w8hwds70w9wdwem4fwsd0pk8?amount=0.00100135"}   | ${BigNumber("0.00100135")}
-        ${"BITCOIN:BC1QYLH3U67J673H6Y6ALV70M0PL2YZ53TZHVXGG7U?AMOUNT=0.00001&LABEL=LUNCH"} | ${BigNumber("0.00001")}
-        ${"bitcoin:BC1QYLH3U67J673H6Y6ALV70M0PL2YZ53TZHVXGG7U?label=lunch"}                | ${null}
-        ${"bitcoin:BC1QYLH3U67J673H6Y6ALV70M0PL2YZ53TZHVXGG7U"}                            | ${null}
-        ${"bitcoin:BC1QYLH3U67J673H6Y6ALV70M0PL2YZ53TZHVXGG7U?amount="}                    | ${null}
-        ${"bitcoin:BC1QYLH3U67J673H6Y6ALV70M0PL2YZ53TZHVXGG7U?amount=junk"}                | ${null}
-        ${"bc1qylh3u67j673h6y6alv70m0pl2yz53tzhvxgg7u"}                                    | ${null}
-        ${"lnbcrt4986620n1pjgkj07pp5zl"}                                                   | ${null}
+        data                                                                                 | amount
+        ${"bitcoin:BCRT1Q78QTNJRT53GAUK6H2W32WANE62JJG2GVVAL6W5?amount=0.00001&label=lunch"} | ${BigNumber("0.00001")}
+        ${"BITCOIN:BCRT1Q78QTNJRT53GAUK6H2W32WANE62JJG2GVVAL6W5?AMOUNT=0.00001&LABEL=LUNCH"} | ${BigNumber("0.00001")}
+        ${"bitcoin:BCRT1Q78QTNJRT53GAUK6H2W32WANE62JJG2GVVAL6W5?label=lunch"}                | ${null}
+        ${"bitcoin:BCRT1Q78QTNJRT53GAUK6H2W32WANE62JJG2GVVAL6W5"}                            | ${null}
+        ${"bitcoin:BCRT1Q78QTNJRT53GAUK6H2W32WANE62JJG2GVVAL6W5?amount="}                    | ${null}
+        ${"bitcoin:BCRT1Q78QTNJRT53GAUK6H2W32WANE62JJG2GVVAL6W5?amount=junk"}                | ${null}
+        ${"bcrt1q78qtnjrt53gauk6h2w32wane62jjg2gvval6w5"}                                    | ${null}
+        ${"lnbcrt4986620n1pjgkj07pp5zl"}                                                     | ${null}
     `("should extract bip21 amount of $data -> $amount", ({ data, amount }) => {
         expect(extractBip21Amount(data)).toEqual(amount);
     });
@@ -102,8 +98,7 @@ describe("invoice", () => {
     describe("isInvoice", () => {
         const mainnetInvoice =
             "lnbc678450n1pj8hf4kpp5kxh4x93kvxt43q0k0q6t3fp6gfhgusqxsajj6lcexsrg4lzm7rrqdq5g9kxy7fqd9h8vmmfvdjscqzzsxqyz5vqsp5n4rzwr2lzw68082ws4tjjerp2t5eluny75xx54jr530x073tvvzs9qyyssq3f43e2mzqx07zzt529ux480nj00908p3u5qdwhyuk3qrcepaqsjxqjhcnfde4ta74c3dkxkhwscxfhdm5v0y7qh7np22v9xc220taacqjanm3m";
-        const regtestInvoice =
-            "lnbcrt623210n1pj8hfdspp5mhcxq3qgzn779zs0c02na32henclzt55uga68kck6tknyw0y59qsdqqcqzzsxqyz5vqsp54wll9s5jphgcjqzpnamqeszvfdz937pjels2cqr84pltjsqv2asq9qyyssq49028nqec7uz5vk73peg5a4fkxhltw90kkmupfradjp0sus6g5zxs6njedk8ml3qgdls3dfjfvd7z3py5qgst9fnzz5pwcr5564sf6sqtrlfzz";
+        const regtestInvoice = blake2bInvoice;
 
         test("accepts bolt11 invoices for the configured network", () => {
             const network = getConfiguredNetwork();
@@ -121,8 +116,7 @@ describe("invoice", () => {
         test.each`
             prefix              | expected
             ${"bitcoin:"}       | ${BTC}
-            ${"liquidnetwork:"} | ${LBTC}
-            ${"liquidtestnet:"} | ${LBTC}
+            ${"liquidnetwork:"} | ${""}
             ${"lightning:"}     | ${LN}
             ${"unknown:"}       | ${""}
         `("maps $prefix to its asset", ({ prefix, expected }) => {
@@ -131,8 +125,20 @@ describe("invoice", () => {
     });
 
     describe("isInvoice extra cases", () => {
-        test("detects a bolt12 invoice (lni prefix) regardless of network", () => {
-            expect(isInvoice("lni1qqgypua5")).toBe(true);
+        test("does not treat a bolt12 invoice (lni prefix) as an invoice", () => {
+            expect(isInvoice("lni1qqgypua5")).toBe(false);
+        });
+
+        test("recognizes both BLAKE2b and SHA256-chain invoices by prefix", () => {
+            // isInvoice only checks the format; the BLAKE2b feature bit is
+            // enforced when the invoice is decoded
+            expect(isInvoice(blake2bInvoice)).toBe(true);
+            expect(isInvoice(sha256Invoice)).toBe(true);
+            expect(isInvoice(blake2bInvoice.toUpperCase())).toBe(true);
+        });
+
+        test("does not treat a Lightning address with an lnbcrt user as an invoice", () => {
+            expect(isInvoice("lnbcrt@example.com")).toBe(false);
         });
 
         test("returns false for non-string input", () => {

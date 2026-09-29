@@ -1,4 +1,4 @@
-import { BTC, LBTC, LN, RBTC } from "../../src/consts/Assets";
+import { BTC, LN } from "../../src/consts/Assets";
 import { isPairValid } from "../../src/utils/pairs";
 import { pairs } from "../pairs";
 
@@ -7,9 +7,10 @@ describe("pairs", () => {
         send    | receive | isValid
         ${BTC}  | ${LN}   | ${true}
         ${LN}   | ${BTC}  | ${true}
-        ${LBTC} | ${BTC}  | ${true}
-        ${"NO"} | ${BTC}  | ${false}
-        ${RBTC} | ${LBTC} | ${false}
+        ${BTC}  | ${BTC}  | ${false}
+        ${LN}   | ${LN}   | ${false}
+        ${"NO"} | ${LN}   | ${false}
+        ${LN}   | ${"NO"} | ${false}
     `(
         "should check if pair $send/$receive is valid",
         ({ send, receive, isValid }) => {

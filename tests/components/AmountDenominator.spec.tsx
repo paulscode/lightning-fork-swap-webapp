@@ -1,11 +1,10 @@
 import { render, screen } from "@solidjs/testing-library";
 
 import AmountDenominator from "../../src/components/AmountDenominator";
-import { ETH } from "../../src/consts/Assets";
 import { Denomination } from "../../src/consts/Enums";
 
 describe("AmountDenominator", () => {
-    test.each([Denomination.Btc, "USDT"])(
+    test.each([Denomination.Btc, Denomination.Sat])(
         "renders %s as an icon denominator",
         (value) => {
             const { container } = render(() => (
@@ -18,20 +17,11 @@ describe("AmountDenominator", () => {
         },
     );
 
-    test("renders ETH as its symbol", () => {
-        render(() => <AmountDenominator class="extra" value={ETH} />);
-
-        const symbol = screen.getByText("Ξ");
-        expect(symbol).toHaveClass("denominator-text");
-        expect(symbol).toHaveClass("denominator-text-symbol");
-        expect(symbol).toHaveClass("extra");
-    });
-
-    test("renders unsupported denominators as text", () => {
-        render(() => <AmountDenominator value="SOL" />);
+    test("renders other denominators as text", () => {
+        render(() => <AmountDenominator class="extra" value="SOL" />);
 
         const text = screen.getByText("SOL");
         expect(text).toHaveClass("denominator-text");
-        expect(text).not.toHaveClass("denominator-text-symbol");
+        expect(text).toHaveClass("extra");
     });
 });

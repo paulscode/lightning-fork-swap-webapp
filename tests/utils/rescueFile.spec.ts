@@ -1,14 +1,17 @@
-import { BTC, RBTC, TBTC } from "../../src/consts/Assets";
-import { mnemonicToHDKey } from "../../src/utils/rescueDerivation";
+import { sha256 } from "@noble/hashes/sha2.js";
+import { hex } from "@scure/base";
+
+import { BTC } from "../../src/consts/Assets";
 import {
     Errors,
     type RescueFile,
     derivationPath,
     deriveKey,
-    deriveKeyGasAbstraction,
+    derivePreimage,
     derivePreimageFromRescueKey,
     generateRescueFile,
     getXpub,
+    mnemonicToHDKey,
     validateRescueFile,
 } from "../../src/utils/rescueFile";
 
@@ -94,37 +97,12 @@ describe("rescueFile", () => {
             },
         );
 
-        test.each([0, 1, 2])(
-            "should derive different keys for RBTC vs BTC at index %i",
-            (index) => {
-                const btcKey = deriveKey(rescueFile, index, BTC);
-                const rbtcKey = deriveKey(rescueFile, index, RBTC);
+        test("should derive the same key regardless of the asset", () => {
+            const withAsset = deriveKey(rescueFile, 0, BTC);
+            const withoutAsset = deriveKey(rescueFile, 0);
 
-                expect(btcKey.privateKey).toBeDefined();
-                expect(rbtcKey.privateKey).toBeDefined();
-                expect(
-                    Buffer.from(btcKey.privateKey!).toString("hex"),
-                ).not.toEqual(Buffer.from(rbtcKey.privateKey!).toString("hex"));
-            },
-        );
-
-        test("should use EVM derivation path for RBTC", () => {
-            const key1 = deriveKey(rescueFile, 0, RBTC);
-            const key2 = deriveKey(rescueFile, 1, RBTC);
-            expect(key1.privateKey).toBeDefined();
-            expect(key2.privateKey).toBeDefined();
-            expect(Buffer.from(key1.privateKey!).toString("hex")).not.toEqual(
-                Buffer.from(key2.privateKey!).toString("hex"),
-            );
-        });
-
-        test("should use EVM derivation path for ERC20 assets", () => {
-            const key = deriveKey(rescueFile, 0, TBTC);
-            expect(key.privateKey).toBeDefined();
-
-            const btcKey = deriveKey(rescueFile, 0, BTC);
-            expect(Buffer.from(key.privateKey!).toString("hex")).not.toEqual(
-                Buffer.from(btcKey.privateKey!).toString("hex"),
+            expect(hex.encode(withAsset.privateKey!)).toEqual(
+                hex.encode(withoutAsset.privateKey!),
             );
         });
 
@@ -137,92 +115,37 @@ describe("rescueFile", () => {
                 Buffer.from(withoutHdKey.privateKey!).toString("hex"),
             ).toEqual(Buffer.from(withHdKey.privateKey!).toString("hex"));
         });
-
-        test("should use provided hdKey for EVM asset", () => {
-            const hdKey = mnemonicToHDKey(rescueFile.mnemonic);
-            const withoutHdKey = deriveKey(rescueFile, 0, RBTC);
-            const withHdKey = deriveKey(rescueFile, 0, RBTC, hdKey);
-
-            expect(
-                Buffer.from(withoutHdKey.privateKey!).toString("hex"),
-            ).toEqual(Buffer.from(withHdKey.privateKey!).toString("hex"));
-        });
-    });
-
-    describe("deriveKeyGasAbstraction", () => {
-        test("should derive a key for gas abstraction", () => {
-            const key = deriveKeyGasAbstraction(rescueFile, 33);
-            expect(key).toBeDefined();
-            expect(key.privateKey).toBeDefined();
-        });
-
-        test("should derive different keys for different chain IDs", () => {
-            const key1 = deriveKeyGasAbstraction(rescueFile, 33);
-            const key2 = deriveKeyGasAbstraction(rescueFile, 42161);
-
-            expect(Buffer.from(key1.privateKey!).toString("hex")).not.toEqual(
-                Buffer.from(key2.privateKey!).toString("hex"),
-            );
-        });
-
-        test("should be deterministic for the same inputs", () => {
-            const key1 = deriveKeyGasAbstraction(rescueFile, 33);
-            const key2 = deriveKeyGasAbstraction(rescueFile, 33);
-
-            expect(Buffer.from(key1.privateKey!).toString("hex")).toEqual(
-                Buffer.from(key2.privateKey!).toString("hex"),
-            );
-        });
-
-        test("should derive a different key than deriveKey for RBTC", () => {
-            const gasKey = deriveKeyGasAbstraction(rescueFile, 33);
-            const regularKey = deriveKey(rescueFile, 0, RBTC);
-
-            expect(Buffer.from(gasKey.privateKey!).toString("hex")).not.toEqual(
-                Buffer.from(regularKey.privateKey!).toString("hex"),
-            );
-        });
     });
 
     describe("derivePreimageFromRescueKey", () => {
-        test.each([0, 1, 2])(
-            "should derive different preimages for RBTC vs BTC at index %i",
-            (index) => {
-                const btcPreimage = derivePreimageFromRescueKey(
-                    rescueFile,
-                    index,
-                    BTC,
-                );
-                const rbtcPreimage = derivePreimageFromRescueKey(
-                    rescueFile,
-                    index,
-                    RBTC,
-                );
+        test("should be the sha256 of the derived private key", () => {
+            const privateKey = deriveKey(rescueFile, 3, BTC).privateKey!;
+            const preimage = derivePreimageFromRescueKey(rescueFile, 3, BTC);
 
-                expect(btcPreimage).toBeInstanceOf(Buffer);
-                expect(rbtcPreimage).toBeInstanceOf(Buffer);
-                expect(btcPreimage.toString("hex")).not.toEqual(
-                    rbtcPreimage.toString("hex"),
-                );
-            },
-        );
+            expect(hex.encode(preimage)).toEqual(
+                hex.encode(sha256(privateKey)),
+            );
+            expect(hex.encode(derivePreimage(privateKey))).toEqual(
+                hex.encode(preimage),
+            );
+        });
 
         test("should return a 32-byte sha256 hash", () => {
             const preimage = derivePreimageFromRescueKey(rescueFile, 0, BTC);
-            expect(preimage).toBeInstanceOf(Buffer);
+            expect(preimage).toBeInstanceOf(Uint8Array);
             expect(preimage.length).toBe(32);
         });
 
         test("should be deterministic", () => {
             const p1 = derivePreimageFromRescueKey(rescueFile, 0, BTC);
             const p2 = derivePreimageFromRescueKey(rescueFile, 0, BTC);
-            expect(p1.toString("hex")).toEqual(p2.toString("hex"));
+            expect(hex.encode(p1)).toEqual(hex.encode(p2));
         });
 
         test("should derive different preimages for different indices", () => {
             const p0 = derivePreimageFromRescueKey(rescueFile, 0, BTC);
             const p1 = derivePreimageFromRescueKey(rescueFile, 1, BTC);
-            expect(p0.toString("hex")).not.toEqual(p1.toString("hex"));
+            expect(hex.encode(p0)).not.toEqual(hex.encode(p1));
         });
 
         test("should produce same result with and without hdKey", () => {
@@ -234,7 +157,7 @@ describe("rescueFile", () => {
                 BTC,
                 hdKey,
             );
-            expect(without.toString("hex")).toEqual(with_.toString("hex"));
+            expect(hex.encode(without)).toEqual(hex.encode(with_));
         });
     });
 

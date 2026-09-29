@@ -2,13 +2,17 @@ import type * as SolidRouter from "@solidjs/router";
 import { useLocation, useParams } from "@solidjs/router";
 import { render, screen, waitFor } from "@solidjs/testing-library";
 import { OutputType } from "boltz-core";
-import { getLockupTransaction, getSwapStatus } from "boltz-swaps/client";
-import { SwapPosition, SwapType } from "boltz-swaps/types";
+import type * as ClientModule from "boltz-swaps/client";
+import {
+    getLockupTransaction,
+    getReverseTransaction,
+    getSwapStatus,
+} from "boltz-swaps/client";
+import { SwapType } from "boltz-swaps/types";
+import type * as UtxoModule from "boltz-swaps/utxo";
 import { createSignal } from "solid-js";
 
-import { config } from "../../src/config";
-import { config as mainnetConfig } from "../../src/configs/mainnet";
-import { BTC, LBTC, LN, USDT0 } from "../../src/consts/Assets";
+import { BTC, LN } from "../../src/consts/Assets";
 import {
     swapStatusFailed,
     swapStatusPending,
@@ -30,9 +34,9 @@ import {
     isSwapClaimable,
 } from "../../src/utils/rescue";
 import type {
-    ChainSwap,
     ReverseSwap,
     SomeSwap,
+    SubmarineSwap,
 } from "../../src/utils/swapCreator";
 import {
     TestComponent,
@@ -57,9 +61,11 @@ vi.mock("loglevel", () => ({
     },
 }));
 
-vi.mock("../../packages/boltz-swaps/src/client.ts", () => ({
+vi.mock("boltz-swaps/client", async (importOriginal) => ({
+    ...(await importOriginal<typeof ClientModule>()),
     getSwapStatus: vi.fn(),
     getLockupTransaction: vi.fn(),
+    getReverseTransaction: vi.fn(),
 }));
 vi.mock("../../src/utils/blockchain", async () => {
     const actual = await vi.importActual("../../src/utils/blockchain");
@@ -72,18 +78,12 @@ vi.mock("../../src/utils/blockchain", async () => {
 vi.mock("../../src/utils/claim", () => ({
     claim: vi.fn(),
     createSubmarineSignature: vi.fn(),
-    createTheirPartialChainSwapSignature: vi.fn(),
     findSwapOutputVout: vi.fn(),
 }));
-vi.mock("boltz-swaps/utxo", async () => {
-    const actual = await vi.importActual("boltz-swaps/utxo");
-    return {
-        ...actual,
-        getTransaction: vi.fn(() => ({
-            fromHex: vi.fn(() => ({})),
-        })),
-    };
-});
+vi.mock("boltz-swaps/utxo", async (importOriginal) => ({
+    ...(await importOriginal<typeof UtxoModule>()),
+    parseTransaction: vi.fn(() => ({})),
+}));
 vi.mock("../../src/utils/rescue", () => ({
     getCurrentBlockHeight: vi.fn(),
     getTimeoutEta: vi.fn(),
@@ -93,9 +93,6 @@ vi.mock("../../src/utils/rescue", () => ({
 }));
 vi.mock("../../src/components/QrCode", () => ({
     default: () => <div data-testid="mock-qrcode" />,
-}));
-vi.mock("../../src/status/CommitmentCreated", () => ({
-    default: () => <div data-testid="commitment-created" />,
 }));
 
 const mockGetSwapStatus = vi.mocked(getSwapStatus);
@@ -162,6 +159,30 @@ const renderPay = (backupDone: boolean = true) => {
     globalSignals.setRescueFileBackupDone(backupDone);
 };
 
+const submarineSwap = (overrides: Partial<SubmarineSwap> = {}) =>
+    ({
+        id: "123",
+        type: SwapType.Submarine,
+        assetSend: BTC,
+        assetReceive: LN,
+        invoice: "invoice",
+        address: "bcrt1qlockup",
+        timeoutBlockHeight: 800000,
+        ...overrides,
+    }) as SubmarineSwap;
+
+const reverseSwap = (overrides: Partial<ReverseSwap> = {}) =>
+    ({
+        id: "123",
+        type: SwapType.Reverse,
+        assetSend: LN,
+        assetReceive: BTC,
+        receiveAmount: 100_000,
+        version: OutputType.Taproot,
+        claimTx: undefined,
+        ...overrides,
+    }) as ReverseSwap;
+
 describe("Pay", () => {
     beforeEach(() => {
         vi.clearAllMocks();
@@ -178,16 +199,7 @@ describe("Pay", () => {
         mockUseParams.mockReturnValue({
             id: "123",
         } as ReturnType<typeof useParams>);
-        swapsGetItemMock.mockResolvedValue({
-            id: "123",
-            type: SwapType.Chain,
-            assetReceive: BTC,
-            assetSend: LBTC,
-            lockupDetails: {},
-        });
-        config.assets!["USDT0-ETH"] ??= structuredClone(
-            mainnetConfig.assets!["USDT0-ETH"],
-        );
+        swapsGetItemMock.mockResolvedValue(submarineSwap());
         mockUseLocation.mockReturnValue({
             hash: "",
             key: "",
@@ -198,64 +210,35 @@ describe("Pay", () => {
         mockGetSwapStatus.mockResolvedValue({
             status: swapStatusFailed.TransactionRefunded,
         });
+        // Zero-conf is on by default, so mempool claims fetch the lockup
+        vi.mocked(getReverseTransaction).mockResolvedValue({
+            id: "lockup-txid",
+            hex: "00",
+            timeoutBlockHeight: 800000,
+        });
     });
 
-    test("should not show commitment ids in the title", async () => {
-        const commitmentId = "commitment-12345678-1234-1234-1234-123456789abc";
-        mockUseParams.mockReturnValue({
-            id: commitmentId,
-        } as ReturnType<typeof useParams>);
-        swapsGetItemMock.mockResolvedValue({
-            id: commitmentId,
-            type: SwapType.Commitment,
-            assetReceive: BTC,
-            assetSend: LBTC,
-        } as SomeSwap);
+    test("should show the swap id in the title", async () => {
+        renderPay();
+
+        expect(
+            await screen.findByText(
+                dict.en.pay_invoice.replace("{{ id }}", "123"),
+            ),
+        ).toBeVisible();
+    });
+
+    test("should show not found for unknown swaps", async () => {
+        swapsGetItemMock.mockResolvedValue(null);
 
         renderPay();
 
-        const title = await screen.findByRole("heading", { level: 2 });
-        expect(title).not.toHaveTextContent(commitmentId);
-    });
-
-    test("should rename `transaction.refunded` to `swap.waitingForRefund` on ChainSwap", async () => {
-        renderPay();
-        payContext.setSwap({
-            type: SwapType.Chain,
-            assetReceive: BTC,
-            assetSend: LBTC,
-            lockupDetails: {},
-        } as ChainSwap);
-        payContext.setSwapStatus(swapStatusFailed.TransactionRefunded);
-
-        const status = await screen.findByText("swap.waitingForRefund");
-        expect(status).not.toBeUndefined();
-    });
-
-    test("should allow to refund `transaction.refunded` on ChainSwap", async () => {
-        renderPay();
-        payContext.setSwap({
-            type: SwapType.Chain,
-            assetReceive: BTC,
-            assetSend: LBTC,
-            lockupDetails: {},
-        } as ChainSwap);
-        payContext.setSwapStatus(swapStatusFailed.TransactionRefunded);
-
-        const button = (await screen.findByTestId(
-            "refundButton",
-        )) as HTMLButtonElement;
-        expect(button).toBeTruthy();
+        expect(await screen.findByText(dict.en.pay_swap_404)).toBeVisible();
     });
 
     test("should not rename `transaction.refunded` status on ReverseSwap", async () => {
         renderPay();
-        payContext.setSwap({
-            type: SwapType.Reverse,
-            assetReceive: LBTC,
-            assetSend: BTC,
-            lockupDetails: {},
-        } as unknown as ReverseSwap);
+        payContext.setSwap(reverseSwap());
         payContext.setSwapStatus(swapStatusFailed.TransactionRefunded);
 
         const status = await screen.findByText("transaction.refunded");
@@ -264,12 +247,7 @@ describe("Pay", () => {
 
     test("should not allow to refund `transaction.refunded` on ReverseSwap", () => {
         renderPay();
-        payContext.setSwap({
-            type: SwapType.Reverse,
-            assetReceive: LBTC,
-            assetSend: BTC,
-            lockupDetails: {},
-        } as unknown as ReverseSwap);
+        payContext.setSwap(reverseSwap());
         payContext.setSwapStatus(swapStatusFailed.TransactionRefunded);
 
         const button = screen.queryByTestId(
@@ -301,22 +279,21 @@ describe("Pay", () => {
         expect(mockGetSwapStatus).not.toHaveBeenCalled();
     });
 
-    test("should require backup before funding a commitment swap", async () => {
-        swapsGetItemMock.mockResolvedValue({
-            id: "commitment-123",
-            type: SwapType.Commitment,
-            assetReceive: LN,
-            assetSend: USDT0,
-        } as SomeSwap);
+    test("should not require a backup for reverse swaps", async () => {
+        swapsGetItemMock.mockResolvedValue(reverseSwap());
+        mockGetSwapStatus.mockResolvedValue({
+            status: swapStatusPending.SwapCreated,
+        });
 
         renderPay(false);
 
-        await screen.findByText(dict.en.download_boltz_rescue_key);
-        expect(screen.queryByTestId("commitment-created")).toBeNull();
-
-        globalSignals.setRescueFileBackupDone(true);
-
-        expect(await screen.findByTestId("commitment-created")).toBeVisible();
+        await waitFor(() => {
+            expect(mockGetSwapStatus).toHaveBeenCalledWith("123");
+        });
+        expect(await screen.findByText("swap.created")).toBeVisible();
+        expect(
+            screen.queryByText(dict.en.download_boltz_rescue_key),
+        ).toBeNull();
     });
 
     test("should start backup flow on mnemonic step when ?backup=mnemonic is set", async () => {
@@ -353,44 +330,80 @@ describe("Pay", () => {
         expect(await screen.findByText("swap.created")).toBeVisible();
     });
 
-    test.each([
-        {
-            swapType: SwapType.Submarine,
-            assetReceive: LN,
-            assetSend: BTC,
-        },
-        {
-            swapType: SwapType.Chain,
-            assetReceive: LBTC,
-            assetSend: BTC,
-        },
-    ])(
-        "should not attempt to fetch UTXOs for $swapType swap during initial phase",
-        ({ swapType, assetReceive, assetSend }) => {
-            mockGetSwapStatus.mockResolvedValue({
-                status: swapStatusPending.SwapCreated,
-            });
-            renderPay();
-            payContext.setSwap({
-                type: swapType,
-                assetReceive,
-                assetSend,
-                lockupDetails: {},
-                invoice:
-                    swapType === SwapType.Submarine ? "invoice" : undefined,
-            } as unknown as SomeSwap);
+    test("should not attempt to fetch UTXOs for submarine swaps during initial phase", () => {
+        mockGetSwapStatus.mockResolvedValue({
+            status: swapStatusPending.SwapCreated,
+        });
+        renderPay();
+        payContext.setSwap(submarineSwap());
 
-            // Check for all possible values of prevSwapStatus
-            const prevSwapStatuses = ["", null, undefined];
-            for (const prevSwapStatus of prevSwapStatuses) {
-                payContext.setSwapStatus(prevSwapStatus as string);
-                payContext.setSwapStatus(swapStatusPending.SwapCreated);
-            }
+        // Check for all possible values of prevSwapStatus
+        const prevSwapStatuses = ["", null, undefined];
+        for (const prevSwapStatus of prevSwapStatuses) {
+            payContext.setSwapStatus(prevSwapStatus as string);
+            payContext.setSwapStatus(swapStatusPending.SwapCreated);
+        }
 
-            expect(mockGetSwapUTXOs).not.toHaveBeenCalled();
-            expect(mockGetLockupTransaction).not.toHaveBeenCalled();
-        },
-    );
+        expect(mockGetSwapUTXOs).not.toHaveBeenCalled();
+        expect(mockGetLockupTransaction).not.toHaveBeenCalled();
+    });
+
+    test("should not attempt to fetch UTXOs for reverse swaps", async () => {
+        swapsGetItemMock.mockResolvedValue(reverseSwap());
+        mockGetSwapStatus.mockResolvedValue({
+            status: swapStatusPending.TransactionMempool,
+        });
+
+        renderPay();
+
+        expect(
+            await screen.findByText(dict.en.tx_in_mempool_subline),
+        ).toBeVisible();
+        expect(mockGetSwapUTXOs).not.toHaveBeenCalled();
+        expect(mockGetLockupTransaction).not.toHaveBeenCalled();
+    });
+
+    test("should show the claiming spinner for confirmed reverse swaps", async () => {
+        swapsGetItemMock.mockResolvedValue(reverseSwap());
+        mockGetSwapStatus.mockResolvedValue({
+            status: swapStatusPending.TransactionConfirmed,
+        });
+
+        renderPay();
+
+        expect(await screen.findByText(dict.en.tx_confirmed)).toBeVisible();
+        expect(screen.getByText(dict.en.tx_ready_to_claim)).toBeVisible();
+        expect(screen.getAllByTestId("loading-spinner").length).toBeGreaterThan(
+            0,
+        );
+    });
+
+    test("should show the refund button when a submarine lockup failed", async () => {
+        mockGetSwapStatus.mockResolvedValue({
+            status: swapStatusFailed.TransactionLockupFailed,
+            failureReason: "overpaid",
+        });
+        mockGetSwapUTXOs.mockResolvedValue([
+            {
+                id: "mock-tx-id-1",
+                hex: "mock-utxo-hex-1",
+                timeoutBlockHeight: 800000,
+            },
+        ]);
+        mockGetLockupTransaction.mockResolvedValue({
+            id: "lockup-tx-id",
+            hex: "lockup-tx-hex",
+            timeoutBlockHeight: 800000,
+        });
+        mockGetCurrentBlockHeight.mockResolvedValue({ BTC: 799500 });
+        mockIsRefundableSwapType.mockReturnValue(true);
+        mockHasSwapTimedOut.mockReturnValue(false);
+
+        renderPay();
+
+        expect(await screen.findByText(dict.en.lockup_failed)).toBeVisible();
+        expect(await screen.findByTestId("refundButton")).toBeTruthy();
+    });
 
     test("should display RefundEta for claimed, non-expired swap with UTXOs", async () => {
         const timeoutEta = 1700000000;
@@ -418,74 +431,20 @@ describe("Pay", () => {
             timeoutBlockHeight: 800000,
         });
 
-        mockGetCurrentBlockHeight.mockResolvedValue({ "L-BTC": 799500 });
+        mockGetCurrentBlockHeight.mockResolvedValue({ BTC: 799500 });
         mockGetTimeoutEta.mockReturnValue(timeoutEta);
         mockIsRefundableSwapType.mockReturnValue(true);
         mockHasSwapTimedOut.mockReturnValue(false);
 
         renderPay();
 
-        payContext.setSwap({
-            type: SwapType.Chain,
-            assetReceive: BTC,
-            assetSend: LBTC,
-            lockupDetails: { timeoutBlockHeight: 800000 },
-        } as ChainSwap);
+        payContext.setSwap(submarineSwap());
 
         payContext.setSwapStatus(swapStatusSuccess.TransactionClaimed);
 
         const refundEta = await screen.findByTestId("refund-eta");
         const expectedDate = new Date(timeoutEta * 1000).toLocaleString();
         expect(refundEta).toHaveTextContent(expectedDate);
-    });
-
-    test("should show post-bridge status link directly below completed message", async () => {
-        const claimTx = "0xclaim";
-        const postBridgeSwap = {
-            id: "123",
-            type: SwapType.Reverse,
-            assetSend: BTC,
-            assetReceive: USDT0,
-            receiveAmount: 123_456,
-            claimTx,
-            bridge: {
-                kind: "oft",
-                sourceAsset: USDT0,
-                destinationAsset: "USDT0-ETH",
-                position: SwapPosition.Post,
-            },
-        } as ReverseSwap;
-
-        swapsGetItemMock.mockResolvedValue(postBridgeSwap);
-        mockGetSwapStatus.mockResolvedValue({
-            status: swapStatusSuccess.TransactionClaimed,
-        });
-        renderPay();
-        payContext.setSwap(postBridgeSwap);
-        payContext.setSwapStatus(swapStatusSuccess.TransactionClaimed);
-
-        const message = await screen.findByText(
-            /Swap complete!.*was sent via the Ethereum bridge/u,
-        );
-        const bridgeLink = (await screen.findByText(
-            dict.en.check_bridge_status,
-        )) as HTMLAnchorElement;
-        const newSwap = await screen.findByText(dict.en.new_swap);
-
-        expect(
-            message.compareDocumentPosition(bridgeLink) &
-                Node.DOCUMENT_POSITION_FOLLOWING,
-        ).toBeTruthy();
-        expect(
-            bridgeLink.compareDocumentPosition(newSwap) &
-                Node.DOCUMENT_POSITION_FOLLOWING,
-        ).toBeTruthy();
-        expect(screen.getAllByText(dict.en.check_bridge_status)).toHaveLength(
-            1,
-        );
-        expect(bridgeLink.href).toEqual(
-            `${config.layerZeroExplorerUrl}/tx/${claimTx}`,
-        );
     });
 
     test("should show refund button automatically when swap has timed out with UTXOs", async () => {
@@ -502,19 +461,14 @@ describe("Pay", () => {
             timeoutBlockHeight: 800000,
         });
 
-        mockGetCurrentBlockHeight.mockResolvedValue({ "L-BTC": 800001 });
+        mockGetCurrentBlockHeight.mockResolvedValue({ BTC: 800001 });
         mockGetTimeoutEta.mockReturnValue(0);
         mockIsRefundableSwapType.mockReturnValue(true);
         mockHasSwapTimedOut.mockReturnValue(true);
 
         renderPay();
 
-        payContext.setSwap({
-            type: SwapType.Chain,
-            assetReceive: BTC,
-            assetSend: LBTC,
-            lockupDetails: { timeoutBlockHeight: 800000 },
-        } as ChainSwap);
+        payContext.setSwap(submarineSwap());
 
         payContext.setSwapStatus(swapStatusPending.TransactionConfirmed);
 
@@ -525,16 +479,7 @@ describe("Pay", () => {
     });
 
     test("should update storage and pay context when claim was already broadcast externally", async () => {
-        const swapFromStorage = {
-            id: "123",
-            type: SwapType.Chain,
-            assetReceive: BTC,
-            assetSend: LBTC,
-            receiveAmount: 100_000,
-            version: OutputType.Taproot,
-            claimTx: undefined,
-            lockupDetails: {},
-        } as unknown as ChainSwap;
+        const swapFromStorage = reverseSwap();
 
         swapsGetItemMock.mockResolvedValue(swapFromStorage);
         vi.mocked(isSwapClaimable).mockReturnValue(true);
@@ -571,16 +516,7 @@ describe("Pay", () => {
     });
 
     test("should still show claim failure when outspend lookup throws", async () => {
-        const swapFromStorage = {
-            id: "123",
-            type: SwapType.Chain,
-            assetReceive: BTC,
-            assetSend: LBTC,
-            receiveAmount: 100_000,
-            version: OutputType.Taproot,
-            claimTx: undefined,
-            lockupDetails: {},
-        } as unknown as ChainSwap;
+        const swapFromStorage = reverseSwap();
 
         swapsGetItemMock.mockResolvedValue(swapFromStorage);
         vi.mocked(isSwapClaimable).mockReturnValue(true);
@@ -614,23 +550,14 @@ describe("Pay", () => {
     });
 
     test("reports isSwapClaiming while a claim is in flight and clears it once settled", async () => {
-        const swapFromStorage = {
-            id: "123",
-            type: SwapType.Chain,
-            assetReceive: BTC,
-            assetSend: LBTC,
-            receiveAmount: 100_000,
-            version: OutputType.Taproot,
-            claimTx: undefined,
-            lockupDetails: {},
-        } as unknown as ChainSwap;
+        const swapFromStorage = reverseSwap();
 
         swapsGetItemMock.mockResolvedValue(swapFromStorage);
         vi.mocked(isSwapClaimable).mockReturnValue(true);
 
-        let resolveClaim!: (value: ChainSwap | undefined) => void;
+        let resolveClaim!: (value: ReverseSwap) => void;
         vi.mocked(claim).mockReturnValue(
-            new Promise<ChainSwap | undefined>((resolve) => {
+            new Promise<ReverseSwap>((resolve) => {
                 resolveClaim = resolve;
             }),
         );
@@ -653,7 +580,7 @@ describe("Pay", () => {
             expect(payContext.isSwapClaiming("123")).toBe(true);
         });
 
-        resolveClaim(undefined);
+        resolveClaim({ ...swapFromStorage, claimTx: "claimtxid" });
         await claimPromise;
 
         await waitFor(() => {
@@ -662,16 +589,7 @@ describe("Pay", () => {
     });
 
     test("clears isSwapClaiming after a claim rejects", async () => {
-        const swapFromStorage = {
-            id: "123",
-            type: SwapType.Chain,
-            assetReceive: BTC,
-            assetSend: LBTC,
-            receiveAmount: 100_000,
-            version: OutputType.Taproot,
-            claimTx: undefined,
-            lockupDetails: {},
-        } as unknown as ChainSwap;
+        const swapFromStorage = reverseSwap();
 
         swapsGetItemMock.mockResolvedValue(swapFromStorage);
         vi.mocked(isSwapClaimable).mockReturnValue(true);
@@ -696,23 +614,18 @@ describe("Pay", () => {
     });
 
     test("swaps the mempool view for the broadcasting view while the real claim signal is set", async () => {
-        const swapFromStorage = {
-            id: "123",
-            type: SwapType.Chain,
-            assetReceive: BTC,
-            assetSend: LBTC,
-            receiveAmount: 100_000,
-            version: OutputType.Taproot,
-            claimTx: undefined,
-            lockupDetails: {},
-        } as unknown as ChainSwap;
+        const swapFromStorage = reverseSwap();
 
-        swapsGetItemMock.mockResolvedValue(swapFromStorage);
+        // Hand out copies, so the claim persisting its claimTx does not
+        // mutate the swap rendered below
+        swapsGetItemMock.mockImplementation(() =>
+            Promise.resolve({ ...swapFromStorage }),
+        );
         vi.mocked(isSwapClaimable).mockReturnValue(true);
 
-        let resolveClaim!: (value: ChainSwap | undefined) => void;
+        let resolveClaim!: (value: ReverseSwap) => void;
         vi.mocked(claim).mockReturnValue(
-            new Promise<ChainSwap | undefined>((resolve) => {
+            new Promise<ReverseSwap>((resolve) => {
                 resolveClaim = resolve;
             }),
         );
@@ -745,7 +658,7 @@ describe("Pay", () => {
         await screen.findByText(dict.en.broadcasting_claim);
         expect(screen.queryByText(dict.en.tx_in_mempool_subline)).toBeNull();
 
-        resolveClaim(undefined);
+        resolveClaim({ ...swapFromStorage, claimTx: "claimtxid" });
         await claimPromise;
 
         await screen.findByText(dict.en.tx_in_mempool_subline);

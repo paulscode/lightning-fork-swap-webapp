@@ -1,0 +1,10 @@
+// Real regtest invoices, the same as in the boltz-swaps SDK tests.
+// blake2bInvoice comes from a Lightning Fork lnd on the Bitcoin BLAKE2b chain
+// and sets the required feature bit 512; sha256Invoice comes from a stock lnd
+// on the SHA256 chain and does not. Both are for 1234 sat.
+export const blake2bInvoice =
+    "lnbcrt12340n1p4tktmzpp5ggdr84f68a08yqlz6yh06l0ul92n9jmq84nxun4geuxp7a309jnsdq8w3jhxaqcqzzsxqyz5vqsp55g06tmkp8nrh99hywklkstyn3u4sd4nqd9x2wp5ykuxy5sq2uzhq9r8yqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqpqysgq7je49q3ts6mf8h88wflj0977evmj4kunrt5h3xep29lcmmvp63k9ypt5p6u68g45dj2clcnthfe459sqf2wamuz2ty9l4rtj9vhel0qquxjkn5";
+export const sha256Invoice =
+    "lnbcrt12340n1p4tkt6jpp59qm9ghv5e3302uk3z4l5c7mz7cg8x6zpmz7uyc2yt92ttf8qtd8sdqqcqzzsxqyz5vqsp5vt9hhkrtnlhewm00wt0m6curu4ak5k5ky66zwh99urdfata77xfs9qxpqysgqxfq2taljltqeky5nhy34l3ak7mmrvzsgd8m5y93v4m4str6wsw63rhvqaqfgu42uw0j9hfwq0r25njxktpy2eq2alxja2y7ngdhvz8gq4hwatk";
+
+export const invoiceAmount = 1234;

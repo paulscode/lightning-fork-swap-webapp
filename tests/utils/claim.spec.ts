@@ -1,57 +1,80 @@
-import { getChainSwapClaimDetails } from "boltz-swaps/client";
-import { describe, expect, test, vi } from "vitest";
+import { hex } from "@scure/base";
+import { signSubmarineClaim } from "boltz-swaps/submarine";
+import { SwapType } from "boltz-swaps/types";
+import { beforeEach, describe, expect, test, vi } from "vitest";
 
-import { BTC, RBTC, TBTC, USDC, USDT0, WBTC } from "../../src/consts/Assets";
-import type { ChainSwap } from "../../src/utils/swapCreator";
+import { BTC, LN } from "../../src/consts/Assets";
+import type { SubmarineSwap } from "../../src/utils/swapCreator";
 
-vi.mock("boltz-swaps/client", () => ({
-    getChainSwapClaimDetails: vi.fn(),
+vi.mock("boltz-swaps/submarine", () => ({
+    signSubmarineClaim: vi.fn(),
 }));
 
-const { createTheirPartialChainSwapSignature } =
-    await import("../../src/utils/claim");
+const { createSubmarineSignature } = await import("../../src/utils/claim");
 
-const deriveKey = vi.fn();
+const privateKeyHex = "11".repeat(32);
 
-describe("createTheirPartialChainSwapSignature", () => {
-    test.each([RBTC, TBTC, WBTC, USDT0, USDC])(
-        "returns undefined without hitting the backend when assetSend is %s",
-        async (assetSend) => {
-            vi.mocked(getChainSwapClaimDetails).mockClear();
+const baseSwap = {
+    id: "submarine-swap",
+    type: SwapType.Submarine,
+    assetSend: BTC,
+    assetReceive: LN,
+    claimPublicKey: "02" + "22".repeat(32),
+    swapTree: { claimLeaf: {}, refundLeaf: {} },
+    invoice: "lnbcrt-invoice",
+} as unknown as SubmarineSwap;
 
-            const swap = { id: "evm-swap", assetSend } as unknown as ChainSwap;
+describe("createSubmarineSignature", () => {
+    beforeEach(() => {
+        vi.mocked(signSubmarineClaim).mockReset();
+    });
 
-            await expect(
-                createTheirPartialChainSwapSignature(deriveKey, swap),
-            ).resolves.toBeUndefined();
+    test("signs with the derived key when the swap has a key index", async () => {
+        const keys = { publicKey: new Uint8Array(33) };
+        const deriveKey = vi.fn().mockReturnValue(keys);
+        const swap = { ...baseSwap, refundPrivateKeyIndex: 7 };
 
-            expect(getChainSwapClaimDetails).not.toHaveBeenCalled();
-        },
-    );
+        await createSubmarineSignature(deriveKey, swap);
 
-    const utxoSourceSwap = {
-        id: "btc-swap",
-        assetSend: BTC,
-        refundPrivateKey: "11".repeat(32),
-        lockupDetails: { swapTree: {} },
-    } as unknown as ChainSwap;
+        expect(deriveKey).toHaveBeenCalledWith(7, BTC);
+        expect(signSubmarineClaim).toHaveBeenCalledTimes(1);
+        expect(signSubmarineClaim).toHaveBeenCalledWith({
+            id: swap.id,
+            swapTree: swap.swapTree,
+            claimPublicKey: swap.claimPublicKey,
+            refundKeys: keys,
+            invoice: swap.invoice,
+        });
+    });
 
-    test("returns undefined when backend rejects with the not-eligible Error", async () => {
-        vi.mocked(getChainSwapClaimDetails).mockRejectedValueOnce(
-            new Error("swap not eligible for a cooperative claim"),
+    test("signs with the stored private key when there is no key index", async () => {
+        const deriveKey = vi.fn();
+        const swap = { ...baseSwap, refundPrivateKey: privateKeyHex };
+
+        await createSubmarineSignature(deriveKey, swap);
+
+        expect(deriveKey).not.toHaveBeenCalled();
+        const args = vi.mocked(signSubmarineClaim).mock.calls[0][0];
+        expect(hex.encode(args.refundKeys.privateKey)).toEqual(privateKeyHex);
+    });
+
+    test("throws when the swap has no refund key at all", async () => {
+        await expect(
+            createSubmarineSignature(vi.fn(), baseSwap),
+        ).rejects.toThrow("missing private key for parsePrivateKey");
+        expect(signSubmarineClaim).not.toHaveBeenCalled();
+    });
+
+    test("propagates signing errors", async () => {
+        vi.mocked(signSubmarineClaim).mockRejectedValueOnce(
+            new Error("invalid preimage"),
         );
 
         await expect(
-            createTheirPartialChainSwapSignature(deriveKey, utxoSourceSwap),
-        ).resolves.toBeUndefined();
-    });
-
-    test("re-throws unrelated errors", async () => {
-        const err = new Error("something else broke");
-        vi.mocked(getChainSwapClaimDetails).mockRejectedValueOnce(err);
-
-        await expect(
-            createTheirPartialChainSwapSignature(deriveKey, utxoSourceSwap),
-        ).rejects.toThrow("something else broke");
+            createSubmarineSignature(vi.fn(), {
+                ...baseSwap,
+                refundPrivateKey: privateKeyHex,
+            }),
+        ).rejects.toThrow("invalid preimage");
     });
 });

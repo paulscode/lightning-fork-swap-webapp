@@ -24,9 +24,6 @@ vi.mock("../../src/config", async () => {
                     ...actual.config.assets!.BTC,
                     canSend: false,
                 },
-                "ASSET-DEFAULT": {
-                    ...actual.config.assets!.BTC,
-                },
             },
         },
     };
@@ -38,7 +35,7 @@ describe("isAssetDisabled", () => {
     });
 
     test("returns false when the disabled flag is absent", () => {
-        expect(isAssetDisabled("ASSET-DEFAULT")).toBe(false);
+        expect(isAssetDisabled("BTC")).toBe(false);
     });
 
     test("returns false for unknown assets", () => {
@@ -49,7 +46,7 @@ describe("isAssetDisabled", () => {
 describe("canSendAsset", () => {
     test("returns false only when canSend is explicitly false", () => {
         expect(canSendAsset("ASSET-NO-SEND")).toBe(false);
-        expect(canSendAsset("ASSET-DEFAULT")).toBe(true);
+        expect(canSendAsset("BTC")).toBe(true);
     });
 });
 
@@ -59,9 +56,7 @@ describe("canSelectAsset", () => {
         expect(canSelectAsset(Side.Receive, "ASSET-NO-SEND")).toBe(true);
     });
 
-    test("does not currently filter disabled assets — they are kept visible", () => {
-        // Disabled assets remain in the rendered list (greyed out); the
-        // disabled state is enforced by handlers and keyboard skipping.
+    test("does not filter disabled assets", () => {
         expect(canSelectAsset(Side.Send, "ASSET-DISABLED")).toBe(true);
     });
 });

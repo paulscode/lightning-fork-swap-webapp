@@ -1,6 +1,7 @@
-import { render, screen } from "@solidjs/testing-library";
+import { fireEvent, render, screen } from "@solidjs/testing-library";
 
 import Nav from "../../src/components/Nav";
+import i18n from "../../src/i18n/i18n";
 import { contextWrapper } from "../helper";
 
 describe("Nav", () => {
@@ -25,12 +26,34 @@ describe("Nav", () => {
         expect(networkLabel.length).toBe(0);
     });
 
-    test("should uppercase pro label", () => {
-        render(() => <Nav network="mainnet" isPro />, {
+    test("should link to swap, rescue and history", () => {
+        render(() => <Nav network="mainnet" />, {
             wrapper: contextWrapper,
         });
 
-        const proLabel = screen.queryAllByText("PRO");
-        expect(proLabel.length).toBe(1);
+        const links = Array.from(
+            document.querySelectorAll<HTMLAnchorElement>("#collapse a"),
+        ).map((link) => [link.textContent, link.getAttribute("href")]);
+        expect(links).toEqual([
+            [i18n.en.swap, "/swap"],
+            [i18n.en.rescue, "/rescue"],
+            [i18n.en.history, "/history"],
+        ]);
+    });
+
+    test("should toggle the hamburger menu", () => {
+        render(() => <Nav network="mainnet" />, {
+            wrapper: contextWrapper,
+        });
+
+        const hamburger = screen.getByLabelText("Menu");
+        const collapse = document.getElementById("collapse")!;
+        expect(collapse.classList.contains("active")).toBe(false);
+
+        fireEvent.click(hamburger);
+        expect(collapse.classList.contains("active")).toBe(true);
+
+        fireEvent.click(screen.getByText(i18n.en.history));
+        expect(collapse.classList.contains("active")).toBe(false);
     });
 });

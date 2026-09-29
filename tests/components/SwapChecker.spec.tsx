@@ -167,4 +167,107 @@ describe("SwapChecker", () => {
         );
         errorSpy.mockRestore();
     });
+    test("subscribes only to swaps that still need attention", async () => {
+        h.getSwaps.mockResolvedValue([
+            swapA,
+            { id: "B", type: SwapType.Submarine, status: undefined },
+            {
+                id: "C",
+                type: SwapType.Submarine,
+                status: "transaction.claimed",
+            },
+            { id: "D", type: SwapType.Reverse, status: "invoice.settled" },
+            {
+                id: "E",
+                type: SwapType.Reverse,
+                status: "invoice.settled",
+                claimTx: "txid",
+            },
+            { id: "F", type: SwapType.Submarine, status: "swap.expired" },
+        ]);
+
+        render(() => <SwapChecker />);
+        await waitFor(() => expect(h.subscribe).toHaveBeenCalledTimes(3));
+
+        expect([...h.handlers.keys()].sort()).toEqual(["A", "B", "D"]);
+    });
+
+    test("applies updates of the active swap to the pay context", async () => {
+        h.getSwaps.mockResolvedValue([]);
+        h.getSwap.mockResolvedValue(swapA);
+        h.swap.mockReturnValue(swapA as never);
+
+        render(() => <SwapChecker />);
+        await waitFor(() =>
+            expect(h.subscribe).toHaveBeenCalledWith("A", expect.any(Function)),
+        );
+
+        const transaction = { id: "lockup", hex: "00" };
+        h.handlers.get("A")!({
+            id: "A",
+            status: "transaction.lockupFailed",
+            transaction,
+            failureReason: "overpaid",
+        });
+
+        await waitFor(() =>
+            expect(h.updateSwapStatus).toHaveBeenCalledWith(
+                "A",
+                "transaction.lockupFailed",
+            ),
+        );
+        expect(h.setSwapStatus).toHaveBeenCalledWith(
+            "transaction.lockupFailed",
+        );
+        expect(h.setSwap).toHaveBeenCalledWith({
+            ...swapA,
+            status: "transaction.lockupFailed",
+        });
+        expect(h.setSwapStatusTransaction).toHaveBeenCalledWith(transaction);
+        expect(h.setFailureReason).toHaveBeenCalledWith("overpaid");
+    });
+
+    test("does not override a status the pay context is ignoring", async () => {
+        h.getSwaps.mockResolvedValue([]);
+        h.getSwap.mockResolvedValue(swapA);
+        h.swap.mockReturnValue(swapA as never);
+        h.shouldIgnoreBackendStatus.mockReturnValue(true);
+
+        render(() => <SwapChecker />);
+        await waitFor(() => expect(h.subscribe).toHaveBeenCalled());
+
+        h.handlers.get("A")!({ id: "A", status: "transaction.mempool" });
+
+        await waitFor(() =>
+            expect(h.updateSwapStatus).toHaveBeenCalledWith(
+                "A",
+                "transaction.mempool",
+            ),
+        );
+        expect(h.setSwapStatus).not.toHaveBeenCalled();
+        expect(h.setSwap).not.toHaveBeenCalled();
+    });
+
+    test("notifies the parent about final statuses", async () => {
+        h.getSwaps.mockResolvedValue([swapA]);
+        h.getSwap.mockResolvedValue(swapA);
+
+        render(() => <SwapChecker />);
+        await waitFor(() => expect(h.subscribe).toHaveBeenCalled());
+
+        h.handlers.get("A")!({ id: "A", status: "transaction.mempool" });
+        await waitFor(() =>
+            expect(h.updateSwapStatus).toHaveBeenCalledTimes(1),
+        );
+        expect(h.notifyParent).not.toHaveBeenCalled();
+
+        h.handlers.get("A")!({ id: "A", status: "invoice.settled" });
+        await waitFor(() =>
+            expect(h.notifyParent).toHaveBeenCalledWith({
+                type: "boltz-swap-status",
+                swapId: "A",
+                status: "invoice.settled",
+            }),
+        );
+    });
 });

@@ -1,35 +1,18 @@
 import { useNavigate } from "@solidjs/router";
-import {
-    fireEvent,
-    render,
-    screen,
-    waitFor,
-    within,
-} from "@solidjs/testing-library";
+import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
 import { BigNumber } from "bignumber.js";
-import { type BridgeDriver, bridgeRegistry } from "boltz-swaps/bridge";
-import type { Pairs } from "boltz-swaps/client";
-import { BridgeCapacityError } from "boltz-swaps/errors";
-import {
-    BridgeKind,
-    NetworkTransport,
-    SwapPosition,
-    SwapType,
-} from "boltz-swaps/types";
+import { SwapType } from "boltz-swaps/types";
 import { Show, createSignal, onMount } from "solid-js";
 
-import { config as runtimeConfig } from "../../src/config";
-import { config as mainnetConfig } from "../../src/configs/mainnet";
-import { BTC, LBTC, LN, RBTC, TBTC, USDT0 } from "../../src/consts/Assets";
+import { BTC, LN } from "../../src/consts/Assets";
 import { Denomination, Side } from "../../src/consts/Enums";
-import * as web3Context from "../../src/context/Web3";
 import i18n from "../../src/i18n/i18n";
 import Create from "../../src/pages/Create";
 import Pair from "../../src/utils/Pair";
 import { calculateReceiveAmount } from "../../src/utils/calculate";
-import * as connectedMaximum from "../../src/utils/connectedMaximum";
 import type * as HelperModule from "../../src/utils/helper";
 import { isMobile } from "../../src/utils/helper";
+import { blake2bInvoice } from "../fixtures/invoices";
 import {
     TestComponent,
     contextWrapper,
@@ -38,25 +21,8 @@ import {
 } from "../helper";
 import { pairs } from "../pairs";
 
-const originalAssets = structuredClone(runtimeConfig.assets ?? {});
-
-beforeAll(() => {
-    runtimeConfig.assets = {
-        ...runtimeConfig.assets,
-        "USDT0-SOL": structuredClone(mainnetConfig.assets!["USDT0-SOL"]),
-        "USDT0-POL": structuredClone(mainnetConfig.assets!["USDT0-POL"]),
-    };
-});
-
-afterAll(() => {
-    runtimeConfig.assets = originalAssets;
-});
-
 vi.mock("../../packages/boltz-swaps/src/client.ts", () => ({
     getPairs: vi.fn(() => Promise.resolve(pairs)),
-}));
-vi.mock("../../src/components/ConnectWallet", () => ({
-    default: () => <div data-testid="connect-wallet" />,
 }));
 vi.mock("qr-scanner", () => ({
     default: { hasCamera: vi.fn(() => Promise.resolve(true)) },
@@ -68,48 +34,6 @@ vi.mock("../../src/utils/helper", async (importActual) => ({
 
 const setPairAssets = (fromAsset: string, toAsset: string) => {
     signals.setPair(new Pair(signals.pair().pairs, fromAsset, toAsset));
-};
-
-const invoice =
-    "lnbcrt600u1p5ynhmgpp5l8j7lnaql4mqeukvcqmhr8zp9vh3rngfgmla6km2fh9vf8pt678sdqqcqzzsxqrpwusp56gha98s9xk2f4eeyhs7dcsx4j4rt79llks72nf6l6hc9cna6vfgs9qxpqysgqqnt8lqcrujmuuv3ajvrlu5z7ydvvge4efv39hj28etf8v72vpcl597evz5e0tvq04tv3z089wxtugee4xh5hvu6309ymrfddrlzfhzgqumsrpk";
-const bolt12Offer =
-    "lno1qgsqvgnwgcg35z6ee2h3yczraddm72xrfua9uve2rlrm9deu7xyfzrc2qqtzzqcxyaupvt8xstdrl8vlun9ch2t28a94hq80agu6usv02rxvetfm3c";
-
-const flushQuoteDebounce = async () => {
-    await vi.runOnlyPendingTimersAsync();
-};
-
-const testEvmAddress = "0x1000000000000000000000000000000000000000";
-const commitmentSourceAsset = "USDT0-POL";
-const commitmentRoute = {
-    sourceAsset: commitmentSourceAsset,
-    destinationAsset: USDT0,
-};
-const commitmentRouteDetail = {
-    ...commitmentRoute,
-    kind: BridgeKind.Oft,
-    position: SwapPosition.Pre,
-};
-const commitmentSubmarinePairs: Pairs = {
-    submarine: {
-        [TBTC]: {
-            [BTC]: {
-                hash: "tbtc-ln-pair-hash",
-                rate: 1,
-                limits: {
-                    maximal: 1_000_000,
-                    minimal: 1,
-                    maximalZeroConf: 0,
-                },
-                fees: {
-                    percentage: 0,
-                    minerFees: 0,
-                },
-            },
-        },
-    },
-    reverse: {},
-    chain: {},
 };
 
 const renderCreate = () =>
@@ -125,201 +49,48 @@ const renderCreate = () =>
         },
     );
 
-const mockWalletConnectEvm = () =>
-    vi.spyOn(web3Context, "useWeb3Signer").mockReturnValue({
-        signer: () => undefined,
-        connectedWallet: () => ({
-            address: testEvmAddress,
-            rdns: "wallet-connect",
-            transport: NetworkTransport.Evm,
-        }),
-        providers: () => ({}),
-        getEtherSwap: vi.fn(),
-        getErc20Swap: vi.fn(),
-        getGasAbstractionSigner: vi.fn(),
-    } as unknown as ReturnType<typeof web3Context.useWeb3Signer>);
+const invalidBtcAddress = i18n.en.invalid_address.replace("{{ asset }}", BTC);
 
-const createCommitmentPair = () => {
-    const currentPair = new Pair(
-        commitmentSubmarinePairs,
-        commitmentSourceAsset,
-        LN,
-        commitmentSubmarinePairs,
-    );
-    currentPair.getMinimum = vi.fn().mockResolvedValue(1);
-    currentPair.getMaximum = vi.fn().mockResolvedValue(1_000_000);
-    currentPair.calculateReceiveAmount = vi
-        .fn()
-        .mockResolvedValue(BigNumber(0));
-    currentPair.creationData = vi.fn().mockResolvedValue({
-        type: SwapType.Submarine,
-        from: TBTC,
-        to: BTC,
-        sendAmount: BigNumber(740_000),
-        receiveAmount: BigNumber(99_000),
-        pairHash: "tbtc-ln-pair-hash",
-        hops: [
-            {
-                type: SwapType.Dex,
-                from: USDT0,
-                to: TBTC,
-            },
-        ],
-        hopsPosition: SwapPosition.Pre,
-    });
+const renderAfterNavigation = (url: string, beforeNavigate?: () => void) => {
+    const NavigateToCreate = () => {
+        const navigate = useNavigate();
+        const [showCreate, setShowCreate] = createSignal(false);
 
-    return currentPair;
-};
-
-const mockPreBridgeDriver = (driver: Partial<BridgeDriver>) => ({
-    getPreRoute: vi
-        .spyOn(bridgeRegistry, "getPreRoute")
-        .mockImplementation((asset) =>
-            asset === commitmentSourceAsset ? commitmentRoute : undefined,
-        ),
-    requireDriverForRoute: vi
-        .spyOn(bridgeRegistry, "requireDriverForRoute")
-        .mockReturnValue(driver as BridgeDriver),
-    getDriverForAsset: vi
-        .spyOn(bridgeRegistry, "getDriverForAsset")
-        .mockImplementation((asset) =>
-            asset === commitmentSourceAsset
-                ? (driver as BridgeDriver)
-                : undefined,
-        ),
-});
-
-const createPreBridgeDriver = (
-    getSourceTokenBalance: BridgeDriver["getSourceTokenBalance"],
-): Partial<BridgeDriver> => ({
-    getTransport: () => NetworkTransport.Evm,
-    getSourceTokenBalance,
-    getPreRoute: () => commitmentRoute,
-    getRoutePosition: () => commitmentRouteDetail,
-    getMessagingFeeToken: () => "POL",
-    getTransferFeeAsset: () => commitmentRoute.sourceAsset,
-});
-
-const mockCommitmentWalletAndBridge = (
-    getSourceTokenBalance: BridgeDriver["getSourceTokenBalance"],
-) => {
-    const useWeb3Signer = mockWalletConnectEvm();
-    const bridgeMocks = mockPreBridgeDriver(
-        createPreBridgeDriver(getSourceTokenBalance),
-    );
-
-    return () => {
-        useWeb3Signer.mockRestore();
-        bridgeMocks.getPreRoute.mockRestore();
-        bridgeMocks.requireDriverForRoute.mockRestore();
-        bridgeMocks.getDriverForAsset.mockRestore();
-        window.history.pushState({}, "", "/");
-    };
-};
-
-const selectMaximumCommitmentSwap = async ({
-    createSwap = true,
-}: { createSwap?: boolean } = {}) => {
-    window.history.pushState({}, "", "/");
-    localStorage.removeItem("assetSend");
-    localStorage.removeItem("assetReceive");
-    const currentPair = createCommitmentPair();
-    renderCreate();
-    await globalSignals.clearSwaps();
-    globalSignals.setOnline(true);
-    globalSignals.setPairs(commitmentSubmarinePairs);
-    globalSignals.setRegularPairs(commitmentSubmarinePairs);
-    signals.setPair(currentPair);
-    signals.setInvoice("");
-    signals.setLnurl("");
-    signals.setBolt12Offer(undefined);
-    signals.setInvoiceValid(false);
-    signals.setInvoiceError(undefined);
-
-    await waitFor(() => {
-        expect(signals.maximum()).toBe(1_000_000);
-    });
-
-    fireEvent.click(await screen.findByTestId("limit-max-button"));
-
-    await waitFor(() => {
-        expect(signals.sendAmount().toNumber()).toBe(1_000_000);
-        expect(signals.amountValid()).toBe(true);
-        expect(signals.receiveAmount().isZero()).toBe(true);
-    });
-
-    let createButton!: HTMLButtonElement;
-    await waitFor(() => {
-        createButton = screen.getByTestId(
-            "create-swap-button",
-        ) as HTMLButtonElement;
-        expect(signals.valid()).toBe(false);
-        expect(createButton.disabled).toBe(false);
-    });
-
-    if (createSwap) {
-        fireEvent.click(createButton);
-    }
-
-    return createButton;
-};
-
-const assertCommitmentSwapCreated = async () => {
-    await waitFor(async () => {
-        const [swap] = await globalSignals.getSwaps();
-        expect(swap).toMatchObject({
-            type: SwapType.Commitment,
-            assetSend: TBTC,
-            assetReceive: BTC,
-            initialReceiveAsset: LN,
-            sourceAsset: commitmentSourceAsset,
-            sourceAmount: "1000000",
-            bridge: {
-                sourceAsset: commitmentSourceAsset,
-                destinationAsset: USDT0,
-                position: SwapPosition.Pre,
-                sourceAmount: "1000000",
-            },
-            dex: {
-                position: SwapPosition.Pre,
-                sourceAmount: "1000000",
-                quoteAmount: 1000000,
-            },
+        onMount(() => {
+            beforeNavigate?.();
+            navigate(url);
+            setShowCreate(true);
         });
-        expect(swap).not.toHaveProperty("sendAmount");
-        expect(swap).not.toHaveProperty("receiveAmount");
+
+        return (
+            <>
+                <TestComponent />
+                <Show when={showCreate()}>
+                    <Create />
+                </Show>
+            </>
+        );
+    };
+
+    render(() => <NavigateToCreate />, {
+        wrapper: contextWrapper,
     });
 };
 
 describe("Create", () => {
+    afterEach(() => {
+        vi.mocked(isMobile).mockReturnValue(false);
+        localStorage.clear();
+    });
+
     test("should apply asset url params when Create mounts after navigation", async () => {
-        const NavigateToCreate = () => {
-            const navigate = useNavigate();
-            const [showCreate, setShowCreate] = createSignal(false);
-
-            onMount(() => {
-                navigate(`/?sendAsset=${LBTC}&receiveAsset=${LN}`);
-                setShowCreate(true);
-            });
-
-            return (
-                <>
-                    <TestComponent />
-                    <Show when={showCreate()}>
-                        <Create />
-                    </Show>
-                </>
-            );
-        };
-
-        render(() => <NavigateToCreate />, {
-            wrapper: contextWrapper,
-        });
+        renderAfterNavigation(`/?sendAsset=${BTC}&receiveAsset=${LN}`);
 
         await waitFor(() => {
-            expect(signals.pair().fromAsset).toEqual(LBTC);
+            expect(signals.pair().fromAsset).toEqual(BTC);
             expect(signals.pair().toAsset).toEqual(LN);
         });
+        expect(signals.pair().swapType).toEqual(SwapType.Submarine);
         expect(window.location.search).toEqual("");
 
         window.history.replaceState({}, "", "/");
@@ -328,32 +99,12 @@ describe("Create", () => {
     test("should preserve toAsset when only sendAsset is in URL", async () => {
         let initialToAsset: string | undefined;
 
-        const NavigateToCreate = () => {
-            const navigate = useNavigate();
-            const [showCreate, setShowCreate] = createSignal(false);
-
-            onMount(() => {
-                initialToAsset = signals.pair().toAsset;
-                navigate(`/?sendAsset=${LBTC}`);
-                setShowCreate(true);
-            });
-
-            return (
-                <>
-                    <TestComponent />
-                    <Show when={showCreate()}>
-                        <Create />
-                    </Show>
-                </>
-            );
-        };
-
-        render(() => <NavigateToCreate />, {
-            wrapper: contextWrapper,
+        renderAfterNavigation(`/?sendAsset=${BTC}`, () => {
+            initialToAsset = signals.pair().toAsset;
         });
 
         await waitFor(() => {
-            expect(signals.pair().fromAsset).toEqual(LBTC);
+            expect(signals.pair().fromAsset).toEqual(BTC);
         });
         expect(signals.pair().toAsset).toEqual(initialToAsset);
         expect(window.location.search).toEqual("");
@@ -364,32 +115,12 @@ describe("Create", () => {
     test("should preserve fromAsset when only receiveAsset is in URL", async () => {
         let initialFromAsset: string | undefined;
 
-        const NavigateToCreate = () => {
-            const navigate = useNavigate();
-            const [showCreate, setShowCreate] = createSignal(false);
-
-            onMount(() => {
-                initialFromAsset = signals.pair().fromAsset;
-                navigate(`/?receiveAsset=${LBTC}`);
-                setShowCreate(true);
-            });
-
-            return (
-                <>
-                    <TestComponent />
-                    <Show when={showCreate()}>
-                        <Create />
-                    </Show>
-                </>
-            );
-        };
-
-        render(() => <NavigateToCreate />, {
-            wrapper: contextWrapper,
+        renderAfterNavigation(`/?receiveAsset=${LN}`, () => {
+            initialFromAsset = signals.pair().fromAsset;
         });
 
         await waitFor(() => {
-            expect(signals.pair().toAsset).toEqual(LBTC);
+            expect(signals.pair().toAsset).toEqual(LN);
         });
         expect(signals.pair().fromAsset).toEqual(initialFromAsset);
         expect(window.location.search).toEqual("");
@@ -398,687 +129,227 @@ describe("Create", () => {
     });
 
     test("should render Create", async () => {
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <Create />
-                </>
-            ),
-            {
-                wrapper: contextWrapper,
-            },
-        );
+        renderCreate();
         const button = await screen.findAllByText(i18n.en.create_swap);
         expect(button).not.toBeUndefined();
     });
 
-    test("should hide wallet section for non-EVM pairs", async () => {
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <Create />
-                </>
-            ),
-            {
-                wrapper: contextWrapper,
-            },
-        );
+    test("should label both sides with their network", async () => {
+        renderCreate();
+        globalSignals.setPairs(pairs);
+        setPairAssets(BTC, LN);
 
+        expect(await screen.findByText("Bitcoin (BLAKE2b)")).toHaveAttribute(
+            "for",
+            "sendAmount",
+        );
+        expect(screen.getByText("Lightning")).toHaveAttribute(
+            "for",
+            "receiveAmount",
+        );
+    });
+
+    test("should show only the address input for reverse swaps", async () => {
+        renderCreate();
+        globalSignals.setPairs(pairs);
+        setPairAssets(LN, BTC);
+
+        await waitFor(() => {
+            expect(screen.getAllByTestId("onchainAddress")).toHaveLength(1);
+        });
+        expect(screen.queryByTestId("invoice")).toBeNull();
+    });
+
+    test("should show only the invoice input for submarine swaps", async () => {
+        renderCreate();
         globalSignals.setPairs(pairs);
         setPairAssets(BTC, LN);
 
         await waitFor(() => {
-            expect(
-                screen.queryByTestId("connect-wallet"),
-            ).not.toBeInTheDocument();
+            expect(screen.getAllByTestId("invoice")).toHaveLength(1);
         });
-    });
-
-    test("should show wallet section for EVM pairs", async () => {
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <Create />
-                </>
-            ),
-            {
-                wrapper: contextWrapper,
-            },
-        );
-
-        globalSignals.setPairs(pairs);
-        setPairAssets(BTC, RBTC);
-
-        expect(await screen.findByTestId("connect-wallet")).toBeInTheDocument();
-    });
-
-    test("should show wallet section for non-EVM wallet pairs", async () => {
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <Create />
-                </>
-            ),
-            {
-                wrapper: contextWrapper,
-            },
-        );
-
-        globalSignals.setPairs(pairs);
-        setPairAssets(BTC, "USDT0-SOL");
-
-        expect(await screen.findByTestId("connect-wallet")).toBeInTheDocument();
-    });
-
-    test("should show only one destination address input for wallet-connectable non-EVM pairs", async () => {
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <Create />
-                </>
-            ),
-            {
-                wrapper: contextWrapper,
-            },
-        );
-
-        globalSignals.setPairs(pairs);
-        setPairAssets(BTC, "USDT0-SOL");
-
-        await screen.findByTestId("connect-wallet");
-        expect(screen.getAllByTestId("onchainAddress")).toHaveLength(1);
+        expect(screen.queryByTestId("onchainAddress")).toBeNull();
     });
 
     test("should show WASM error", async () => {
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <Create />
-                </>
-            ),
-            {
-                wrapper: contextWrapper,
-            },
-        );
+        renderCreate();
         globalSignals.setWasmSupported(false);
         expect(
             await screen.findAllByText(i18n.en.error_wasm),
         ).not.toBeUndefined();
     });
 
-    test("should show the create button spinner while recalculating network quotes", async () => {
-        vi.useFakeTimers();
+    test("should block creation when a quote resolves to zero", async () => {
+        renderCreate();
 
-        try {
-            render(
-                () => (
-                    <>
-                        <TestComponent />
-                        <Create />
-                    </>
-                ),
-                {
-                    wrapper: contextWrapper,
-                },
-            );
+        globalSignals.setOnline(true);
+        globalSignals.setPairs(pairs);
+        setPairAssets(LN, BTC);
 
-            globalSignals.setPairs(pairs);
-            globalSignals.setRegularPairs(pairs);
+        const currentPair = signals.pair();
+        currentPair.calculateReceiveAmount = vi
+            .fn(() => Promise.resolve(BigNumber(0)))
+            .mockName("calculateReceiveAmount");
 
-            const currentPair = new Pair(pairs, LN, BTC, pairs);
-            signals.setPair(currentPair);
-            let resolveQuote: ((amount: BigNumber) => void) | undefined;
-            const quotePromise = new Promise<BigNumber>((resolve) => {
-                resolveQuote = resolve;
-            });
+        signals.setAddressValid(true);
+        signals.setOnchainAddress(
+            "bcrt1q7vq47xpsg4t080205edaulc3sdsjpdxy9svhr3",
+        );
 
-            Object.defineProperty(currentPair, "needsNetworkForQuote", {
-                configurable: true,
-                get: () => true,
-            });
-            currentPair.calculateReceiveAmount = vi
-                .fn(() => quotePromise)
-                .mockName("calculateReceiveAmount");
-            const button = await screen.findByTestId("create-swap-button");
+        fireEvent.input(await screen.findByTestId("sendAmount"), {
+            target: { value: "100000" },
+        });
 
-            fireEvent.input(await screen.findByTestId("sendAmount"), {
-                target: { value: "100000" },
-            });
+        await waitFor(() => {
+            expect(currentPair.calculateReceiveAmount).toHaveBeenCalled();
+        });
 
-            expect(
-                within(button).getByTestId("loading-spinner"),
-            ).toBeInTheDocument();
+        const button = (await screen.findByTestId(
+            "create-swap-button",
+        )) as HTMLButtonElement;
 
-            await flushQuoteDebounce();
-
-            await waitFor(() => {
-                expect(currentPair.calculateReceiveAmount).toHaveBeenCalled();
-            });
-
-            expect(
-                within(button).getByTestId("loading-spinner"),
-            ).toBeInTheDocument();
-
-            resolveQuote?.(BigNumber(90000));
-
-            await waitFor(() => {
-                expect(
-                    within(button).queryByTestId("loading-spinner"),
-                ).not.toBeInTheDocument();
-            });
-        } finally {
-            vi.useRealTimers();
-        }
+        await waitFor(() => {
+            expect(signals.amountValid()).toBe(false);
+            expect(button.disabled).toBe(true);
+            expect(button.textContent).toBe(i18n.en.error_zero_quote);
+        });
     });
 
-    test("should forward the destination address to receive quote calculations", async () => {
-        vi.useFakeTimers();
+    test("should block creation when a quote rejects", async () => {
+        renderCreate();
 
-        try {
-            render(
-                () => (
-                    <>
-                        <TestComponent />
-                        <Create />
-                    </>
-                ),
-                {
-                    wrapper: contextWrapper,
-                },
-            );
+        globalSignals.setOnline(true);
+        globalSignals.setPairs(pairs);
+        setPairAssets(LN, BTC);
 
-            const currentPair = signals.pair();
-            Object.defineProperty(currentPair, "needsNetworkForQuote", {
-                configurable: true,
-                get: () => true,
-            });
-            currentPair.calculateReceiveAmount = vi
-                .fn(() => Promise.resolve(BigNumber(90_000)))
-                .mockName("calculateReceiveAmount");
+        const currentPair = signals.pair();
+        currentPair.calculateReceiveAmount = vi
+            .fn(() => Promise.reject(new Error("quote failed")))
+            .mockName("calculateReceiveAmount");
 
-            signals.setOnchainAddress(
-                "0x5000000000000000000000000000000000000000",
-            );
+        signals.setAddressValid(true);
+        signals.setOnchainAddress(
+            "bcrt1q7vq47xpsg4t080205edaulc3sdsjpdxy9svhr3",
+        );
 
-            fireEvent.input(await screen.findByTestId("sendAmount"), {
-                target: { value: "100000" },
-            });
+        fireEvent.input(await screen.findByTestId("sendAmount"), {
+            target: { value: "100000" },
+        });
 
-            await flushQuoteDebounce();
+        await waitFor(() => {
+            expect(currentPair.calculateReceiveAmount).toHaveBeenCalled();
+        });
 
-            await waitFor(() => {
-                expect(currentPair.calculateReceiveAmount).toHaveBeenCalled();
-            });
+        const button = (await screen.findByTestId(
+            "create-swap-button",
+        )) as HTMLButtonElement;
 
-            const latestCall = vi
-                .mocked(currentPair.calculateReceiveAmount)
-                .mock.calls.at(-1);
-            expect(latestCall).toBeDefined();
-            expect(latestCall?.[0]?.toString()).toBe("100000");
-            expect(latestCall?.[1]).toBe(signals.minerFee());
-            expect(latestCall?.[2]).toBeUndefined();
-            expect(latestCall?.[3]).toBe(signals.getGasToken());
-            expect(latestCall?.[4]).toBe(
-                "0x5000000000000000000000000000000000000000",
-            );
-        } finally {
-            vi.useRealTimers();
-        }
+        await waitFor(() => {
+            expect(signals.amountValid()).toBe(false);
+            expect(button.disabled).toBe(true);
+            expect(button.textContent).toBe(i18n.en.error_no_quote);
+        });
+
+        fireEvent.input(await screen.findByTestId("sendAmount"), {
+            target: { value: "" },
+        });
+
+        await waitFor(() => {
+            expect(button.textContent).not.toBe(i18n.en.error_no_quote);
+        });
     });
-
-    test("should re-fetch receive quote when the destination address changes", async () => {
-        vi.useFakeTimers();
-
-        try {
-            render(
-                () => (
-                    <>
-                        <TestComponent />
-                        <Create />
-                    </>
-                ),
-                {
-                    wrapper: contextWrapper,
-                },
-            );
-
-            const currentPair = signals.pair();
-            Object.defineProperty(currentPair, "needsNetworkForQuote", {
-                configurable: true,
-                get: () => true,
-            });
-            currentPair.calculateReceiveAmount = vi
-                .fn(() => Promise.resolve(BigNumber(90_000)))
-                .mockName("calculateReceiveAmount");
-
-            signals.setAddressValid(true);
-            signals.setOnchainAddress(
-                "0x5000000000000000000000000000000000000000",
-            );
-
-            fireEvent.input(await screen.findByTestId("sendAmount"), {
-                target: { value: "100000" },
-            });
-
-            await flushQuoteDebounce();
-
-            await waitFor(() => {
-                expect(
-                    currentPair.calculateReceiveAmount,
-                ).toHaveBeenCalledTimes(1);
-            });
-
-            signals.setOnchainAddress(
-                "0x6000000000000000000000000000000000000000",
-            );
-
-            await flushQuoteDebounce();
-
-            await waitFor(() => {
-                expect(
-                    currentPair.calculateReceiveAmount,
-                ).toHaveBeenCalledTimes(2);
-            });
-
-            const latestCall = vi
-                .mocked(currentPair.calculateReceiveAmount)
-                .mock.calls.at(-1);
-            expect(latestCall?.[4]).toBe(
-                "0x6000000000000000000000000000000000000000",
-            );
-        } finally {
-            vi.useRealTimers();
-        }
-    });
-
-    test.each([
-        {
-            side: "send",
-            inputTestId: "sendAmount",
-            quoteMethod: "calculateReceiveAmount",
-            counterAmount: 90_000,
-        },
-        {
-            side: "receive",
-            inputTestId: "receiveAmount",
-            quoteMethod: "calculateSendAmount",
-            counterAmount: 110_000,
-        },
-    ] as const)(
-        "should preserve the typed $side amount when destination changes during a pending quote",
-        async ({ inputTestId, quoteMethod, counterAmount }) => {
-            vi.useFakeTimers();
-
-            try {
-                render(
-                    () => (
-                        <>
-                            <TestComponent />
-                            <Create />
-                        </>
-                    ),
-                    {
-                        wrapper: contextWrapper,
-                    },
-                );
-
-                setPairAssets(LN, BTC);
-
-                const currentPair = signals.pair();
-                let resolveFirstQuote:
-                    ((amount: BigNumber) => void) | undefined;
-                const firstQuote = new Promise<BigNumber>((resolve) => {
-                    resolveFirstQuote = resolve;
-                });
-
-                Object.defineProperty(currentPair, "needsNetworkForQuote", {
-                    configurable: true,
-                    get: () => true,
-                });
-                currentPair[quoteMethod] = vi
-                    .fn()
-                    .mockImplementationOnce(() => firstQuote)
-                    .mockImplementation(() =>
-                        Promise.resolve(BigNumber(counterAmount)),
-                    )
-                    .mockName(quoteMethod);
-
-                fireEvent.input(await screen.findByTestId(inputTestId), {
-                    target: { value: "100000" },
-                });
-
-                await flushQuoteDebounce();
-
-                await waitFor(() => {
-                    expect(currentPair[quoteMethod]).toHaveBeenCalledTimes(1);
-                });
-
-                fireEvent.input(await screen.findByTestId("onchainAddress"), {
-                    target: {
-                        value: "bcrt1q0zjymfy94ctjdegxascl8l253p0ppl5fzz46qm",
-                    },
-                });
-
-                await flushQuoteDebounce();
-
-                await waitFor(() => {
-                    expect(currentPair[quoteMethod]).toHaveBeenCalledTimes(2);
-                });
-
-                const latestCall = vi
-                    .mocked(currentPair[quoteMethod])
-                    .mock.calls.at(-1);
-                expect(latestCall?.[0]?.toString()).toBe("100000");
-
-                resolveFirstQuote?.(BigNumber(counterAmount));
-            } finally {
-                vi.useRealTimers();
-            }
-        },
-    );
-
-    test("should block creation when a routed quote resolves to zero", async () => {
-        vi.useFakeTimers();
-
-        try {
-            render(
-                () => (
-                    <>
-                        <TestComponent />
-                        <Create />
-                    </>
-                ),
-                {
-                    wrapper: contextWrapper,
-                },
-            );
-
-            globalSignals.setOnline(true);
-            globalSignals.setPairs(pairs);
-            setPairAssets("USDT0-SOL", BTC);
-
-            const currentPair = signals.pair();
-            Object.defineProperty(currentPair, "needsNetworkForQuote", {
-                configurable: true,
-                get: () => true,
-            });
-            currentPair.calculateReceiveAmount = vi
-                .fn(() => Promise.resolve(BigNumber(0)))
-                .mockName("calculateReceiveAmount");
-
-            signals.setAddressValid(true);
-            signals.setOnchainAddress(
-                "bcrt1q7vq47xpsg4t080205edaulc3sdsjpdxy9svhr3",
-            );
-
-            fireEvent.input(await screen.findByTestId("sendAmount"), {
-                target: { value: "100000" },
-            });
-
-            await flushQuoteDebounce();
-
-            await waitFor(() => {
-                expect(currentPair.calculateReceiveAmount).toHaveBeenCalled();
-            });
-
-            const button = (await screen.findByTestId(
-                "create-swap-button",
-            )) as HTMLButtonElement;
-
-            vi.useRealTimers();
-
-            await waitFor(() => {
-                expect(signals.amountValid()).toBe(false);
-                expect(button.disabled).toBe(true);
-                expect(button.textContent).toBe(i18n.en.error_zero_quote);
-            });
-        } finally {
-            vi.useRealTimers();
-        }
-    });
-
-    test.each([
-        {
-            kind: "generic",
-            error: new Error("quote failed"),
-            expectedMessage: i18n.en.error_no_quote,
-        },
-        {
-            kind: "bridge capacity",
-            error: new BridgeCapacityError(50n, 100n),
-            expectedMessage: i18n.en.error_bridge_capacity,
-        },
-    ])(
-        "should block creation with a $kind error when a routed quote rejects",
-        async ({ error, expectedMessage }) => {
-            vi.useFakeTimers();
-
-            try {
-                render(
-                    () => (
-                        <>
-                            <TestComponent />
-                            <Create />
-                        </>
-                    ),
-                    {
-                        wrapper: contextWrapper,
-                    },
-                );
-
-                globalSignals.setOnline(true);
-                globalSignals.setPairs(pairs);
-                setPairAssets("USDT0-SOL", BTC);
-
-                const currentPair = signals.pair();
-                Object.defineProperty(currentPair, "needsNetworkForQuote", {
-                    configurable: true,
-                    get: () => true,
-                });
-                currentPair.calculateReceiveAmount = vi
-                    .fn(() => Promise.reject(error))
-                    .mockName("calculateReceiveAmount");
-
-                signals.setAddressValid(true);
-                signals.setOnchainAddress(
-                    "bcrt1q7vq47xpsg4t080205edaulc3sdsjpdxy9svhr3",
-                );
-
-                fireEvent.input(await screen.findByTestId("sendAmount"), {
-                    target: { value: "100000" },
-                });
-
-                await flushQuoteDebounce();
-
-                await waitFor(() => {
-                    expect(
-                        currentPair.calculateReceiveAmount,
-                    ).toHaveBeenCalled();
-                });
-
-                const button = (await screen.findByTestId(
-                    "create-swap-button",
-                )) as HTMLButtonElement;
-
-                vi.useRealTimers();
-
-                await waitFor(() => {
-                    expect(signals.amountValid()).toBe(false);
-                    expect(button.disabled).toBe(true);
-                    expect(button.textContent).toBe(expectedMessage);
-                });
-
-                fireEvent.input(await screen.findByTestId("sendAmount"), {
-                    target: { value: "" },
-                });
-
-                await waitFor(() => {
-                    expect(button.textContent).not.toBe(expectedMessage);
-                });
-            } finally {
-                vi.useRealTimers();
-            }
-        },
-    );
 
     test("should reset the send amount when a receive-side quote rejects", async () => {
-        vi.useFakeTimers();
+        renderCreate();
 
-        try {
-            render(
-                () => (
-                    <>
-                        <TestComponent />
-                        <Create />
-                    </>
-                ),
-                {
-                    wrapper: contextWrapper,
-                },
-            );
+        globalSignals.setOnline(true);
+        globalSignals.setPairs(pairs);
+        setPairAssets(LN, BTC);
 
-            globalSignals.setOnline(true);
-            globalSignals.setPairs(pairs);
-            setPairAssets(LN, BTC);
+        const currentPair = signals.pair();
+        currentPair.calculateSendAmount = vi
+            .fn(() => Promise.reject(new Error("quote failed")))
+            .mockName("calculateSendAmount");
 
-            const currentPair = signals.pair();
-            Object.defineProperty(currentPair, "needsNetworkForQuote", {
-                configurable: true,
-                get: () => true,
-            });
-            currentPair.calculateSendAmount = vi
-                .fn(() => Promise.reject(new Error("bridge capacity exceeded")))
-                .mockName("calculateSendAmount");
+        fireEvent.input(await screen.findByTestId("receiveAmount"), {
+            target: { value: "100000" },
+        });
 
-            fireEvent.input(await screen.findByTestId("receiveAmount"), {
-                target: { value: "100000" },
-            });
+        await waitFor(() => {
+            expect(currentPair.calculateSendAmount).toHaveBeenCalled();
+        });
 
-            await flushQuoteDebounce();
+        const button = (await screen.findByTestId(
+            "create-swap-button",
+        )) as HTMLButtonElement;
 
-            await waitFor(() => {
-                expect(currentPair.calculateSendAmount).toHaveBeenCalled();
-            });
-
-            const button = (await screen.findByTestId(
-                "create-swap-button",
-            )) as HTMLButtonElement;
-
-            vi.useRealTimers();
-
-            await waitFor(() => {
-                expect(signals.sendAmount().toString()).toBe("0");
-                expect(signals.amountValid()).toBe(false);
-                expect(button.textContent).toBe(i18n.en.error_no_quote);
-            });
-        } finally {
-            vi.useRealTimers();
-        }
+        await waitFor(() => {
+            expect(signals.sendAmount().toString()).toBe("0");
+            expect(signals.amountValid()).toBe(false);
+            expect(button.textContent).toBe(i18n.en.error_no_quote);
+        });
     });
 
     test("should ignore a stale quote rejection after a newer quote resolves", async () => {
-        vi.useFakeTimers();
+        renderCreate();
 
-        try {
-            render(
-                () => (
-                    <>
-                        <TestComponent />
-                        <Create />
-                    </>
-                ),
-                {
-                    wrapper: contextWrapper,
-                },
-            );
+        globalSignals.setOnline(true);
+        globalSignals.setPairs(pairs);
+        setPairAssets(LN, BTC);
 
-            globalSignals.setOnline(true);
-            globalSignals.setPairs(pairs);
-            setPairAssets(LN, BTC);
+        const currentPair = signals.pair();
+        let rejectFirstQuote: ((reason: Error) => void) | undefined;
+        const firstQuote = new Promise<BigNumber>((_, reject) => {
+            rejectFirstQuote = reject;
+        });
 
-            const currentPair = signals.pair();
-            let rejectFirstQuote: ((reason: Error) => void) | undefined;
-            const firstQuote = new Promise<BigNumber>((_, reject) => {
-                rejectFirstQuote = reject;
-            });
+        currentPair.calculateReceiveAmount = vi
+            .fn()
+            .mockImplementationOnce(() => firstQuote)
+            .mockImplementation(() => Promise.resolve(BigNumber(90_000)))
+            .mockName("calculateReceiveAmount");
 
-            Object.defineProperty(currentPair, "needsNetworkForQuote", {
-                configurable: true,
-                get: () => true,
-            });
-            currentPair.calculateReceiveAmount = vi
-                .fn()
-                .mockImplementationOnce(() => firstQuote)
-                .mockImplementation(() => Promise.resolve(BigNumber(90_000)))
-                .mockName("calculateReceiveAmount");
+        fireEvent.input(await screen.findByTestId("sendAmount"), {
+            target: { value: "100000" },
+        });
 
-            fireEvent.input(await screen.findByTestId("sendAmount"), {
-                target: { value: "100000" },
-            });
+        await waitFor(() => {
+            expect(currentPair.calculateReceiveAmount).toHaveBeenCalledTimes(1);
+        });
 
-            await flushQuoteDebounce();
+        fireEvent.input(await screen.findByTestId("sendAmount"), {
+            target: { value: "200000" },
+        });
 
-            await waitFor(() => {
-                expect(
-                    currentPair.calculateReceiveAmount,
-                ).toHaveBeenCalledTimes(1);
-            });
-
-            fireEvent.input(await screen.findByTestId("sendAmount"), {
-                target: { value: "200000" },
-            });
-
-            await flushQuoteDebounce();
-
-            await waitFor(() => {
-                expect(
-                    currentPair.calculateReceiveAmount,
-                ).toHaveBeenCalledTimes(2);
-                expect(signals.receiveAmount().toString()).toBe("90000");
-            });
-
-            rejectFirstQuote?.(new Error("bridge capacity exceeded"));
-            await flushQuoteDebounce();
-
+        await waitFor(() => {
+            expect(currentPair.calculateReceiveAmount).toHaveBeenCalledTimes(2);
             expect(signals.receiveAmount().toString()).toBe("90000");
-            expect(signals.amountValid()).toBe(true);
-        } finally {
-            vi.useRealTimers();
-        }
+        });
+
+        rejectFirstQuote?.(new Error("quote failed"));
+        await new Promise((resolve) => setTimeout(resolve, 0));
+
+        expect(signals.receiveAmount().toString()).toBe("90000");
+        expect(signals.quoteError()).toBeUndefined();
+        expect(signals.amountValid()).toBe(true);
     });
 
-    test("should update receive amount on asset change", async () => {
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <Create />
-                </>
-            ),
-            {
-                wrapper: contextWrapper,
-            },
-        );
+    test("should update receive amount on direction change", async () => {
+        renderCreate();
 
         globalSignals.setPairs(pairs);
         setPairAssets(LN, BTC);
         signals.setSendAmount(BigNumber(50_000));
 
         // To force trigger a recalculation
-        setPairAssets(LN, LBTC);
+        setPairAssets(BTC, LN);
         setPairAssets(LN, BTC);
 
         await waitFor(() => {
             expect(signals.receiveAmount()).toEqual(BigNumber(38110));
         });
 
-        setPairAssets(LN, LBTC);
+        setPairAssets(BTC, LN);
         const expectedReceiveAmount = await signals
             .pair()
             .calculateReceiveAmount(BigNumber(50_000), signals.minerFee());
@@ -1086,27 +357,18 @@ describe("Create", () => {
         await waitFor(() => {
             expect(signals.receiveAmount()).toEqual(expectedReceiveAmount);
         });
+        expect(expectedReceiveAmount).not.toEqual(BigNumber(38110));
     });
 
     test("should update receive amount on miner fee change", async () => {
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <Create />
-                </>
-            ),
-            {
-                wrapper: contextWrapper,
-            },
-        );
+        renderCreate();
 
         globalSignals.setPairs(pairs);
         setPairAssets(LN, BTC);
         signals.setSendAmount(BigNumber(50_000));
 
-        // // To force trigger a recalculation
-        setPairAssets(LN, LBTC);
+        // To force trigger a recalculation
+        setPairAssets(BTC, LN);
         setPairAssets(LN, BTC);
 
         await waitFor(() => {
@@ -1123,17 +385,7 @@ describe("Create", () => {
     });
 
     test("should update calculated value on fee change", async () => {
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <Create />
-                </>
-            ),
-            {
-                wrapper: contextWrapper,
-            },
-        );
+        renderCreate();
 
         globalSignals.setPairs(pairs);
         signals.setMinimum(pairs.reverse[BTC][BTC].limits.minimal);
@@ -1181,63 +433,21 @@ describe("Create", () => {
         });
     });
 
-    test("should set max amount on click", async () => {
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <Create />
-                </>
-            ),
-            {
-                wrapper: contextWrapper,
-            },
-        );
-
-        globalSignals.setPairs(pairs);
-
-        await waitFor(() => {
-            expect(signals.maximum()).toBeGreaterThan(0);
-        });
-        const amount = signals.maximum();
-
-        fireEvent.click(await screen.findByTestId("limit-max-button"));
-
-        await waitFor(() => {
-            expect(signals.sendAmount()).toEqual(BigNumber(amount));
-            expect(signals.receiveAmount()).toEqual(
-                calculateReceiveAmount(
-                    BigNumber(amount),
-                    signals.boltzFee(),
-                    signals.minerFee(),
-                    SwapType.Reverse,
-                ),
-            );
-        });
-    });
-
-    test("should use the swap maximum when connected wallet maximum is zero", async () => {
-        const getConnectedMaximum = vi
-            .spyOn(connectedMaximum, "getConnectedMaximum")
-            .mockResolvedValue(BigNumber(0));
-
-        try {
-            render(
-                () => (
-                    <>
-                        <TestComponent />
-                        <Create />
-                    </>
-                ),
-                {
-                    wrapper: contextWrapper,
-                },
-            );
+    test.each`
+        fromAsset | toAsset | swapType
+        ${LN}     | ${BTC}  | ${SwapType.Reverse}
+        ${BTC}    | ${LN}   | ${SwapType.Submarine}
+    `(
+        "should set max amount on click for $swapType swaps",
+        async ({ fromAsset, toAsset, swapType }) => {
+            renderCreate();
 
             globalSignals.setPairs(pairs);
+            setPairAssets(fromAsset, toAsset);
 
+            const expectedMaximum = await signals.pair().getMaximum();
             await waitFor(() => {
-                expect(signals.maximum()).toBeGreaterThan(0);
+                expect(signals.maximum()).toEqual(expectedMaximum);
             });
             const amount = signals.maximum();
 
@@ -1245,127 +455,43 @@ describe("Create", () => {
 
             await waitFor(() => {
                 expect(signals.sendAmount()).toEqual(BigNumber(amount));
+                expect(signals.receiveAmount()).toEqual(
+                    calculateReceiveAmount(
+                        BigNumber(amount),
+                        signals.boltzFee(),
+                        signals.minerFee(),
+                        swapType as SwapType,
+                    ),
+                );
+                expect(signals.amountValid()).toBe(true);
             });
-            expect(getConnectedMaximum).toHaveBeenCalled();
-        } finally {
-            getConnectedMaximum.mockRestore();
-        }
-    });
+        },
+    );
 
-    test("should disable amount inputs while resolving connected wallet maximum", async () => {
-        let resolveMaximum!: (amount: BigNumber) => void;
-        const getConnectedMaximum = vi
-            .spyOn(connectedMaximum, "getConnectedMaximum")
-            .mockReturnValue(
-                new Promise<BigNumber>((resolve) => {
-                    resolveMaximum = resolve;
-                }),
-            );
+    test("should hide the max button for a locked destination", async () => {
+        renderCreate();
 
-        try {
-            render(
-                () => (
-                    <>
-                        <TestComponent />
-                        <Create />
-                    </>
-                ),
-                {
-                    wrapper: contextWrapper,
-                },
-            );
+        globalSignals.setPairs(pairs);
+        await waitFor(() => {
+            expect(signals.maximum()).toBeGreaterThan(0);
+        });
+        expect(screen.getByTestId("limit-max-button")).toBeInTheDocument();
 
-            globalSignals.setPairs(pairs);
+        signals.setDestinationLocked(true);
 
-            await waitFor(() => {
-                expect(signals.maximum()).toBeGreaterThan(0);
-            });
-
-            fireEvent.click(await screen.findByTestId("limit-max-button"));
-
-            const sendAmountInput = screen.getByTestId(
-                "sendAmount",
-            ) as HTMLInputElement;
-            const receiveAmountInput = screen.getByTestId(
-                "receiveAmount",
-            ) as HTMLInputElement;
-            await waitFor(() => {
-                expect(sendAmountInput.disabled).toBe(true);
-                expect(receiveAmountInput.disabled).toBe(true);
-            });
-
-            resolveMaximum(BigNumber(0));
-            await waitFor(() => {
-                expect(sendAmountInput.disabled).toBe(false);
-            });
-        } finally {
-            getConnectedMaximum.mockRestore();
-        }
-    });
-
-    test("should update the loading target when selecting max", async () => {
-        vi.useFakeTimers();
-
-        try {
-            render(
-                () => (
-                    <>
-                        <TestComponent />
-                        <Create />
-                    </>
-                ),
-                {
-                    wrapper: contextWrapper,
-                },
-            );
-
-            globalSignals.setPairs(pairs);
-
-            await waitFor(() => {
-                expect(signals.minimum()).toBeGreaterThan(0);
-            });
-
-            const currentPair = signals.pair();
-            Object.defineProperty(currentPair, "needsNetworkForQuote", {
-                configurable: true,
-                get: () => true,
-            });
-            currentPair.calculateReceiveAmount = vi
-                .fn(() => new Promise<BigNumber>(() => undefined))
-                .mockName("calculateReceiveAmount");
-
-            signals.setAmountChanged(Side.Receive);
-
-            const receiveAmountInput = (await screen.findByTestId(
-                "receiveAmount",
-            )) as HTMLInputElement;
-            const sendAmountInput = (await screen.findByTestId(
-                "sendAmount",
-            )) as HTMLInputElement;
-            fireEvent.click(screen.getByTestId("limit-max-button"));
-            await Promise.resolve();
-
-            expect(signals.amountChanged()).toEqual(Side.Send);
-            expect(sendAmountInput.disabled).toEqual(false);
-            expect(receiveAmountInput.disabled).toEqual(true);
-        } finally {
-            vi.clearAllTimers();
-            vi.useRealTimers();
-        }
+        await waitFor(() => {
+            expect(screen.queryByTestId("limit-max-button")).toBeNull();
+        });
+        expect(
+            (screen.getByTestId("sendAmount") as HTMLInputElement).disabled,
+        ).toBe(true);
+        expect(
+            (screen.getByTestId("receiveAmount") as HTMLInputElement).disabled,
+        ).toBe(true);
     });
 
     test("should prioritize amount errors", async () => {
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <Create />
-                </>
-            ),
-            {
-                wrapper: contextWrapper,
-            },
-        );
+        renderCreate();
         globalSignals.setPairs(pairs);
         setPairAssets(LN, BTC);
         await waitFor(() => {
@@ -1375,7 +501,7 @@ describe("Create", () => {
         const sendAmountInput = await screen.findByTestId("sendAmount");
         fireEvent.input(sendAmountInput, {
             target: {
-                value: `${pairs.reverse["BTC"]["BTC"].limits.minimal}`,
+                value: `${pairs.reverse[BTC][BTC].limits.minimal}`,
             },
         });
 
@@ -1393,7 +519,7 @@ describe("Create", () => {
 
         await waitFor(() => {
             expect(createButton.disabled).toEqual(true);
-            expect(createButton.textContent).toEqual("Invalid BTC address");
+            expect(createButton.textContent).toEqual(invalidBtcAddress);
         });
 
         fireEvent.input(sendAmountInput, {
@@ -1411,23 +537,11 @@ describe("Create", () => {
     test.each`
         fromAsset | toAsset | description
         ${LN}     | ${BTC}  | ${"reverse swap to BTC"}
-        ${LN}     | ${LBTC} | ${"reverse swap to LBTC"}
         ${BTC}    | ${LN}   | ${"submarine swap from BTC"}
-        ${LBTC}   | ${LN}   | ${"submarine swap from LBTC"}
     `(
         "should show minimum amount error (not address/invoice) on initial page load for $description",
         async ({ fromAsset, toAsset }) => {
-            render(
-                () => (
-                    <>
-                        <TestComponent />
-                        <Create />
-                    </>
-                ),
-                {
-                    wrapper: contextWrapper,
-                },
-            );
+            renderCreate();
             globalSignals.setOnline(true);
             globalSignals.setPairs(pairs);
             setPairAssets(fromAsset, toAsset);
@@ -1447,18 +561,33 @@ describe("Create", () => {
         },
     );
 
+    test("should show the maximum amount error above the maximum", async () => {
+        renderCreate();
+        globalSignals.setOnline(true);
+        globalSignals.setPairs(pairs);
+        globalSignals.setDenomination(Denomination.Sat);
+        setPairAssets(LN, BTC);
+        await waitFor(() => {
+            expect(signals.maximum()).toBeGreaterThan(0);
+        });
+
+        fireEvent.input(await screen.findByTestId("sendAmount"), {
+            target: { value: `${signals.maximum() + 1}` },
+        });
+
+        const createButton = (await screen.findByTestId(
+            "create-swap-button",
+        )) as HTMLButtonElement;
+
+        await waitFor(() => {
+            expect(signals.amountValid()).toBe(false);
+            expect(createButton.disabled).toEqual(true);
+            expect(createButton.textContent).toMatch(/^Maximum amount is /);
+        });
+    });
+
     test("should re-prioritize the minimum amount error after clearing the send amount (reverse swap)", async () => {
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <Create />
-                </>
-            ),
-            {
-                wrapper: contextWrapper,
-            },
-        );
+        renderCreate();
         globalSignals.setOnline(true);
         globalSignals.setPairs(pairs);
         setPairAssets(LN, BTC);
@@ -1484,9 +613,7 @@ describe("Create", () => {
         });
 
         await waitFor(() => {
-            expect(createButton.textContent).toEqual(
-                i18n.en.invalid_address.replace("{{ asset }}", BTC),
-            );
+            expect(createButton.textContent).toEqual(invalidBtcAddress);
         });
 
         fireEvent.input(sendAmountInput, {
@@ -1500,17 +627,7 @@ describe("Create", () => {
     });
 
     test("should re-prioritize the minimum amount error after clearing the send amount (submarine swap)", async () => {
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <Create />
-                </>
-            ),
-            {
-                wrapper: contextWrapper,
-            },
-        );
+        renderCreate();
         globalSignals.setOnline(true);
         globalSignals.setPairs(pairs);
         setPairAssets(BTC, LN);
@@ -1549,208 +666,65 @@ describe("Create", () => {
         });
     });
 
-    test("should explain when changing the amount clears a fixed invoice", async () => {
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <Create />
-                </>
-            ),
-            {
-                wrapper: contextWrapper,
-            },
-        );
-        globalSignals.setOnline(true);
-        globalSignals.setPairs(pairs);
-        setPairAssets(BTC, LN);
-        await waitFor(() => {
-            expect(signals.minimum()).toBeGreaterThan(0);
-        });
-
-        signals.setInvoice(invoice);
-        signals.setInvoiceValid(true);
-
-        fireEvent.input(await screen.findByTestId("sendAmount"), {
-            target: { value: `${signals.minimum()}` },
-        });
-
-        await waitFor(() => {
-            expect(signals.invoice()).toBe("");
-            expect(globalSignals.notification()).toBe(
-                i18n.en.invoice_cleared_amount_changed,
-            );
-            expect(globalSignals.notificationType()).toBe("success");
-        });
-    });
-
-    test("should clear a fixed invoice while validation is pending", async () => {
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <Create />
-                </>
-            ),
-            {
-                wrapper: contextWrapper,
-            },
-        );
-        globalSignals.setOnline(true);
-        globalSignals.setPairs(pairs);
-        setPairAssets(BTC, LN);
-        await waitFor(() => {
-            expect(signals.minimum()).toBeGreaterThan(0);
-        });
-
-        signals.setInvoice(invoice);
-        signals.setInvoiceValid(false);
-
-        fireEvent.input(await screen.findByTestId("sendAmount"), {
-            target: { value: `${signals.minimum()}` },
-        });
-
-        await waitFor(() => {
-            expect(signals.invoice()).toBe("");
-            expect(globalSignals.notification()).toBe(
-                i18n.en.invoice_cleared_amount_changed,
-            );
-            expect(globalSignals.notificationType()).toBe("success");
-        });
-    });
-
-    test("should keep a deferred destination editable after selecting max for a commitment swap", async () => {
-        const restoreMocks = mockCommitmentWalletAndBridge(
-            vi
-                .fn<BridgeDriver["getSourceTokenBalance"]>()
-                .mockResolvedValue(1_000_000n),
-        );
-
-        try {
-            window.history.pushState({}, "", "/");
-            const currentPair = createCommitmentPair();
+    test.each`
+        invoiceValid
+        ${true}
+        ${false}
+    `(
+        "should clear a fixed invoice when the amount changes (invoice valid: $invoiceValid)",
+        async ({ invoiceValid }) => {
             renderCreate();
-            await globalSignals.clearSwaps();
             globalSignals.setOnline(true);
-            globalSignals.setPairs(commitmentSubmarinePairs);
-            globalSignals.setRegularPairs(commitmentSubmarinePairs);
-            signals.setPair(currentPair);
+            globalSignals.setPairs(pairs);
+            setPairAssets(BTC, LN);
+            await waitFor(() => {
+                expect(signals.minimum()).toBeGreaterThan(0);
+            });
+
+            signals.setInvoice(blake2bInvoice);
+            signals.setInvoiceValid(invoiceValid as boolean);
+
+            fireEvent.input(await screen.findByTestId("sendAmount"), {
+                target: { value: `${signals.minimum()}` },
+            });
 
             await waitFor(() => {
-                expect(signals.maximum()).toBe(1_000_000);
+                expect(signals.invoice()).toBe("");
+                expect(signals.invoiceValid()).toBe(false);
+                expect(globalSignals.notification()).toBe(
+                    i18n.en.invoice_cleared_amount_changed,
+                );
+                expect(globalSignals.notificationType()).toBe("success");
             });
+        },
+    );
 
-            signals.setInvoice(bolt12Offer);
-            signals.setBolt12Offer(bolt12Offer);
-            signals.setInvoiceValid(false);
-            signals.setInvoiceError(undefined);
+    test("should keep an LNURL destination when the amount changes", async () => {
+        renderCreate();
+        globalSignals.setOnline(true);
+        globalSignals.setPairs(pairs);
+        setPairAssets(BTC, LN);
+        await waitFor(() => {
+            expect(signals.minimum()).toBeGreaterThan(0);
+        });
 
-            fireEvent.click(await screen.findByTestId("limit-max-button"));
+        signals.setInvoice("test@lnurl.com");
 
-            await waitFor(() => {
-                const invoiceInput = screen.getByTestId(
-                    "invoice",
-                ) as HTMLInputElement;
-                expect(signals.sendAmount().toNumber()).toBe(1_000_000);
-                expect(invoiceInput).toHaveValue(bolt12Offer);
-                expect(invoiceInput).not.toBeDisabled();
-                expect(
-                    screen.queryByTestId("committed-invoice-row"),
-                ).toBeNull();
-            });
-        } finally {
-            restoreMocks();
-        }
-    });
+        fireEvent.input(await screen.findByTestId("sendAmount"), {
+            target: { value: `${signals.minimum()}` },
+        });
 
-    test("should create a pre-bridge commitment swap without an invoice after selecting max", async () => {
-        const restoreMocks = mockCommitmentWalletAndBridge(
-            vi
-                .fn<BridgeDriver["getSourceTokenBalance"]>()
-                .mockResolvedValue(1_000_000n),
+        await waitFor(() => {
+            expect(signals.sendAmount()).toEqual(BigNumber(signals.minimum()));
+        });
+        expect(signals.invoice()).toBe("test@lnurl.com");
+        expect(globalSignals.notification()).not.toBe(
+            i18n.en.invoice_cleared_amount_changed,
         );
-
-        try {
-            await selectMaximumCommitmentSwap();
-            await assertCommitmentSwapCreated();
-        } finally {
-            restoreMocks();
-        }
-    });
-
-    test("should clear committed amounts from the disabled invoice row", async () => {
-        const restoreMocks = mockCommitmentWalletAndBridge(
-            vi
-                .fn<BridgeDriver["getSourceTokenBalance"]>()
-                .mockResolvedValue(1_000_000n),
-        );
-
-        try {
-            await selectMaximumCommitmentSwap({ createSwap: false });
-
-            const invoiceInput = screen.getByTestId(
-                "invoice",
-            ) as HTMLInputElement;
-            expect(invoiceInput).toBeDisabled();
-            expect(invoiceInput.placeholder).toBe(
-                i18n.en.commitment_invoice_deferred,
-            );
-            expect(
-                screen.getByTestId("committed-invoice-row"),
-            ).toBeInTheDocument();
-            expect(
-                screen.getByTestId("committed-invoice-clear"),
-            ).toHaveAccessibleName(i18n.en.clear_amount);
-
-            fireEvent.click(screen.getByTestId("committed-invoice-clear"));
-
-            await waitFor(() => {
-                expect(signals.sendAmount().isZero()).toBe(true);
-                expect(signals.receiveAmount().isZero()).toBe(true);
-                expect(
-                    screen.queryByTestId("committed-invoice-row"),
-                ).toBeNull();
-                expect(
-                    screen.getByTestId("invoice") as HTMLInputElement,
-                ).not.toBeDisabled();
-            });
-        } finally {
-            restoreMocks();
-        }
-    });
-
-    test("should keep the max commitment flow when a pre-bridge balance lookup fails", async () => {
-        const restoreMocks = mockCommitmentWalletAndBridge(
-            vi
-                .fn<BridgeDriver["getSourceTokenBalance"]>()
-                .mockRejectedValue(new Error("balance unavailable")),
-        );
-
-        try {
-            const createButton = await selectMaximumCommitmentSwap({
-                createSwap: false,
-            });
-
-            expect(signals.sendAmount().toNumber()).toBe(signals.maximum());
-            expect(createButton.disabled).toBe(false);
-            await expect(globalSignals.getSwaps()).resolves.toEqual([]);
-        } finally {
-            restoreMocks();
-        }
     });
 
     test("should show invalid address error when amount is empty and an invalid address is entered", async () => {
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <Create />
-                </>
-            ),
-            {
-                wrapper: contextWrapper,
-            },
-        );
+        renderCreate();
         globalSignals.setOnline(true);
         globalSignals.setPairs(pairs);
         setPairAssets(LN, BTC);
@@ -1775,9 +749,7 @@ describe("Create", () => {
 
         await waitFor(() => {
             expect(createButton.disabled).toEqual(true);
-            expect(createButton.textContent).toEqual(
-                i18n.en.invalid_address.replace("{{ asset }}", BTC),
-            );
+            expect(createButton.textContent).toEqual(invalidBtcAddress);
         });
 
         fireEvent.input(addressInput, {
@@ -1791,17 +763,7 @@ describe("Create", () => {
     });
 
     test("should show invalid invoice error when amount is empty and an invalid invoice is entered", async () => {
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <Create />
-                </>
-            ),
-            {
-                wrapper: contextWrapper,
-            },
-        );
+        renderCreate();
         globalSignals.setOnline(true);
         globalSignals.setPairs(pairs);
         setPairAssets(BTC, LN);
@@ -1816,7 +778,9 @@ describe("Create", () => {
             "create-swap-button",
         )) as HTMLButtonElement;
 
-        expect(createButton.textContent).toMatch(/^Minimum amount is /);
+        await waitFor(() => {
+            expect(createButton.textContent).toMatch(/^Minimum amount is /);
+        });
 
         fireEvent.input(invoiceInput, {
             target: { value: "totally invalid invoice" },
@@ -1839,17 +803,7 @@ describe("Create", () => {
     });
 
     test("should re-show invalid address error after clearing a previously entered destination address", async () => {
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <Create />
-                </>
-            ),
-            {
-                wrapper: contextWrapper,
-            },
-        );
+        renderCreate();
         globalSignals.setOnline(true);
         globalSignals.setPairs(pairs);
         setPairAssets(LN, BTC);
@@ -1878,9 +832,7 @@ describe("Create", () => {
         });
 
         await waitFor(() => {
-            expect(createButton.textContent).toEqual(
-                i18n.en.invalid_address.replace("{{ asset }}", BTC),
-            );
+            expect(createButton.textContent).toEqual(invalidBtcAddress);
         });
 
         fireEvent.input(addressInput, {
@@ -1889,24 +841,39 @@ describe("Create", () => {
 
         await waitFor(() => {
             expect(createButton.disabled).toEqual(true);
-            expect(createButton.textContent).toEqual(
-                i18n.en.invalid_address.replace("{{ asset }}", BTC),
-            );
+            expect(createButton.textContent).toEqual(invalidBtcAddress);
+        });
+    });
+
+    test("should enable creation of a reverse swap with a valid amount and address", async () => {
+        renderCreate();
+        globalSignals.setOnline(true);
+        globalSignals.setPairs(pairs);
+        setPairAssets(LN, BTC);
+        await waitFor(() => {
+            expect(signals.minimum()).toBeGreaterThan(0);
+        });
+
+        fireEvent.input(await screen.findByTestId("sendAmount"), {
+            target: { value: `${pairs.reverse[BTC][BTC].limits.minimal}` },
+        });
+        fireEvent.input(await screen.findByTestId("onchainAddress"), {
+            target: { value: "bcrt1q7vq47xpsg4t080205edaulc3sdsjpdxy9svhr3" },
+        });
+
+        const createButton = (await screen.findByTestId(
+            "create-swap-button",
+        )) as HTMLButtonElement;
+
+        await waitFor(() => {
+            expect(signals.valid()).toBe(true);
+            expect(createButton.disabled).toBe(false);
+            expect(createButton.textContent).toEqual(i18n.en.create_swap);
         });
     });
 
     test("should allow comma in pasted amounts", async () => {
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <Create />
-                </>
-            ),
-            {
-                wrapper: contextWrapper,
-            },
-        );
+        renderCreate();
         globalSignals.setPairs(pairs);
         globalSignals.setSeparator(".");
         globalSignals.setDenomination(Denomination.Sat);
@@ -1945,17 +912,7 @@ describe("Create", () => {
     });
 
     test("should allow space in pasted amounts", async () => {
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <Create />
-                </>
-            ),
-            {
-                wrapper: contextWrapper,
-            },
-        );
+        renderCreate();
 
         const amount = "50 000";
 
@@ -1994,18 +951,34 @@ describe("Create", () => {
         });
     });
 
+    test("should reject pasting an invalid amount", async () => {
+        renderCreate();
+
+        globalSignals.setPairs(pairs);
+        setPairAssets(LN, BTC);
+        await waitFor(() => {
+            expect(signals.maximum()).toBeGreaterThan(0);
+        });
+
+        const pasteEvent = new Event("paste");
+
+        // @ts-expect-error clipboardData is injected manually
+        pasteEvent.clipboardData = {
+            getData: vi.fn(() => "not an amount"),
+        };
+
+        const preventDefaultSpy = vi.fn();
+        pasteEvent.preventDefault = preventDefaultSpy;
+
+        (await screen.findByTestId("sendAmount")).dispatchEvent(pasteEvent);
+
+        expect(preventDefaultSpy).toHaveBeenCalled();
+        expect(globalSignals.notification()).toEqual(i18n.en.paste_invalid);
+        expect(globalSignals.notificationType()).toEqual("error");
+    });
+
     test("should drop maxlength on amount inputs when the pair is invalid", async () => {
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <Create />
-                </>
-            ),
-            {
-                wrapper: contextWrapper,
-            },
-        );
+        renderCreate();
 
         globalSignals.setPairs(pairs);
         setPairAssets(LN, BTC);
@@ -2025,9 +998,10 @@ describe("Create", () => {
         expect(receiveInput.hasAttribute("maxlength")).toBe(true);
 
         // Fees.tsx zeros maximum when the pair is not routable
-        signals.setMaximum(0);
+        setPairAssets(BTC, BTC);
 
         await waitFor(() => {
+            expect(signals.maximum()).toEqual(0);
             expect(sendInput.hasAttribute("maxlength")).toBe(false);
             expect(receiveInput.hasAttribute("maxlength")).toBe(false);
         });
@@ -2041,17 +1015,7 @@ describe("Create", () => {
     });
 
     test("should allow typing past one digit when the pair is invalid", async () => {
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <Create />
-                </>
-            ),
-            {
-                wrapper: contextWrapper,
-            },
-        );
+        renderCreate();
 
         globalSignals.setPairs(pairs);
         globalSignals.setDenomination(Denomination.Sat);
@@ -2077,27 +1041,17 @@ describe("Create", () => {
     });
 
     test("should keep send amount at zero when receive amount is zero", async () => {
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <Create />
-                </>
-            ),
-            {
-                wrapper: contextWrapper,
-            },
-        );
+        renderCreate();
 
         globalSignals.setPairs(pairs);
-        setPairAssets(BTC, LBTC);
+        setPairAssets(LN, BTC);
         await waitFor(() => {
             expect(signals.maximum()).toBeGreaterThan(0);
         });
 
         const updateConfig = () => {
             const updatedCfg = structuredClone(pairs);
-            updatedCfg.chain[BTC][LBTC].fees.minerFees.server += 1;
+            updatedCfg.reverse[BTC][BTC].fees.minerFees.claim += 1;
             globalSignals.setPairs(updatedCfg);
         };
 
@@ -2123,24 +1077,14 @@ describe("Create", () => {
         mobile   | fromAsset | toAsset | visible
         ${true}  | ${BTC}    | ${LN}   | ${true}
         ${true}  | ${LN}     | ${BTC}  | ${true}
-        ${true}  | ${LN}     | ${RBTC} | ${false}
         ${false} | ${BTC}    | ${LN}   | ${false}
+        ${false} | ${LN}     | ${BTC}  | ${false}
     `(
         "should show QR scanner for mobile: $mobile, toAsset: $toAsset -> $visible",
         async ({ mobile, fromAsset, toAsset, visible }) => {
-            vi.mocked(isMobile).mockReturnValue(mobile);
+            vi.mocked(isMobile).mockReturnValue(mobile as boolean);
 
-            render(
-                () => (
-                    <>
-                        <TestComponent />
-                        <Create />
-                    </>
-                ),
-                {
-                    wrapper: contextWrapper,
-                },
-            );
+            renderCreate();
             setPairAssets(fromAsset, toAsset);
 
             const buttonText = globalSignals.t("scan_qr_code");
@@ -2162,7 +1106,7 @@ describe("Create", () => {
             const [showCreate, setShowCreate] = createSignal(false);
 
             onMount(() => {
-                signals.setPair(new Pair(pairs, BTC, LN, pairs));
+                signals.setPair(new Pair(pairs, BTC, LN));
                 signals.setDestinationLocked(true);
                 setShowCreate(true);
             });
@@ -2187,5 +1131,6 @@ describe("Create", () => {
 
         await new Promise((resolve) => setTimeout(resolve, 0));
         expect(screen.queryByText(globalSignals.t("scan_qr_code"))).toBeNull();
+        expect(screen.queryByTestId("invoice")).toBeNull();
     });
 });

@@ -1,96 +1,101 @@
 import { render, waitFor } from "@solidjs/testing-library";
+import type * as InvoiceModule from "boltz-swaps/invoice";
 import { SwapType } from "boltz-swaps/types";
 
-import { config as runtimeConfig } from "../../src/config";
-import type * as ConfigModule from "../../src/config";
-import {
-    BTC,
-    LBTC,
-    LN,
-    RBTC,
-    TBTC,
-    USDC,
-    USDT0,
-} from "../../src/consts/Assets";
+import { BTC, LN } from "../../src/consts/Assets";
 import Pair from "../../src/utils/Pair";
 import {
-    TestComponent,
-    contextWrapper,
-    globalSignals,
-    signals,
-} from "../helper";
+    blake2bInvoice,
+    invoiceAmount,
+    sha256Invoice,
+} from "../fixtures/invoices";
+import { TestComponent, contextWrapper, signals } from "../helper";
+
+// bolt11 signature recovery rejects the Uint8Arrays of the jsdom realm, so
+// decode the fixture invoices by hand, keeping the BLAKE2b feature check
+vi.mock("boltz-swaps/invoice", async (importOriginal) => {
+    const original = await importOriginal<typeof InvoiceModule>();
+    const fixtures = await import("../fixtures/invoices");
+
+    return {
+        ...original,
+        decodeInvoice: vi.fn((invoice: string) => {
+            if (invoice === fixtures.sha256Invoice) {
+                throw new original.MissingBlake2bFeatureError();
+            }
+            if (invoice !== fixtures.blake2bInvoice) {
+                throw new Error("invalid invoice");
+            }
+
+            return {
+                type: original.InvoiceType.Bolt11,
+                satoshis: fixtures.invoiceAmount,
+                preimageHash: "00".repeat(32),
+            };
+        }),
+    };
+});
 
 afterEach(() => {
     vi.restoreAllMocks();
     localStorage.clear();
 });
 
-vi.mock("../../src/config", async () => {
-    const actual =
-        await vi.importActual<typeof ConfigModule>("../../src/config");
-
-    return {
-        ...actual,
-        config: {
-            ...actual.config,
-            assets: {
-                ...actual.config.assets!,
-                "USDT0-ETH": {
-                    ...actual.config.assets!.USDT0,
-                    canSend: true,
-                    network: {
-                        ...actual.config.assets!.USDT0.network,
-                        chainName: "Ethereum",
-                        symbol: "ETH",
-                        gasToken: "ETH",
-                        chainId: 1,
-                        nativeCurrency: {
-                            name: "ETH",
-                            symbol: "ETH",
-                            decimals: 18,
-                        },
-                    },
-                    token: {
-                        ...actual.config.assets!.USDT0.token,
-                        address: "0x0000000000000000000000000000000000000001",
-                    },
-                },
-            },
-        },
-    };
-});
+const regtestAddress = "bcrt1qgzzhsnvstqjd5nyr0u6fz706up6ap0jy4ajs3x";
 
 const setPairAssets = (fromAsset: string, toAsset: string) => {
     signals.setPair(new Pair(signals.pair().pairs, fromAsset, toAsset));
 };
 
+const mockUrlParams = (params: Record<string, string | null | undefined>) =>
+    vi
+        .spyOn(URLSearchParams.prototype, "get")
+        .mockImplementation((key) => params[key] ?? null);
+
 describe("signals", () => {
+    test("should default to a reverse swap from LN to BTC", () => {
+        render(() => <TestComponent />, { wrapper: contextWrapper });
+
+        expect(signals.pair().fromAsset).toEqual(LN);
+        expect(signals.pair().toAsset).toEqual(BTC);
+        expect(signals.pair().swapType).toEqual(SwapType.Reverse);
+    });
+
     test.each`
         assetSend | assetReceive | expected
         ${LN}     | ${BTC}       | ${SwapType.Reverse}
-        ${LBTC}   | ${LN}        | ${SwapType.Submarine}
-        ${BTC}    | ${LBTC}      | ${SwapType.Chain}
+        ${BTC}    | ${LN}        | ${SwapType.Submarine}
+        ${BTC}    | ${BTC}       | ${undefined}
     `(
-        "should set swap_type to $expected based on $assetSend > $assetReceive",
+        "should set swap type to $expected based on $assetSend > $assetReceive",
         ({ assetSend, assetReceive, expected }) => {
             render(() => <TestComponent />, { wrapper: contextWrapper });
             setPairAssets(assetSend, assetReceive);
-            expect(signals.pair().swapToCreate?.type).toEqual(expected);
+            expect(signals.pair().swapType).toEqual(expected);
         },
     );
 
     test.each`
-        assetSend | assetReceive | addressValid | invoiceValid | valid
-        ${LN}     | ${BTC}       | ${true}      | ${false}     | ${true}
-        ${BTC}    | ${LN}        | ${false}     | ${true}      | ${true}
-        ${BTC}    | ${LN}        | ${false}     | ${false}     | ${false}
-        ${BTC}    | ${LBTC}      | ${false}     | ${false}     | ${false}
-        ${BTC}    | ${LBTC}      | ${true}      | ${false}     | ${true}
+        assetSend | assetReceive | amountValid | addressValid | invoiceValid | valid
+        ${LN}     | ${BTC}       | ${true}     | ${true}      | ${false}     | ${true}
+        ${LN}     | ${BTC}       | ${true}     | ${false}     | ${true}      | ${false}
+        ${LN}     | ${BTC}       | ${false}    | ${true}      | ${false}     | ${false}
+        ${BTC}    | ${LN}        | ${true}     | ${false}     | ${true}      | ${true}
+        ${BTC}    | ${LN}        | ${true}     | ${true}      | ${false}     | ${false}
+        ${BTC}    | ${LN}        | ${false}    | ${false}     | ${true}      | ${false}
+        ${BTC}    | ${BTC}       | ${true}     | ${true}      | ${true}      | ${false}
     `(
-        "should set valid to $valid based on $assetSend > $assetReceive",
-        ({ assetSend, assetReceive, addressValid, invoiceValid, valid }) => {
+        "should set valid to $valid for $assetSend > $assetReceive",
+        ({
+            assetSend,
+            assetReceive,
+            amountValid,
+            addressValid,
+            invoiceValid,
+            valid,
+        }) => {
             render(() => <TestComponent />, { wrapper: contextWrapper });
-            signals.setAmountValid(true);
+            signals.setAmountValid(amountValid);
             signals.setAddressValid(addressValid);
             signals.setInvoiceValid(invoiceValid);
             setPairAssets(assetSend, assetReceive);
@@ -99,29 +104,18 @@ describe("signals", () => {
     );
 
     test.each`
-        sendAsset      | receiveAsset   | amount
-        ${BTC}         | ${LBTC}        | ${1000000}
-        ${BTC}         | ${RBTC}        | ${0}
-        ${LN}          | ${RBTC}        | ${1000000}
-        ${LN}          | ${BTC}         | ${0}
-        ${LBTC}        | ${LN}          | ${1000000}
-        ${LBTC}        | ${BTC}         | ${0}
-        ${RBTC}        | ${BTC}         | ${1000000}
-        ${RBTC}        | ${LN}          | ${0}
-        ${"USDT0-ETH"} | ${BTC}         | ${1000000}
-        ${"USDT0-ETH"} | ${LN}          | ${0}
-        ${LN}          | ${"USDT0-ETH"} | ${1000000}
+        sendAsset | receiveAsset | amount
+        ${LN}     | ${BTC}       | ${1000000}
+        ${BTC}    | ${LN}        | ${1000000}
+        ${BTC}    | ${LN}        | ${0}
     `(
         "should set assets $sendAsset > $receiveAsset based on urlParams",
         ({ sendAsset, receiveAsset, amount }) => {
-            vi.spyOn(URLSearchParams.prototype, "get").mockImplementation(
-                (key) => {
-                    if (key === "sendAsset") return sendAsset as string;
-                    if (key === "receiveAsset") return receiveAsset as string;
-                    if (key === "sendAmount") return amount as string;
-                    return null;
-                },
-            );
+            mockUrlParams({
+                sendAsset,
+                receiveAsset,
+                sendAmount: String(amount),
+            });
 
             render(() => <TestComponent />, { wrapper: contextWrapper });
 
@@ -131,79 +125,72 @@ describe("signals", () => {
         },
     );
 
-    test.each`
-        receiveAsset | destination                                                                                                | expectedReceiveAsset
-        ${BTC}       | ${"test@lnurl.com"}                                                                                        | ${LN}
-        ${LBTC}      | ${"bcrt1qgzzhsnvstqjd5nyr0u6fz706up6ap0jy4ajs3x"}                                                          | ${BTC}
-        ${BTC}       | ${"el1qqd60krw3zqwdg97gs4skuqjf05lgf6jht3w8fsg0hyhtyv203yqnjuhnd96t0an6nz8e35n0ndqh0rvmaq5g7dj999pl26nwr"} | ${LBTC}
-    `(
-        "should have destination taking precedence over receiveAsset",
-        ({ receiveAsset, destination, expectedReceiveAsset }) => {
-            vi.spyOn(URLSearchParams.prototype, "get").mockImplementation(
-                (key) => {
-                    if (key === "receiveAsset") return receiveAsset as string;
-                    if (key === "destination") return destination as string;
-                    return null;
-                },
-            );
+    test("should set the receive amount from urlParams when no send amount is set", () => {
+        mockUrlParams({
+            sendAsset: BTC,
+            receiveAsset: LN,
+            receiveAmount: "250000",
+        });
+
+        render(() => <TestComponent />, { wrapper: contextWrapper });
+
+        expect(Number(signals.receiveAmount())).toEqual(250_000);
+        expect(Number(signals.sendAmount())).toEqual(0);
+    });
+
+    test.each(["L-BTC", "RBTC", "USDT0"])(
+        "should ignore unsupported asset %s in urlParams",
+        (asset) => {
+            mockUrlParams({ sendAsset: asset, receiveAsset: asset });
 
             render(() => <TestComponent />, { wrapper: contextWrapper });
 
-            expect(signals.pair().toAsset).toEqual(expectedReceiveAsset);
-            if (expectedReceiveAsset === LN) {
-                expect(signals.invoiceValid()).toEqual(true);
-            } else {
-                expect(signals.addressValid()).toEqual(true);
-            }
-        },
-    );
-
-    test.each`
-        fromAsset | toAsset
-        ${LBTC}   | ${RBTC}
-        ${LN}     | ${LBTC}
-        ${RBTC}   | ${LN}
-    `(
-        "should normalize $fromAsset → $toAsset to LN → BTC",
-        ({ fromAsset, toAsset }) => {
-            render(() => <TestComponent />, { wrapper: contextWrapper });
-            setPairAssets(fromAsset, toAsset);
-            globalSignals.setBitcoinOnly(true);
             expect(signals.pair().fromAsset).toEqual(LN);
             expect(signals.pair().toAsset).toEqual(BTC);
         },
     );
 
-    test("should clear incompatible destination state when bitcoinOnly normalizes the pair", () => {
+    test.each`
+        receiveAsset | destination         | expectedReceiveAsset
+        ${BTC}       | ${"test@lnurl.com"} | ${LN}
+        ${BTC}       | ${blake2bInvoice}   | ${LN}
+        ${LN}        | ${regtestAddress}   | ${BTC}
+    `(
+        "should have destination $destination taking precedence over receiveAsset",
+        ({ receiveAsset, destination, expectedReceiveAsset }) => {
+            mockUrlParams({ receiveAsset, destination });
+
+            render(() => <TestComponent />, { wrapper: contextWrapper });
+
+            expect(signals.pair().toAsset).toEqual(expectedReceiveAsset);
+            if (expectedReceiveAsset === LN) {
+                expect(signals.invoice()).toEqual(destination);
+                expect(signals.invoiceValid()).toEqual(true);
+            } else {
+                expect(signals.onchainAddress()).toEqual(destination);
+                expect(signals.addressValid()).toEqual(true);
+            }
+        },
+    );
+
+    test("should keep an unparsable destination for a BTC receive asset but mark it invalid", () => {
+        mockUrlParams({ receiveAsset: BTC, destination: "notanaddress" });
+
         render(() => <TestComponent />, { wrapper: contextWrapper });
 
-        signals.setAmountValid(true);
-        signals.setOnchainAddress("0xdeadbeef");
-        signals.setAddressValid(true);
-        setPairAssets(BTC, RBTC);
-
-        expect(signals.valid()).toEqual(true);
-
-        globalSignals.setBitcoinOnly(true);
-
-        expect(signals.pair().fromAsset).toEqual(LN);
         expect(signals.pair().toAsset).toEqual(BTC);
-        expect(signals.onchainAddress()).toEqual("");
+        expect(signals.onchainAddress()).toEqual("notanaddress");
         expect(signals.addressValid()).toEqual(false);
-        expect(signals.valid()).toEqual(false);
     });
 
-    const lockedInvoiceFixture =
-        "lnbcrt1500u1p5az9mypp5jlkdaygjwdzd7m06ll348lcvl24ffhpjht8m56fv3aqxpxu804xqdqqcqpjxqyz5vqsp5sq6khl9gvcw70x76nv7vxs5gq28qheehatdtlg6lxgjky029zcws9qxpqysgq762ls0zjnv82zg9rezt5y5ywh4qskmrw42r8ulynra56qa26pru4qjfrn6mz8ek3245905fvs5v969pu3cuvnw9l4f50gwq5c7kcrxgqklqs8h";
+    test("should take the receive amount from an invoice destination", () => {
+        mockUrlParams({ destination: blake2bInvoice, sendAmount: "999999" });
 
-    const mockDecodeInvoice = async (sats: number) => {
-        const invoiceUtils = await import("boltz-swaps/invoice");
-        return vi
-            .spyOn(invoiceUtils, "decodeInvoice")
-            .mockReturnValue({ satoshis: sats } as ReturnType<
-                typeof invoiceUtils.decodeInvoice
-            >);
-    };
+        render(() => <TestComponent />, { wrapper: contextWrapper });
+
+        expect(Number(signals.receiveAmount())).toEqual(invoiceAmount);
+        expect(Number(signals.sendAmount())).toEqual(0);
+    });
 
     test.each`
         embedded  | description
@@ -212,16 +199,11 @@ describe("signals", () => {
     `(
         "should set destinationLocked with lockOutput + bolt11 destination in $description",
         async ({ embedded }: { embedded: string | null }) => {
-            const decodeSpy = await mockDecodeInvoice(150_000);
-
-            vi.spyOn(URLSearchParams.prototype, "get").mockImplementation(
-                (key) => {
-                    if (key === "destination") return lockedInvoiceFixture;
-                    if (key === "lockOutput") return "true";
-                    if (key === "embedded") return embedded;
-                    return null;
-                },
-            );
+            mockUrlParams({
+                destination: blake2bInvoice,
+                lockOutput: "true",
+                embedded,
+            });
 
             render(() => <TestComponent />, { wrapper: contextWrapper });
 
@@ -230,69 +212,50 @@ describe("signals", () => {
             });
 
             expect(signals.pair().toAsset).toEqual(LN);
-            expect(signals.invoice()).toEqual(lockedInvoiceFixture);
+            expect(signals.invoice()).toEqual(blake2bInvoice);
             expect(signals.invoiceValid()).toEqual(true);
-            expect(Number(signals.receiveAmount())).toEqual(150_000);
-
-            decodeSpy.mockRestore();
+            expect(Number(signals.receiveAmount())).toEqual(invoiceAmount);
         },
     );
 
     test("should not set destinationLocked when lockOutput is missing", async () => {
-        const decodeSpy = await mockDecodeInvoice(150_000);
-
-        vi.spyOn(URLSearchParams.prototype, "get").mockImplementation((key) => {
-            if (key === "destination") return lockedInvoiceFixture;
-            if (key === "embedded") return "true";
-            return null;
-        });
+        mockUrlParams({ destination: blake2bInvoice, embedded: "true" });
 
         render(() => <TestComponent />, { wrapper: contextWrapper });
 
         await waitFor(() => {
-            expect(signals.invoice()).toEqual(lockedInvoiceFixture);
+            expect(signals.invoice()).toEqual(blake2bInvoice);
         });
         expect(signals.destinationLocked()).toBe(false);
-
-        decodeSpy.mockRestore();
     });
 
-    test("should preserve destination state when locked even if bitcoinOnly normalizes the pair", () => {
+    test("should not lock or take the amount of an invoice without the BLAKE2b feature bit", async () => {
+        mockUrlParams({ destination: sha256Invoice, lockOutput: "true" });
+
         render(() => <TestComponent />, { wrapper: contextWrapper });
 
-        const lockedInvoice = "lnbc1lockedinvoice";
-        setPairAssets(BTC, RBTC);
-        signals.setOnchainAddress("0xdeadbeef");
-        signals.setAddressValid(true);
-        signals.setInvoice(lockedInvoice);
-        signals.setInvoiceValid(true);
-        signals.setDestinationLocked(true);
-
-        globalSignals.setBitcoinOnly(true);
-
-        expect(signals.onchainAddress()).toEqual("0xdeadbeef");
-        expect(signals.addressValid()).toEqual(true);
-        expect(signals.invoice()).toEqual(lockedInvoice);
-        expect(signals.invoiceValid()).toEqual(true);
+        await waitFor(() => {
+            expect(signals.invoice()).toEqual(sha256Invoice);
+        });
+        expect(signals.destinationLocked()).toBe(false);
+        expect(Number(signals.receiveAmount())).toEqual(0);
     });
 
-    test.each`
-        receiveAsset | address
-        ${TBTC}      | ${runtimeConfig.assets!.TBTC.token!.address}
-        ${USDC}      | ${runtimeConfig.assets!.USDC.token!.address}
-        ${USDT0}     | ${runtimeConfig.assets!.USDC.token!.address}
-    `(
-        "should mark known token addresses invalid",
-        async ({ receiveAsset, address }) => {
-            render(() => <TestComponent />, { wrapper: contextWrapper });
+    test("should reset amounts", () => {
+        render(() => <TestComponent />, { wrapper: contextWrapper });
 
-            setPairAssets(LN, receiveAsset);
-            signals.setOnchainAddress(address);
-            signals.setAddressValid(true);
+        signals.setSendAmount(signals.sendAmount().plus(100));
+        signals.setReceiveAmount(signals.receiveAmount().plus(50));
+        signals.setAmountValid(true);
+        signals.setQuoteError("invalid_pair");
 
-            await waitFor(() => {
-                expect(signals.addressValid()).toEqual(false);
-            });
-        },
-    );
+        signals.resetAmounts();
+
+        expect(Number(signals.sendAmount())).toEqual(0);
+        expect(Number(signals.receiveAmount())).toEqual(0);
+        expect(signals.sendAmountFormatted()).toEqual("");
+        expect(signals.receiveAmountFormatted()).toEqual("");
+        expect(signals.amountValid()).toEqual(false);
+        expect(signals.quoteError()).toBeUndefined();
+    });
 });

@@ -1,12 +1,34 @@
-import { fireEvent, render, screen } from "@solidjs/testing-library";
+import { render, screen } from "@solidjs/testing-library";
 
 import Asset from "../../src/components/Asset";
 import { BTC, LN } from "../../src/consts/Assets";
-import { AssetSelection, Side } from "../../src/consts/Enums";
-import { TestComponent, contextWrapper, signals } from "../helper";
+import { Side } from "../../src/consts/Enums";
+import { TestComponent, contextWrapper } from "../helper";
 
 describe("Asset", () => {
-    test("should open the asset selector on click when not disabled", () => {
+    test.each`
+        side            | asset
+        ${Side.Send}    | ${BTC}
+        ${Side.Receive} | ${LN}
+        ${Side.Send}    | ${LN}
+        ${Side.Receive} | ${BTC}
+    `("should render $asset statically on side $side", ({ side, asset }) => {
+        render(
+            () => (
+                <>
+                    <TestComponent />
+                    <Asset side={side as Side} signal={() => asset as string} />
+                </>
+            ),
+            { wrapper: contextWrapper },
+        );
+
+        const el = screen.getByTestId(`asset-${side}`);
+        expect(el.className).toContain(`asset-${asset}`);
+        expect(el.closest(".asset-wrap")?.className).toContain("no-select");
+    });
+
+    test("should not render a selector button", () => {
         render(
             () => (
                 <>
@@ -17,69 +39,6 @@ describe("Asset", () => {
             { wrapper: contextWrapper },
         );
 
-        fireEvent.click(screen.getByRole("button"));
-
-        expect(signals.assetSelected()).toEqual(Side.Receive);
-        expect(signals.assetSelection()).toEqual(AssetSelection.Asset);
-    });
-
-    test("should not open the asset selector when disabled", () => {
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <Asset
-                        side={Side.Receive}
-                        signal={() => BTC}
-                        disabled={true}
-                    />
-                </>
-            ),
-            { wrapper: contextWrapper },
-        );
-
-        signals.setAssetSelected("");
-        signals.setAssetSelection(null);
-
-        fireEvent.click(screen.getByRole("button"));
-
-        expect(signals.assetSelected()).toEqual("");
-        expect(signals.assetSelection()).toBeNull();
-    });
-
-    test("should set disabled attribute and no-select class when disabled", () => {
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <Asset
-                        side={Side.Receive}
-                        signal={() => LN}
-                        disabled={true}
-                    />
-                </>
-            ),
-            { wrapper: contextWrapper },
-        );
-
-        const button = screen.getByRole("button") as HTMLButtonElement;
-        expect(button.disabled).toBe(true);
-        expect(button.className).toContain("no-select");
-    });
-
-    test("should not set disabled attribute or no-select class when enabled", () => {
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <Asset side={Side.Receive} signal={() => LN} />
-                </>
-            ),
-            { wrapper: contextWrapper },
-        );
-
-        const button = screen.getByRole("button") as HTMLButtonElement;
-        expect(button.disabled).toBe(false);
-        expect(button.className).not.toContain("no-select");
+        expect(screen.queryByRole("button")).toBeNull();
     });
 });

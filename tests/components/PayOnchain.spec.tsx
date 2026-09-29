@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@solidjs/testing-library";
 import { SwapType } from "boltz-swaps/types";
 
 import PayOnchain from "../../src/components/PayOnchain";
-import { BTC } from "../../src/consts/Assets";
+import { BTC, LN } from "../../src/consts/Assets";
 import { Denomination } from "../../src/consts/Enums";
 import { TestComponent, contextWrapper, globalSignals } from "../helper";
 import { pairs } from "../pairs";
@@ -20,9 +20,9 @@ describe("PayOnchain", () => {
                     <PayOnchain
                         type={SwapType.Submarine}
                         assetSend={BTC}
-                        assetReceive={BTC}
-                        address={"btc1"}
-                        bip21={"bitcoin:bc1"}
+                        assetReceive={LN}
+                        address={"bcrt1qaddress"}
+                        bip21={"bitcoin:bcrt1qaddress"}
                         expectedAmount={amount}
                     />
                 </>

@@ -1,38 +1,20 @@
-import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
+import { render, screen, waitFor } from "@solidjs/testing-library";
 import { BigNumber } from "bignumber.js";
-import type { Pairs } from "boltz-swaps/client";
-import { calculateAmountOutMin } from "boltz-swaps/helper";
 import type * as InvoiceModule from "boltz-swaps/invoice";
-import { SwapPosition, SwapType } from "boltz-swaps/types";
+import { SwapType } from "boltz-swaps/types";
 
-import CreateButton, {
-    buildDexDetail,
-    getClaimAddress,
-} from "../../src/components/CreateButton";
-import type * as ConfigModule from "../../src/config";
-import type * as MainnetConfigModule from "../../src/configs/mainnet";
-import {
-    BTC,
-    LBTC,
-    LN,
-    RBTC,
-    TBTC,
-    USDC,
-    USDT0,
-    WBTC,
-} from "../../src/consts/Assets";
+import CreateButton from "../../src/components/CreateButton";
+import { config } from "../../src/config";
+import { BTC, LN } from "../../src/consts/Assets";
 import { Side } from "../../src/consts/Enums";
 import { useCreateContext } from "../../src/context/Create";
 import { useGlobalContext } from "../../src/context/Global";
 import i18n from "../../src/i18n/i18n";
-import * as rifSigner from "../../src/rif/Signer";
 import Pair from "../../src/utils/Pair";
+import { generateRescueFile } from "../../src/utils/rescueFile";
 import type * as SwapCreatorModule from "../../src/utils/swapCreator";
-import {
-    GasAbstractionType,
-    createUniformGasAbstraction,
-} from "../../src/utils/swapCreator";
 import type * as ValidationModule from "../../src/utils/validation";
+import { blake2bInvoice, sha256Invoice } from "../fixtures/invoices";
 import {
     TestComponent,
     contextWrapper,
@@ -41,174 +23,53 @@ import {
 } from "../helper";
 import { pairs as testPairs } from "../pairs";
 
-const { createSubmarineMock, validateResponseMock, actualModules } = vi.hoisted(
-    () => ({
+const { createSubmarineMock, createReverseMock, validateResponseMock } =
+    vi.hoisted(() => ({
         createSubmarineMock: vi.fn(),
+        createReverseMock: vi.fn(),
         validateResponseMock: vi.fn(),
-        actualModules: {} as {
-            createSubmarine?: typeof SwapCreatorModule.createSubmarine;
-            validateResponse?: typeof ValidationModule.validateResponse;
-        },
-    }),
-);
+    }));
 
-vi.mock("../../src/utils/validation", async (importActual) => {
-    const actual = await importActual<typeof ValidationModule>();
-    actualModules.validateResponse = actual.validateResponse;
-    return {
-        ...actual,
-        validateResponse: validateResponseMock,
-    };
-});
+// bolt11 signature recovery rejects the Uint8Arrays of the jsdom realm, so
+// decode the fixture invoices by hand, keeping the BLAKE2b feature check
+vi.mock("boltz-swaps/invoice", async (importOriginal) => {
+    const original = await importOriginal<typeof InvoiceModule>();
+    const fixtures = await import("../fixtures/invoices");
 
-vi.mock("../../src/utils/swapCreator", async (importActual) => {
-    const actual = await importActual<typeof SwapCreatorModule>();
-    actualModules.createSubmarine = actual.createSubmarine;
     return {
-        ...actual,
-        createSubmarine: createSubmarineMock,
-    };
-});
+        ...original,
+        decodeInvoice: vi.fn((invoice: string) => {
+            if (invoice === fixtures.sha256Invoice) {
+                throw new original.MissingBlake2bFeatureError();
+            }
+            if (invoice !== fixtures.blake2bInvoice) {
+                throw new Error("invalid invoice");
+            }
 
-vi.mock("boltz-swaps/invoice", async (importActual) => {
-    const actual = await importActual<typeof InvoiceModule>();
-    return {
-        ...actual,
-        decodeInvoice: () => ({
-            type: actual.InvoiceType.Bolt11,
-            satoshis: 60_000,
-            preimageHash: "00".repeat(32),
+            return {
+                type: original.InvoiceType.Bolt11,
+                satoshis: fixtures.invoiceAmount,
+                preimageHash: "00".repeat(32),
+            };
         }),
     };
 });
 
-vi.mock("../../src/config", async () => {
-    const actual =
-        await vi.importActual<typeof ConfigModule>("../../src/config");
-    const { config: mainnetConfig } = await vi.importActual<
-        typeof MainnetConfigModule
-    >("../../src/configs/mainnet");
+vi.mock("../../src/utils/validation", async (importActual) => ({
+    ...(await importActual<typeof ValidationModule>()),
+    validateResponse: validateResponseMock,
+}));
 
-    return {
-        ...actual,
-        config: {
-            ...actual.config,
-            assets: {
-                ...actual.config.assets!,
-                USDC:
-                    actual.config.assets!.USDC ??
-                    structuredClone(mainnetConfig.assets!.USDC),
-                "USDT0-POL": {
-                    ...actual.config.assets!.USDT0,
-                    canSend: true,
-                    network: {
-                        ...actual.config.assets!.USDT0.network,
-                        chainName: "Polygon PoS",
-                        symbol: "POL",
-                        gasToken: "POL",
-                        chainId: 137,
-                        nativeCurrency: {
-                            name: "POL",
-                            symbol: "POL",
-                            decimals: 18,
-                        },
-                    },
-                    token: {
-                        ...actual.config.assets!.USDT0.token,
-                        address: "0x0000000000000000000000000000000000000137",
-                    },
-                },
-                "USDT0-CFX": {
-                    ...actual.config.assets!.USDT0,
-                    canSend: false,
-                    network: {
-                        ...actual.config.assets!.USDT0.network,
-                        chainName: "Conflux eSpace",
-                        symbol: "CFX",
-                        gasToken: "CFX",
-                        chainId: 1030,
-                        nativeCurrency: {
-                            name: "CFX",
-                            symbol: "CFX",
-                            decimals: 18,
-                        },
-                    },
-                    token: {
-                        ...actual.config.assets!.USDT0.token,
-                        address: "0x0000000000000000000000000000000000001030",
-                    },
-                },
-                "USDT0-SOL": {
-                    ...actual.config.assets!.USDT0,
-                    canSend: true,
-                    blockExplorerUrl: {
-                        id: "solscan",
-                        normal: "https://solscan.io",
-                    },
-                    network: {
-                        chainName: "Solana",
-                        symbol: "SOL",
-                        gasToken: "SOL",
-                        transport: "solana",
-                        rpcUrls: ["https://api.mainnet.solana.com"],
-                        nativeCurrency: {
-                            name: "SOL",
-                            symbol: "SOL",
-                            decimals: 9,
-                        },
-                    },
-                    bridge: {
-                        ...actual.config.assets!.USDT0.bridge,
-                        mesh: "legacy",
-                        quotePayer:
-                            "EzTybRqGouGB4vKin67HFYgLsVkzE6A1YUq26uKyTvPN",
-                    },
-                    token: {
-                        ...actual.config.assets!.USDT0.token,
-                        address: "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB",
-                    },
-                },
-            },
-        },
-    };
-});
+vi.mock("../../src/utils/swapCreator", async (importActual) => ({
+    ...(await importActual<typeof SwapCreatorModule>()),
+    createSubmarine: createSubmarineMock,
+    createReverse: createReverseMock,
+}));
 
-const invoice =
-    "lnbcrt600u1p5ynhmgpp5l8j7lnaql4mqeukvcqmhr8zp9vh3rngfgmla6km2fh9vf8pt678sdqqcqzzsxqrpwusp56gha98s9xk2f4eeyhs7dcsx4j4rt79llks72nf6l6hc9cna6vfgs9qxpqysgqqnt8lqcrujmuuv3ajvrlu5z7ydvvge4efv39hj28etf8v72vpcl597evz5e0tvq04tv3z089wxtugee4xh5hvu6309ymrfddrlzfhzgqumsrpk";
-const bolt12Offer = "lno1mockoffer";
-
-const usdt0Pairs: Pairs = {
-    submarine: {
-        TBTC: {
-            BTC: {
-                hash: "tbtc-ln-pair-hash",
-                rate: 1,
-                limits: {
-                    maximal: 1_000_000,
-                    minimal: 1,
-                    maximalZeroConf: 0,
-                },
-                fees: {
-                    percentage: 0,
-                    minerFees: 0,
-                },
-            },
-        },
-    },
-    reverse: {},
-    chain: {},
-};
+const claimAddress = "bcrt1qfan5dacdvedpzmweqcq0swxg7klhsh4d0qn74u";
 
 const setPairAssets = (fromAsset: string, toAsset: string) => {
-    signals.setPair(new Pair(signals.pair().pairs, fromAsset, toAsset));
-};
-
-const setPairAssetsWithPairs = (
-    pairs: Pairs,
-    fromAsset: string,
-    toAsset: string,
-) => {
-    signals.setPair(new Pair(pairs, fromAsset, toAsset, pairs));
+    signals.setPair(new Pair(globalSignals.pairs(), fromAsset, toAsset));
 };
 
 const renderCreateButton = () =>
@@ -222,89 +83,114 @@ const renderCreateButton = () =>
         { wrapper: contextWrapper },
     );
 
-const mockPreDexCommitmentCreation = () => {
-    signals.pair().creationData = vi.fn().mockResolvedValue({
-        type: SwapType.Submarine,
-        from: TBTC,
-        to: BTC,
-        sendAmount: BigNumber(80_000),
-        receiveAmount: BigNumber(79_000),
-        pairHash: "tbtc-ln-pair-hash",
-        hops: [
-            {
-                type: SwapType.Dex,
-                from: USDC,
-                to: TBTC,
-            },
-        ],
-        hopsPosition: SwapPosition.Pre,
+const minimumLabel = (amount: string) =>
+    i18n.en.minimum_amount
+        .replace("{{ amount }}", amount)
+        .replace("{{ denomination }}", "sats");
+
+const lnurlResponse = (body: unknown, status = 200) =>
+    new Response(JSON.stringify(body), {
+        status,
+        headers: { "content-type": "application/json" },
     });
+
+// Serves a Lightning address that allows 100 to 200 sat or, with a
+// callback, pays out the given invoice
+const stubLnurl = (pr?: string) => {
+    const fetchMock = vi.fn((url: string) => {
+        if (url.includes("/.well-known/lnurlp/")) {
+            return Promise.resolve(
+                lnurlResponse(
+                    pr === undefined
+                        ? { minSendable: 100_000, maxSendable: 200_000 }
+                        : {
+                              minSendable: 1_000,
+                              maxSendable: 200_000_000,
+                              callback: "https://example.com/cb",
+                          },
+                ),
+            );
+        }
+        if (url.startsWith("https://example.com/cb")) {
+            return Promise.resolve(lnurlResponse({ pr }));
+        }
+        return Promise.resolve(new Response("nope", { status: 500 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    return fetchMock;
 };
 
-const setupPreDexCommitmentButton = async (destination = "") => {
+const setupLnurl = async (sendAmount: number, receiveAmount: number) => {
     renderCreateButton();
-
-    await globalSignals.clearSwaps();
     globalSignals.setOnline(true);
-    signals.setSendAmount(BigNumber(100_000));
-    signals.setReceiveAmount(BigNumber(99_000));
-    signals.setAmountChanged(Side.Send);
+    signals.setSendAmount(BigNumber(sendAmount));
+    signals.setReceiveAmount(BigNumber(receiveAmount));
     signals.setAmountValid(true);
-    signals.setInvoice(destination);
-    signals.setBolt12Offer(destination || undefined);
-    signals.setInvoiceValid(false);
-    setPairAssetsWithPairs(usdt0Pairs, USDC, LN);
-    mockPreDexCommitmentCreation();
+    setPairAssets(BTC, LN);
+    signals.setLnurl("test@example.com");
 
-    const btn = (await screen.findByTestId(
-        "create-swap-button",
+    const btn = (await screen.findByText(
+        i18n.en.create_swap,
     )) as HTMLButtonElement;
-
-    await waitFor(() => {
-        expect(signals.valid()).toBe(false);
-        expect(btn.disabled).toBe(false);
-    });
-
+    expect(btn.disabled).toBeFalsy();
     return btn;
 };
 
 describe("CreateButton", () => {
     beforeEach(() => {
-        // Delegate to the real implementations unless a test overrides them
-        createSubmarineMock.mockImplementation(
-            (...args: Parameters<typeof SwapCreatorModule.createSubmarine>) =>
-                actualModules.createSubmarine!(...args),
-        );
-        validateResponseMock.mockImplementation(
-            (...args: Parameters<typeof ValidationModule.validateResponse>) =>
-                actualModules.validateResponse!(...args),
-        );
         window.history.pushState({}, "", "/");
-        Object.defineProperty(window.navigator, "locks", {
-            configurable: true,
-            value: {
-                request: vi.fn(
-                    async (_name: string, callback: () => Promise<unknown>) =>
-                        await callback(),
-                ),
-            },
-        });
+        validateResponseMock.mockResolvedValue(undefined);
+        createSubmarineMock.mockImplementation(
+            (
+                assetSend: string,
+                assetReceive: string,
+                sendAmount: BigNumber,
+                receiveAmount: BigNumber,
+                invoice: string,
+            ) =>
+                Promise.resolve({
+                    id: "submarine",
+                    type: SwapType.Submarine,
+                    assetSend,
+                    assetReceive,
+                    sendAmount: sendAmount.toNumber(),
+                    receiveAmount: receiveAmount.toNumber(),
+                    invoice,
+                    address: claimAddress,
+                    version: 1,
+                    date: 0,
+                }),
+        );
+        createReverseMock.mockImplementation(
+            (
+                assetSend: string,
+                assetReceive: string,
+                sendAmount: BigNumber,
+                receiveAmount: BigNumber,
+                claim: string,
+            ) =>
+                Promise.resolve({
+                    id: "reverse",
+                    type: SwapType.Reverse,
+                    assetSend,
+                    assetReceive,
+                    sendAmount: sendAmount.toNumber(),
+                    receiveAmount: receiveAmount.toNumber(),
+                    claimAddress: claim,
+                    lockupAddress: claimAddress,
+                    version: 1,
+                    date: 0,
+                }),
+        );
     });
 
     afterEach(() => {
-        vi.restoreAllMocks();
-    });
-
-    test("should render CreateButton", () => {
-        render(() => <CreateButton />, {
-            wrapper: contextWrapper,
-        });
+        vi.clearAllMocks();
+        vi.unstubAllGlobals();
     });
 
     test("should show a loading spinner while pairs are loading", async () => {
-        render(() => <CreateButton />, {
-            wrapper: contextWrapper,
-        });
+        render(() => <CreateButton />, { wrapper: contextWrapper });
 
         const btn = (await screen.findByTestId(
             "create-swap-button",
@@ -339,292 +225,34 @@ describe("CreateButton", () => {
         expect(await screen.findByTestId("loading-spinner")).not.toBeNull();
 
         global!.setPairs(testPairs);
-        global!.setRegularPairs(testPairs);
         create!.setMinimum(50_000);
 
-        const btn = (await screen.findByText(
-            i18n.en.minimum_amount
-                .replace("{{ amount }}", "50 000")
-                .replace("{{ denomination }}", "sats"),
-        )) as HTMLButtonElement;
-        expect(btn).not.toBeUndefined();
+        expect(await screen.findByText(minimumLabel("50 000"))).not.toBeNull();
         expect(screen.queryByTestId("loading-spinner")).toBeNull();
     });
 
-    test("should use rif relay gas abstraction for low-balance RBTC claims", async () => {
-        vi.spyOn(rifSigner, "getSmartWalletAddress").mockResolvedValue({
-            address: "0xsmartwallet",
-            nonce: 0n,
-        });
-
-        const signer = {
-            address: "0xsigner",
-            provider: {
-                getBalance: vi.fn().mockResolvedValue(0n),
-                estimateFeesPerGas: vi.fn().mockResolvedValue({ gasPrice: 1n }),
-            },
-        } as never;
-
-        await expect(
-            getClaimAddress(
-                () => RBTC,
-                () => BTC,
-                () => signer,
-                () => "0xuser",
-                vi.fn(),
-                false,
-            ),
-        ).resolves.toEqual({
-            gasAbstraction: {
-                lockup: GasAbstractionType.None,
-                claim: GasAbstractionType.RifRelay,
-            },
-            gasPrice: 1n,
-            claimAddress: "0xsmartwallet",
-        });
-    });
-
-    test("should keep signer lockup gas abstraction for TBTC to low-balance RBTC swaps", async () => {
-        vi.spyOn(rifSigner, "getSmartWalletAddress").mockResolvedValue({
-            address: "0xsmartwallet",
-            nonce: 0n,
-        });
-
-        const signer = {
-            address: "0xsigner",
-            provider: {
-                getBalance: vi.fn().mockResolvedValue(0n),
-                estimateFeesPerGas: vi.fn().mockResolvedValue({ gasPrice: 1n }),
-            },
-        } as never;
-
-        await expect(
-            getClaimAddress(
-                () => RBTC,
-                () => TBTC,
-                () => signer,
-                () => "0xuser",
-                vi.fn(),
-                false,
-            ),
-        ).resolves.toEqual({
-            gasAbstraction: {
-                lockup: GasAbstractionType.Signer,
-                claim: GasAbstractionType.RifRelay,
-            },
-            gasPrice: 1n,
-            claimAddress: "0xsmartwallet",
-        });
-    });
-
-    test("should use no gas abstraction for non-EVM claims", async () => {
-        await expect(
-            getClaimAddress(
-                () => BTC,
-                () => LBTC,
-                () => undefined,
-                () => "bc1qaddr",
-                vi.fn(),
-                false,
-            ),
-        ).resolves.toEqual({
-            gasAbstraction: createUniformGasAbstraction(
-                GasAbstractionType.None,
-            ),
-            gasPrice: 0n,
-            claimAddress: "bc1qaddr",
-        });
-    });
-
-    test("should keep the user destination for TBTC claims without gas token", async () => {
-        const getGasAbstractionSigner = vi
-            .fn()
-            .mockReturnValue({ address: "0xgas" });
-
-        await expect(
-            getClaimAddress(
-                () => TBTC,
-                () => BTC,
-                () => undefined,
-                () => "0xuser",
-                getGasAbstractionSigner,
-                false,
-            ),
-        ).resolves.toEqual({
-            gasAbstraction: {
-                lockup: GasAbstractionType.None,
-                claim: GasAbstractionType.Signer,
-            },
-            gasPrice: 0n,
-            claimAddress: "0xuser",
-        });
-        expect(getGasAbstractionSigner).toHaveBeenCalledWith(TBTC);
-    });
-
-    test("should use gas signer address for TBTC claims with gas token", async () => {
-        const getGasAbstractionSigner = vi
-            .fn()
-            .mockReturnValue({ address: "0xgas" });
-
-        await expect(
-            getClaimAddress(
-                () => TBTC,
-                () => BTC,
-                () => undefined,
-                () => "0xuser",
-                getGasAbstractionSigner,
-                true,
-            ),
-        ).resolves.toEqual({
-            gasAbstraction: {
-                lockup: GasAbstractionType.None,
-                claim: GasAbstractionType.Signer,
-            },
-            gasPrice: 0n,
-            claimAddress: "0xgas",
-        });
-        expect(getGasAbstractionSigner).toHaveBeenCalledWith(TBTC);
-    });
-
-    test("should use signer gas abstraction for USDT0 claims", async () => {
-        const getGasAbstractionSigner = vi
-            .fn()
-            .mockReturnValue({ address: "0xgas" });
-
-        await expect(
-            getClaimAddress(
-                () => USDT0,
-                () => BTC,
-                () => undefined,
-                () => "0xuser",
-                getGasAbstractionSigner,
-                false,
-            ),
-        ).resolves.toEqual({
-            gasAbstraction: {
-                lockup: GasAbstractionType.None,
-                claim: GasAbstractionType.Signer,
-            },
-            gasPrice: 0n,
-            claimAddress: "0xgas",
-        });
-        expect(getGasAbstractionSigner).toHaveBeenCalledWith(USDT0);
-    });
-
-    test("should use gas signer address for routed WBTC claims", async () => {
-        const getGasAbstractionSigner = vi
-            .fn()
-            .mockReturnValue({ address: "0xgas" });
-
-        await expect(
-            getClaimAddress(
-                () => WBTC,
-                () => BTC,
-                () => undefined,
-                () => "0xuser",
-                getGasAbstractionSigner,
-                false,
-            ),
-        ).resolves.toEqual({
-            gasAbstraction: {
-                lockup: GasAbstractionType.None,
-                claim: GasAbstractionType.Signer,
-            },
-            gasPrice: 0n,
-            claimAddress: "0xgas",
-        });
-        expect(getGasAbstractionSigner).toHaveBeenCalledWith(WBTC);
-    });
-
-    test("should use canonical USDT0 gas abstraction for legacy mesh receives", async () => {
-        const getGasAbstractionSigner = vi
-            .fn()
-            .mockReturnValue({ address: "0xgas" });
-
-        await expect(
-            getClaimAddress(
-                () => "USDT0-SOL",
-                () => BTC,
-                () => undefined,
-                () => "So11111111111111111111111111111111111111112",
-                getGasAbstractionSigner,
-                false,
-            ),
-        ).resolves.toEqual({
-            gasAbstraction: {
-                lockup: GasAbstractionType.None,
-                claim: GasAbstractionType.Signer,
-            },
-            gasPrice: 0n,
-            claimAddress: "0xgas",
-        });
-        expect(getGasAbstractionSigner).toHaveBeenCalledWith(USDT0);
-    });
-
-    test("should not use signer gas abstraction when sending RBTC", async () => {
-        const getGasAbstractionSigner = vi.fn();
-
-        await expect(
-            getClaimAddress(
-                () => BTC,
-                () => RBTC,
-                () => undefined,
-                () => "bc1qaddr",
-                getGasAbstractionSigner,
-                false,
-            ),
-        ).resolves.toEqual({
-            gasAbstraction: createUniformGasAbstraction(
-                GasAbstractionType.None,
-            ),
-            gasPrice: 0n,
-            claimAddress: "bc1qaddr",
-        });
-        expect(getGasAbstractionSigner).not.toHaveBeenCalled();
-    });
-
     test("should initially be disabled with minimum label", async () => {
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <CreateButton />
-                </>
-            ),
-            {
-                wrapper: contextWrapper,
-            },
-        );
+        renderCreateButton();
         signals.setMinimum(50_000);
+
         const btn = (await screen.findByText(
-            i18n.en.minimum_amount
-                .replace("{{ amount }}", "50 000")
-                .replace("{{ denomination }}", "sats"),
+            minimumLabel("50 000"),
         )) as HTMLButtonElement;
-        expect(btn).not.toBeUndefined();
         expect(btn.disabled).toBeTruthy();
+        expect(btn.classList.contains("btn-error")).toBe(false);
     });
 
     test("should apply btn-error class for maximum_amount", async () => {
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <CreateButton />
-                </>
-            ),
-            { wrapper: contextWrapper },
-        );
-
+        renderCreateButton();
         globalSignals.setOnline(true);
+        setPairAssets(BTC, LN);
         signals.setSendAmount(BigNumber(250_000));
         signals.setReceiveAmount(BigNumber(200_000));
         signals.setMinimum(50_000);
         signals.setMaximum(200_000);
         signals.setAmountValid(false);
-        signals.setInvoice(invoice);
+        signals.setInvoice(blake2bInvoice);
         signals.setInvoiceValid(true);
-        setPairAssets(LBTC, LN);
 
         const btn = (await screen.findByText(
             i18n.en.maximum_amount
@@ -636,486 +264,293 @@ describe("CreateButton", () => {
     });
 
     test("should be enabled with create_swap label", async () => {
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <CreateButton />
-                </>
-            ),
-            { wrapper: contextWrapper },
-        );
+        renderCreateButton();
         globalSignals.setOnline(true);
-        setPairAssets(LBTC, BTC);
+        setPairAssets(LN, BTC);
         signals.setAmountValid(true);
         signals.setAddressValid(true);
-        signals.setOnchainAddress(
-            "bcrt1qfan5dacdvedpzmweqcq0swxg7klhsh4d0qn74u",
-        );
+        signals.setOnchainAddress(claimAddress);
+
         const btn = (await screen.findByText(
             i18n.en.create_swap,
         )) as HTMLButtonElement;
-        expect(btn).not.toBeUndefined();
         expect(btn.disabled).toBeFalsy();
     });
 
     test("should be disabled with api_offline label", async () => {
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <CreateButton />
-                </>
-            ),
-            { wrapper: contextWrapper },
-        );
+        renderCreateButton();
         globalSignals.setOnline(false);
+
         const btn = (await screen.findByText(
             i18n.en.api_offline,
         )) as HTMLButtonElement;
-        expect(btn).not.toBeUndefined();
         expect(btn.disabled).toBeTruthy();
+        expect(btn.classList.contains("btn-danger")).toBe(true);
     });
 
     test("should be disabled on invalid address", async () => {
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <CreateButton />
-                </>
-            ),
-            { wrapper: contextWrapper },
-        );
+        renderCreateButton();
         globalSignals.setOnline(true);
         signals.setSendAmount(BigNumber(100_000));
         signals.setAmountValid(true);
         signals.setAddressValid(true);
-        setPairAssets(LBTC, BTC);
-        signals.setOnchainAddress(
-            "bcrt1qfan5dacdvedpzmweqcq0swxg7klhsh4d0qn74u",
-        );
+        setPairAssets(LN, BTC);
+        signals.setOnchainAddress(claimAddress);
+
         const btn = (await screen.findByText(
             i18n.en.create_swap,
         )) as HTMLButtonElement;
-        expect(btn).not.toBeUndefined();
         expect(btn.disabled).toBeFalsy();
+
         signals.setAddressValid(false);
         expect(btn.disabled).toBeTruthy();
-        const label = i18n.en.invalid_address.replace("{{ asset }}", "BTC");
-        expect(btn.textContent).toEqual(label);
+        expect(btn.textContent).toEqual(
+            i18n.en.invalid_address.replace("{{ asset }}", BTC),
+        );
+    });
+
+    test("should be disabled on empty address", async () => {
+        renderCreateButton();
+        globalSignals.setOnline(true);
+        signals.setSendAmount(BigNumber(100_000));
+        signals.setAmountValid(true);
+        setPairAssets(LN, BTC);
+        signals.setOnchainAddress("");
+
+        const btn = (await screen.findByText(
+            i18n.en.invalid_address.replace("{{ asset }}", BTC),
+        )) as HTMLButtonElement;
+        expect(btn.disabled).toBeTruthy();
     });
 
     test("should be disabled on invalid invoice", async () => {
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <CreateButton />
-                </>
-            ),
-            { wrapper: contextWrapper },
-        );
+        renderCreateButton();
         globalSignals.setOnline(true);
         signals.setSendAmount(BigNumber(100_000));
         signals.setAmountValid(true);
         signals.setInvoiceValid(true);
-        setPairAssets(LBTC, LN);
-        signals.setInvoice(invoice);
+        setPairAssets(BTC, LN);
+        signals.setInvoice(blake2bInvoice);
+
         const btn = (await screen.findByText(
             i18n.en.create_swap,
         )) as HTMLButtonElement;
-        expect(btn).not.toBeUndefined();
         expect(btn.disabled).toBeFalsy();
+
         signals.setInvoiceValid(false);
         expect(btn.disabled).toBeTruthy();
         expect(btn.textContent).toEqual(i18n.en.invalid_invoice);
     });
 
-    test("should be disabled with invalid_0_amount label", async () => {
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <CreateButton />
-                </>
-            ),
-            { wrapper: contextWrapper },
-        );
+    test("should show invoice errors like invalid_0_amount", async () => {
+        renderCreateButton();
         globalSignals.setOnline(true);
         signals.setSendAmount(BigNumber(100_000));
         signals.setAmountValid(true);
         signals.setInvoiceValid(true);
-        setPairAssets(LBTC, LN);
-        signals.setInvoice(invoice);
+        setPairAssets(BTC, LN);
+        signals.setInvoice(blake2bInvoice);
+
         const btn = (await screen.findByText(
             i18n.en.create_swap,
         )) as HTMLButtonElement;
-        expect(btn).not.toBeUndefined();
-        expect(btn.disabled).toBeFalsy();
+
         signals.setInvoiceValid(false);
         signals.setInvoiceError("invalid_0_amount");
         expect(btn.disabled).toBeTruthy();
         expect(btn.textContent).toEqual(i18n.en.invalid_0_amount);
         expect(btn.classList.contains("btn-error")).toBe(true);
+
+        // The invoice error wins over the amount error
         signals.setAmountValid(false);
-        expect(btn.disabled).toBeTruthy();
         expect(btn.textContent).toEqual(i18n.en.invalid_0_amount);
     });
 
+    test("should show invoice_missing_blake2b as a user error", async () => {
+        renderCreateButton();
+        globalSignals.setOnline(true);
+        signals.setSendAmount(BigNumber(100_000));
+        signals.setAmountValid(true);
+        setPairAssets(BTC, LN);
+        signals.setInvoice(sha256Invoice);
+        signals.setInvoiceValid(false);
+        signals.setInvoiceError("invoice_missing_blake2b");
+
+        const btn = (await screen.findByText(
+            i18n.en.invoice_missing_blake2b,
+        )) as HTMLButtonElement;
+        expect(btn.disabled).toBeTruthy();
+        expect(btn.classList.contains("btn-error")).toBe(true);
+    });
+
     test("should be disabled on empty invoice", async () => {
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <CreateButton />
-                </>
-            ),
-            { wrapper: contextWrapper },
-        );
+        renderCreateButton();
         globalSignals.setOnline(true);
         signals.setSendAmount(BigNumber(100_000));
         signals.setAmountValid(true);
         signals.setInvoiceValid(true);
-        setPairAssets(LBTC, LN);
+        setPairAssets(BTC, LN);
         signals.setInvoice("");
+
         const btn = (await screen.findByText(
             i18n.en.create_swap,
         )) as HTMLButtonElement;
-        expect(btn).not.toBeUndefined();
         expect(btn.disabled).toBeTruthy();
     });
 
-    test("should require an invoice when an ERC20 asset resolves to a direct submarine route", async () => {
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <CreateButton />
-                </>
-            ),
-            { wrapper: contextWrapper },
-        );
-
-        await globalSignals.clearSwaps();
-        globalSignals.setOnline(true);
-        signals.setSendAmount(BigNumber(100_000));
-        signals.setReceiveAmount(BigNumber(99_000));
-        signals.setAmountChanged(Side.Send);
-        signals.setAmountValid(true);
-        signals.setInvoice("");
-        signals.setInvoiceValid(false);
-        setPairAssetsWithPairs(
-            {
-                submarine: {
-                    ...usdt0Pairs.submarine,
-                    [USDC]: {
-                        [BTC]: usdt0Pairs.submarine.TBTC.BTC,
-                    },
-                },
-                reverse: {},
-                chain: {},
-            },
-            USDC,
-            LN,
-        );
-
-        const btn = (await screen.findByTestId(
-            "create-swap-button",
-        )) as HTMLButtonElement;
-
-        await waitFor(() => {
-            expect(signals.valid()).toBe(false);
-            expect(btn.disabled).toBe(true);
-        });
-        await expect(globalSignals.getSwaps()).resolves.toEqual([]);
-    });
-
-    test("should create a local commitment swap for send-side pre-dex submarine without invoice", async () => {
-        const btn = await setupPreDexCommitmentButton();
-        fireEvent.click(btn);
-
-        await waitFor(async () => {
-            const [swap] = await globalSignals.getSwaps();
-            expect(swap).toMatchObject({
-                type: SwapType.Commitment,
-                assetSend: TBTC,
-                assetReceive: BTC,
-                initialReceiveAsset: LN,
-                sourceAsset: USDC,
-                sourceAmount: "100000",
-                dex: {
-                    position: SwapPosition.Pre,
-                    quoteAmount: 100000,
-                    sourceAmount: "100000",
-                    hops: [
-                        {
-                            from: USDC,
-                            to: TBTC,
-                        },
-                    ],
-                },
-            });
-        });
-    });
-
-    test("persists the full route amounts in the created swap metadata", async () => {
+    test("should show btn-error for invalid pairs", async () => {
         renderCreateButton();
-
-        await globalSignals.clearSwaps();
         globalSignals.setOnline(true);
-        // Full route: the user sends 100_000 USDC and receives 99_000 sats
         signals.setSendAmount(BigNumber(100_000));
-        signals.setReceiveAmount(BigNumber(99_000));
-        signals.setAmountChanged(Side.Send);
         signals.setAmountValid(true);
-        signals.setInvoice(invoice);
-        signals.setInvoiceValid(true);
-        setPairAssetsWithPairs(usdt0Pairs, USDC, LN);
-        // The Boltz leg alone runs on the intermediate asset
-        signals.pair().creationData = vi.fn().mockResolvedValue({
-            type: SwapType.Submarine,
-            from: TBTC,
-            to: BTC,
-            sendAmount: BigNumber(80_000),
-            receiveAmount: BigNumber(79_000),
-            pairHash: "tbtc-ln-pair-hash",
-            hops: [
-                {
-                    type: SwapType.Dex,
-                    from: USDC,
-                    to: TBTC,
-                },
-            ],
-            hopsPosition: SwapPosition.Pre,
-        });
-        validateResponseMock.mockResolvedValue(undefined);
-        createSubmarineMock.mockResolvedValue({
-            id: "routed-submarine",
-            type: SwapType.Submarine,
-            assetSend: TBTC,
-            assetReceive: BTC,
-            sendAmount: 80_000,
-            expectedAmount: 80_000,
-            receiveAmount: 79_000,
-            date: 0,
-        });
+        signals.setQuoteLoading(true);
+        setPairAssets(BTC, BTC);
 
         const btn = (await screen.findByTestId(
             "create-swap-button",
         )) as HTMLButtonElement;
-        await waitFor(() => {
-            expect(btn.disabled).toBe(false);
-        });
-        fireEvent.click(btn);
-
-        await waitFor(() => {
-            expect(createSubmarineMock).toHaveBeenCalled();
-        });
-        await waitFor(async () => {
-            const [swap] = await globalSignals.getSwaps();
-            expect(swap).toMatchObject({
-                id: "routed-submarine",
-                dex: {
-                    position: SwapPosition.Pre,
-                    quoteAmount: 100_000,
-                    sourceAmount: "100000",
-                },
-            });
-        });
-    });
-
-    test("should defer invoice fetching for send-side pre-dex commitments", async () => {
-        const btn = await setupPreDexCommitmentButton(bolt12Offer);
-        fireEvent.click(btn);
-
-        await waitFor(async () => {
-            const [swap] = await globalSignals.getSwaps();
-            expect(swap).toMatchObject({
-                type: SwapType.Commitment,
-                originalDestination: bolt12Offer,
-            });
-        });
-    });
-
-    test("should be disabled on empty address", async () => {
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <CreateButton />
-                </>
-            ),
-            { wrapper: contextWrapper },
-        );
-        globalSignals.setOnline(true);
-        signals.setSendAmount(BigNumber(100_000));
-        signals.setAmountValid(true);
-        signals.setInvoiceValid(true);
-        setPairAssets(LN, LBTC);
-        signals.setOnchainAddress("");
-        const btn = (await screen.findByText(
-            i18n.en.invalid_address.replace("{{ asset }}", "LBTC"),
-        )) as HTMLButtonElement;
-        expect(btn).not.toBeUndefined();
-        expect(btn.disabled).toBeTruthy();
-    });
-
-    test("should be enabled for sendable USDT0 variants", async () => {
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <CreateButton />
-                </>
-            ),
-            { wrapper: contextWrapper },
-        );
-
-        globalSignals.setOnline(true);
-        signals.setSendAmount(BigNumber(100_000));
-        signals.setAmountValid(true);
-        signals.setInvoice(invoice);
-        signals.setInvoiceValid(true);
-        setPairAssetsWithPairs(usdt0Pairs, "USDT0-POL", LN);
-
-        const btn = (await screen.findByTestId(
-            "create-swap-button",
-        )) as HTMLButtonElement;
-
-        await waitFor(() => {
-            expect(signals.valid()).toBe(true);
-            expect(btn.disabled).toBe(false);
-            expect(btn.textContent).toBe(i18n.en.create_swap);
-        });
-    });
-
-    test("should reject unsendable USDT0 variants as invalid pairs", async () => {
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <CreateButton />
-                </>
-            ),
-            { wrapper: contextWrapper },
-        );
-
-        globalSignals.setOnline(true);
-        signals.setSendAmount(BigNumber(100_000));
-        signals.setAmountValid(true);
-        signals.setInvoice(invoice);
-        signals.setInvoiceValid(true);
-        setPairAssetsWithPairs(usdt0Pairs, "USDT0-CFX", LN);
-
-        const btn = (await screen.findByTestId(
-            "create-swap-button",
-        )) as HTMLButtonElement;
-
-        await waitFor(() => {
-            expect(signals.valid()).toBe(false);
-            expect(btn.disabled).toBe(true);
-            expect(btn.textContent).toBe(i18n.en.invalid_send_asset);
-        });
-        expect(btn.classList.contains("btn-error")).toBe(true);
-        expect(btn.classList.contains("btn-danger")).toBe(false);
-    });
-
-    test("should show btn-error for invalid pairs with sendable assets", async () => {
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <CreateButton />
-                </>
-            ),
-            { wrapper: contextWrapper },
-        );
-
-        globalSignals.setOnline(true);
-        signals.setSendAmount(BigNumber(100_000));
-        signals.setAmountValid(true);
-        signals.setInvoice(invoice);
-        signals.setInvoiceValid(true);
-        setPairAssetsWithPairs(usdt0Pairs, "USDT0-POL", "USDT0-CFX");
-
-        const btn = (await screen.findByTestId(
-            "create-swap-button",
-        )) as HTMLButtonElement;
-
         await waitFor(() => {
             expect(btn.textContent).toBe(i18n.en.invalid_pair);
         });
         expect(btn.classList.contains("btn-error")).toBe(true);
         expect(btn.classList.contains("btn-danger")).toBe(false);
-    });
-
-    test("should not show a loading spinner for invalid pairs", async () => {
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <CreateButton />
-                </>
-            ),
-            { wrapper: contextWrapper },
-        );
-
-        globalSignals.setOnline(true);
-        signals.setSendAmount(BigNumber(100_000));
-        signals.setAmountValid(true);
-        signals.setInvoice(invoice);
-        signals.setInvoiceValid(true);
-        setPairAssetsWithPairs(usdt0Pairs, "USDT0-CFX", LN);
-        signals.setQuoteLoading(true);
-
-        const btn = (await screen.findByTestId(
-            "create-swap-button",
-        )) as HTMLButtonElement;
-
-        await waitFor(() => {
-            expect(btn.textContent).toBe(i18n.en.invalid_send_asset);
-        });
+        // No spinner for pairs that cannot be routed
         expect(screen.queryByTestId("loading-spinner")).toBeNull();
     });
 
-    test("should be disabled with LNURL min amount error", async () => {
-        vi.stubGlobal(
-            "fetch",
-            vi.fn().mockResolvedValue({
-                ok: true,
-                json: () =>
-                    Promise.resolve({
-                        // response in milisats
-                        minSendable: 100_000, // 100 sats
-                        maxSendable: 200_000, // 200 sats
-                    }),
-            }),
-        );
+    test("should show invalid_send_asset for assets that cannot be sent", async () => {
+        const btcConfig = config.assets![BTC];
+        config.assets![BTC] = { ...btcConfig, canSend: false };
 
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <CreateButton />
-                </>
-            ),
-            { wrapper: contextWrapper },
-        );
+        try {
+            renderCreateButton();
+            globalSignals.setOnline(true);
+            signals.setSendAmount(BigNumber(100_000));
+            signals.setAmountValid(true);
+            setPairAssets(BTC, LN);
+
+            const btn = (await screen.findByTestId(
+                "create-swap-button",
+            )) as HTMLButtonElement;
+            await waitFor(() => {
+                expect(btn.textContent).toBe(i18n.en.invalid_send_asset);
+            });
+            expect(btn.classList.contains("btn-error")).toBe(true);
+
+            // Offline takes precedence over user errors
+            globalSignals.setOnline(false);
+            await waitFor(() => {
+                expect(btn.textContent).toBe(i18n.en.api_offline);
+            });
+            expect(btn.classList.contains("btn-danger")).toBe(true);
+            expect(btn.classList.contains("btn-error")).toBe(false);
+        } finally {
+            config.assets![BTC] = btcConfig;
+        }
+    });
+
+    test("should create a submarine swap", async () => {
+        renderCreateButton();
         globalSignals.setOnline(true);
-        signals.setSendAmount(BigNumber(90));
-        signals.setReceiveAmount(BigNumber(80));
+        setPairAssets(BTC, LN);
+        signals.setSendAmount(BigNumber(106_900));
+        signals.setReceiveAmount(BigNumber(100_000));
+        signals.setAmountChanged(Side.Send);
         signals.setAmountValid(true);
-        signals.setAddressValid(true);
-        setPairAssets(LBTC, LN);
-        signals.setLnurl("test@example.com");
+        signals.setInvoice(blake2bInvoice);
+        signals.setInvoiceValid(true);
 
         const btn = (await screen.findByText(
             i18n.en.create_swap,
         )) as HTMLButtonElement;
-        expect(btn).not.toBeUndefined();
-        expect(btn.disabled).toBeFalsy();
+        btn.click();
 
+        await waitFor(() => {
+            expect(window.location.pathname).toEqual("/swap/submarine");
+        });
+        expect(createSubmarineMock).toHaveBeenCalledTimes(1);
+        expect(createSubmarineMock).toHaveBeenCalledWith(
+            BTC,
+            BTC,
+            BigNumber(106_900),
+            BigNumber(100_000),
+            blake2bInvoice,
+            testPairs.submarine[BTC][BTC].hash,
+            expect.any(Function),
+            undefined,
+        );
+        expect(createReverseMock).not.toHaveBeenCalled();
+        expect(validateResponseMock).toHaveBeenCalledTimes(1);
+        expect(await globalSignals.getSwap("submarine")).not.toBeNull();
+        expect(signals.invoice()).toEqual("");
+        expect(signals.invoiceValid()).toEqual(false);
+    });
+
+    test("should create a reverse swap", async () => {
+        renderCreateButton();
+        const rescueFile = generateRescueFile();
+        globalSignals.setRescueFile(rescueFile);
+        globalSignals.setOnline(true);
+        setPairAssets(LN, BTC);
+        signals.setSendAmount(BigNumber(112_202));
+        signals.setReceiveAmount(BigNumber(100_000));
+        signals.setAmountChanged(Side.Send);
+        signals.setAmountValid(true);
+        signals.setOnchainAddress(claimAddress);
+        signals.setAddressValid(true);
+
+        const btn = (await screen.findByText(
+            i18n.en.create_swap,
+        )) as HTMLButtonElement;
+        btn.click();
+
+        await waitFor(() => {
+            expect(window.location.pathname).toEqual("/swap/reverse");
+        });
+        expect(createReverseMock).toHaveBeenCalledTimes(1);
+        expect(createReverseMock).toHaveBeenCalledWith(
+            BTC,
+            BTC,
+            BigNumber(112_202),
+            BigNumber(100_000),
+            claimAddress,
+            testPairs.reverse[BTC][BTC].hash,
+            rescueFile,
+            expect.any(Function),
+            claimAddress,
+        );
+        expect(createSubmarineMock).not.toHaveBeenCalled();
+        expect(signals.onchainAddress()).toEqual("");
+        expect(signals.addressValid()).toEqual(false);
+    });
+
+    test("should not create a swap when validating the response fails", async () => {
+        validateResponseMock.mockRejectedValue(new Error("invalid"));
+
+        renderCreateButton();
+        globalSignals.setOnline(true);
+        setPairAssets(BTC, LN);
+        signals.setSendAmount(BigNumber(106_900));
+        signals.setAmountValid(true);
+        signals.setInvoice(blake2bInvoice);
+        signals.setInvoiceValid(true);
+
+        await globalSignals.clearSwaps();
+
+        const btn = (await screen.findByText(
+            i18n.en.create_swap,
+        )) as HTMLButtonElement;
+        btn.click();
+
+        await waitFor(() => {
+            expect(window.location.pathname).toEqual("/error");
+        });
+        expect(await globalSignals.getSwap("submarine")).toBeNull();
+    });
+
+    test("should be disabled with LNURL min amount error", async () => {
+        stubLnurl();
+        const btn = await setupLnurl(90, 80);
         btn.click();
 
         const errorBtn = (await screen.findByText(
@@ -1123,99 +558,14 @@ describe("CreateButton", () => {
                 .replace("{{ amount }}", "100")
                 .replace("{{ denomination }}", "sats"),
         )) as HTMLButtonElement;
-        expect(errorBtn).not.toBeUndefined();
         expect(errorBtn.disabled).toBeTruthy();
         expect(errorBtn.classList.contains("btn-error")).toBe(true);
         expect(errorBtn.classList.contains("btn-danger")).toBe(false);
     });
 
-    test("should apply btn-error class only for user-error labels", async () => {
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <CreateButton />
-                </>
-            ),
-            { wrapper: contextWrapper },
-        );
-
-        const btn = (await screen.findByTestId(
-            "create-swap-button",
-        )) as HTMLButtonElement;
-
-        // Default in-progress state (initial load shows minimum_amount): no
-        // btn-error class should be applied.
-        globalSignals.setOnline(true);
-        signals.setMinimum(50_000);
-        await waitFor(() => {
-            expect(btn.textContent).toBe(
-                i18n.en.minimum_amount
-                    .replace("{{ amount }}", "50 000")
-                    .replace("{{ denomination }}", "sats"),
-            );
-        });
-        expect(btn.classList.contains("btn-error")).toBe(false);
-        expect(btn.classList.contains("btn-danger")).toBe(false);
-
-        // User-error state: invalid send asset triggers btn-error.
-        signals.setSendAmount(BigNumber(100_000));
-        signals.setAmountValid(true);
-        signals.setInvoice(invoice);
-        signals.setInvoiceValid(true);
-        setPairAssetsWithPairs(usdt0Pairs, "USDT0-CFX", LN);
-        await waitFor(() => {
-            expect(btn.textContent).toBe(i18n.en.invalid_send_asset);
-        });
-        expect(btn.classList.contains("btn-error")).toBe(true);
-        expect(btn.classList.contains("btn-danger")).toBe(false);
-
-        // Offline takes precedence over user-error: btn-danger, not btn-error.
-        globalSignals.setOnline(false);
-        await waitFor(() => {
-            expect(btn.textContent).toBe(i18n.en.api_offline);
-        });
-        expect(btn.classList.contains("btn-danger")).toBe(true);
-        expect(btn.classList.contains("btn-error")).toBe(false);
-    });
-
     test("should be disabled with LNURL max amount error", async () => {
-        vi.stubGlobal(
-            "fetch",
-            vi.fn().mockResolvedValue({
-                ok: true,
-                json: () =>
-                    Promise.resolve({
-                        // response in milisats
-                        minSendable: 100_000, // 100 sats
-                        maxSendable: 200_000, // 200 sats
-                    }),
-            }),
-        );
-
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <CreateButton />
-                </>
-            ),
-            { wrapper: contextWrapper },
-        );
-        globalSignals.setOnline(true);
-        signals.setSendAmount(BigNumber(400));
-        signals.setReceiveAmount(BigNumber(300));
-        signals.setAmountValid(true);
-        signals.setAddressValid(true);
-        setPairAssets(LBTC, LN);
-        signals.setLnurl("test@example.com");
-
-        const btn = (await screen.findByText(
-            i18n.en.create_swap,
-        )) as HTMLButtonElement;
-        expect(btn).not.toBeUndefined();
-        expect(btn.disabled).toBeFalsy();
-
+        stubLnurl();
+        const btn = await setupLnurl(400, 300);
         btn.click();
 
         const errorBtn = (await screen.findByText(
@@ -1223,271 +573,62 @@ describe("CreateButton", () => {
                 .replace("{{ amount }}", "200")
                 .replace("{{ denomination }}", "sats"),
         )) as HTMLButtonElement;
-        expect(errorBtn).not.toBeUndefined();
         expect(errorBtn.disabled).toBeTruthy();
         expect(errorBtn.classList.contains("btn-error")).toBe(true);
-        expect(errorBtn.classList.contains("btn-danger")).toBe(false);
     });
 
     test("should resolve an LNURL invoice on click and store it", async () => {
-        const fetchMock = vi.fn((url: string) => {
-            if (url.includes("/.well-known/lnurlp/")) {
-                return Promise.resolve(
-                    new Response(
-                        JSON.stringify({
-                            minSendable: 1_000,
-                            maxSendable: 200_000_000,
-                            callback: "https://example.com/cb",
-                        }),
-                        {
-                            status: 200,
-                            headers: { "content-type": "application/json" },
-                        },
-                    ),
-                );
-            }
-            if (url.startsWith("https://example.com/cb")) {
-                return Promise.resolve(
-                    new Response(JSON.stringify({ pr: invoice }), {
-                        status: 200,
-                        headers: { "content-type": "application/json" },
-                    }),
-                );
-            }
-            // The racing BIP-353 DoH lookup never settles.
-            return new Promise<Response>(() => {});
-        });
-        vi.stubGlobal("fetch", fetchMock);
-
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <CreateButton />
-                </>
-            ),
-            { wrapper: contextWrapper },
-        );
-        globalSignals.setOnline(true);
-        signals.setSendAmount(BigNumber(400));
-        signals.setReceiveAmount(BigNumber(300));
-        signals.setAmountValid(true);
-        signals.setAddressValid(true);
-        setPairAssets(LBTC, LN);
-        signals.setLnurl("test@example.com");
-
-        const btn = (await screen.findByText(
-            i18n.en.create_swap,
-        )) as HTMLButtonElement;
+        const fetchMock = stubLnurl(blake2bInvoice);
+        const btn = await setupLnurl(1_300, 1_234);
         btn.click();
 
-        await waitFor(() => expect(signals.invoice()).toBe(invoice));
-        expect(signals.lnurl()).toBe("");
-        expect(signals.invoiceValid()).toBe(true);
+        await waitFor(() => expect(signals.lnurl()).toBe(""));
         expect(fetchMock).toHaveBeenCalledWith(
-            "https://example.com/cb?amount=300000",
+            "https://example.com/cb?amount=1234000",
             expect.anything(),
         );
+        await waitFor(() => {
+            expect(createSubmarineMock).toHaveBeenCalledTimes(1);
+        });
+        expect(createSubmarineMock.mock.calls[0][4]).toEqual(blake2bInvoice);
+        expect(createSubmarineMock.mock.calls[0][7]).toEqual(
+            "test@example.com",
+        );
+    });
+
+    test("should refuse an LNURL invoice without the BLAKE2b feature bit", async () => {
+        stubLnurl(sha256Invoice);
+        const btn = await setupLnurl(1_300, 1_234);
+        btn.click();
+
+        const errorBtn = (await screen.findByText(
+            i18n.en.invoice_missing_blake2b,
+        )) as HTMLButtonElement;
+        expect(errorBtn.disabled).toBeTruthy();
+        expect(errorBtn.classList.contains("btn-error")).toBe(true);
+        expect(signals.invoice()).toBe("");
+        expect(signals.invoiceValid()).toBe(false);
+        expect(signals.lnurl()).toBe("test@example.com");
+        expect(createSubmarineMock).not.toHaveBeenCalled();
     });
 
     test("should recover to an enabled button when the LNURL fetch fails", async () => {
         vi.stubGlobal(
             "fetch",
-            vi.fn((url: string) =>
+            vi.fn(() =>
                 Promise.resolve(
-                    url.includes("/.well-known/lnurlp/")
-                        ? new Response(
-                              JSON.stringify({
-                                  status: "ERROR",
-                                  reason: "no user",
-                              }),
-                              {
-                                  status: 404,
-                                  headers: {
-                                      "content-type": "application/json",
-                                  },
-                              },
-                          )
-                        : new Response("nope", { status: 500 }),
+                    lnurlResponse({ status: "ERROR", reason: "no user" }, 404),
                 ),
             ),
         );
-
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <CreateButton />
-                </>
-            ),
-            { wrapper: contextWrapper },
-        );
-        globalSignals.setOnline(true);
-        signals.setSendAmount(BigNumber(400));
-        signals.setReceiveAmount(BigNumber(300));
-        signals.setAmountValid(true);
-        signals.setAddressValid(true);
-        setPairAssets(LBTC, LN);
-        signals.setLnurl("test@example.com");
-
-        const btn = (await screen.findByText(
-            i18n.en.create_swap,
-        )) as HTMLButtonElement;
+        const btn = await setupLnurl(400, 300);
+        signals.setInvoiceValid(true);
         btn.click();
 
+        await waitFor(() => expect(signals.invoiceValid()).toBe(false));
         await waitFor(() => expect(btn.disabled).toBeFalsy());
         expect(btn.textContent).toBe(i18n.en.create_swap);
         expect(signals.lnurl()).toBe("test@example.com");
         expect(signals.invoice()).toBe("");
-    });
-
-    test("should clear stale invoice validity when resolution fails", async () => {
-        vi.stubGlobal(
-            "fetch",
-            vi.fn(() => Promise.resolve(new Response("nope", { status: 500 }))),
-        );
-
-        render(
-            () => (
-                <>
-                    <TestComponent />
-                    <CreateButton />
-                </>
-            ),
-            { wrapper: contextWrapper },
-        );
-        globalSignals.setOnline(true);
-        signals.setSendAmount(BigNumber(400));
-        signals.setReceiveAmount(BigNumber(300));
-        signals.setAmountValid(true);
-        signals.setAddressValid(true);
-        setPairAssets(LBTC, LN);
-        signals.setLnurl("test@example.com");
-        signals.setInvoiceValid(true);
-
-        const btn = (await screen.findByText(
-            i18n.en.create_swap,
-        )) as HTMLButtonElement;
-        btn.click();
-
-        await waitFor(() => expect(signals.invoiceValid()).toBe(false));
-        expect(signals.lnurl()).toBe("test@example.com");
-        await waitFor(() => expect(btn.disabled).toBeFalsy());
-    });
-});
-
-describe("buildDexDetail", () => {
-    const preHops = [
-        {
-            type: SwapType.Dex,
-            from: USDC,
-            to: TBTC,
-        },
-    ] as never;
-    const postHops = [
-        {
-            type: SwapType.Dex,
-            from: TBTC,
-            to: USDT0,
-        },
-    ] as never;
-
-    // Full route amounts: the user sends 0.01 BTC and receives 1000 USDT0.
-    // The Boltz leg alone would be ~1e6 sats of TBTC, a different asset and
-    // a different unit, so it must never reach quoteAmount.
-    const fullRouteSend = BigNumber(1_000_000);
-    const fullRouteReceive = BigNumber(1_000_000_000);
-
-    test("returns undefined without a hop position", () => {
-        expect(
-            buildDexDetail(
-                postHops,
-                undefined,
-                fullRouteSend,
-                fullRouteReceive,
-            ),
-        ).toBeUndefined();
-    });
-
-    test("persists the final receive amount for post hops", () => {
-        expect(
-            buildDexDetail(
-                postHops,
-                SwapPosition.Post,
-                fullRouteSend,
-                fullRouteReceive,
-            ),
-        ).toEqual({
-            hops: postHops,
-            position: SwapPosition.Post,
-            quoteAmount: 1_000_000_000,
-        });
-    });
-
-    test("ignores the source amount for post hops", () => {
-        expect(
-            buildDexDetail(
-                postHops,
-                SwapPosition.Post,
-                fullRouteSend,
-                fullRouteReceive,
-                fullRouteSend,
-            ),
-        ).not.toHaveProperty("sourceAmount");
-    });
-
-    test("persists the source send amount for pre hops", () => {
-        expect(
-            buildDexDetail(
-                preHops,
-                SwapPosition.Pre,
-                BigNumber(100_000),
-                BigNumber(99_000),
-                BigNumber(100_000),
-            ),
-        ).toEqual({
-            hops: preHops,
-            position: SwapPosition.Pre,
-            quoteAmount: 100_000,
-            sourceAmount: "100000",
-        });
-    });
-
-    test("omits the source amount for pre hops when it is unknown", () => {
-        const dex = buildDexDetail(
-            preHops,
-            SwapPosition.Pre,
-            BigNumber(100_000),
-            BigNumber(99_000),
-        );
-
-        expect(dex).toEqual({
-            hops: preHops,
-            position: SwapPosition.Pre,
-            quoteAmount: 100_000,
-        });
-        expect(dex).not.toHaveProperty("sourceAmount");
-    });
-
-    test("never persists the intermediate Boltz leg amount", () => {
-        const boltzLegReceive = BigNumber(998_000);
-        const dex = buildDexDetail(
-            postHops,
-            SwapPosition.Post,
-            fullRouteSend,
-            fullRouteReceive,
-        );
-
-        expect(dex!.quoteAmount).not.toBe(boltzLegReceive.toNumber());
-        // Claim time compares a fresh DEX quote against this baseline, so a
-        // halved fill has to fall below it
-        const halvedFill = BigInt(dex!.quoteAmount) / 2n;
-        const threshold = calculateAmountOutMin(BigInt(dex!.quoteAmount), 0.01);
-        expect(halvedFill < threshold).toBe(true);
-        // The intermediate amount would make that check unreachable
-        expect(
-            halvedFill <
-                calculateAmountOutMin(BigInt(boltzLegReceive.toNumber()), 0.01),
-        ).toBe(false);
     });
 });

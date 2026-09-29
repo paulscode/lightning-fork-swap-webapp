@@ -1,25 +1,20 @@
 import { BigNumber } from "bignumber.js";
 
-import {
-    BTC,
-    LBTC,
-    LN,
-    RBTC,
-    TBTC,
-    USDT0,
-    WBTC,
-} from "../../src/consts/Assets";
+import { BTC, LN } from "../../src/consts/Assets";
 import { Denomination } from "../../src/consts/Enums";
 import {
+    btcToSat,
     calculateDigits,
     convertAmount,
     formatAmount,
     formatAssetAmountForLog,
     formatDenomination,
-    formatNativeAmountForLog,
     formatSwapAmountForLog,
     getDecimals,
     getValidationRegex,
+    miliSatToSat,
+    satToBtc,
+    satToMiliSat,
 } from "../../src/utils/denomination";
 
 describe("denomination utils", () => {
@@ -43,44 +38,6 @@ describe("denomination utils", () => {
                 ).toEqual(converted);
             },
         );
-
-        test.each`
-            amount          | converted
-            ${"0.000001"}   | ${1}
-            ${"1.234567"}   | ${1234567}
-            ${"123.123456"} | ${123123456}
-        `(
-            "convert ERC20 $amount in sats denomination",
-            ({ amount, converted }) => {
-                expect(
-                    convertAmount(
-                        USDT0,
-                        BigNumber(amount),
-                        Denomination.Sat,
-                    ).toNumber(),
-                ).toEqual(converted);
-            },
-        );
-
-        test("converts WBTC like TBTC in sats denomination", () => {
-            expect(
-                convertAmount(
-                    WBTC,
-                    BigNumber("12345678"),
-                    Denomination.Sat,
-                ).toNumber(),
-            ).toEqual(12345678);
-        });
-
-        test("converts WBTC like TBTC in BTC denomination", () => {
-            expect(
-                convertAmount(
-                    WBTC,
-                    BigNumber("0.12345678"),
-                    Denomination.Btc,
-                ).toNumber(),
-            ).toEqual(12345678);
-        });
     });
 
     describe("format amount", () => {
@@ -112,16 +69,14 @@ describe("denomination utils", () => {
                 ).toEqual(formatted);
             },
         );
-
-        test("formats WBTC sats like TBTC sats", () => {
-            expect(
-                formatAmount(BigNumber(123123), Denomination.Sat, ".", WBTC),
-            ).toEqual("123 123");
-        });
     });
 
-    test("treats routed WBTC as sat-denominated for display inputs", () => {
-        expect(getDecimals(WBTC)).toEqual({
+    test("denominates every asset in sats", () => {
+        expect(getDecimals(BTC)).toEqual({
+            isErc20: false,
+            decimals: 8,
+        });
+        expect(getDecimals(LN)).toEqual({
             isErc20: false,
             decimals: 8,
         });
@@ -172,66 +127,37 @@ describe("denomination utils", () => {
     });
 
     test.each`
-        denomination        | input    | expected
-        ${Denomination.Sat} | ${BTC}   | ${"sats"}
-        ${Denomination.Sat} | ${LBTC}  | ${"sats"}
-        ${Denomination.Btc} | ${BTC}   | ${BTC}
-        ${Denomination.Btc} | ${LBTC}  | ${"LBTC"}
-        ${Denomination.Sat} | ${TBTC}  | ${"sats"}
-        ${Denomination.Btc} | ${TBTC}  | ${"TBTC"}
-        ${Denomination.Sat} | ${USDT0} | ${"USDT"}
-        ${Denomination.Btc} | ${USDT0} | ${"USDT"}
-        ${Denomination.Sat} | ${WBTC}  | ${"sats"}
-        ${Denomination.Btc} | ${WBTC}  | ${"WBTC"}
+        denomination        | input  | expected
+        ${Denomination.Sat} | ${BTC} | ${"sats"}
+        ${Denomination.Btc} | ${BTC} | ${BTC}
+        ${Denomination.Sat} | ${LN}  | ${"sats"}
+        ${Denomination.Btc} | ${LN}  | ${LN}
     `("should format denomination", ({ denomination, input, expected }) => {
         expect(formatDenomination(denomination, input)).toEqual(expected);
     });
 
     describe("format asset amount for logs", () => {
         test.each`
-            amount              | asset    | expected
-            ${"2572605"}        | ${USDT0} | ${"2.572605 USDT"}
-            ${2572605n}         | ${USDT0} | ${"2.572605 USDT"}
-            ${"33480000000000"} | ${TBTC}  | ${"0.00003348 TBTC"}
-            ${33480000000000n}  | ${TBTC}  | ${"0.00003348 TBTC"}
-            ${10000000000000n}  | ${RBTC}  | ${"0.00001 RBTC"}
-            ${"1016"}           | ${BTC}   | ${"1016 sats"}
-            ${1016n}            | ${LBTC}  | ${"1016 sats"}
-            ${1016n}            | ${LN}    | ${"1016 sats"}
+            amount            | asset        | expected
+            ${"1016"}         | ${BTC}       | ${"1016 sats (BTC)"}
+            ${1016n}          | ${LN}        | ${"1016 sats (LN)"}
+            ${1016}           | ${undefined} | ${"1016 sats"}
+            ${BigNumber(101)} | ${BTC}       | ${"101 sats (BTC)"}
         `(
             "formats $amount of $asset as $expected",
             ({ amount, asset, expected }) => {
                 expect(formatAssetAmountForLog(amount, asset)).toEqual(
                     expected,
                 );
-            },
-        );
-
-        test("falls back to the raw amount for unknown assets", () => {
-            expect(formatAssetAmountForLog(150n, "UNKNOWN")).toEqual(
-                "150 UNKNOWN",
-            );
-        });
-
-        test("formats native amounts for logs", () => {
-            expect(formatNativeAmountForLog(10000000000000n, RBTC)).toEqual(
-                "0.00001 RBTC",
-            );
-        });
-
-        // Swap denomination: sats for BTC-pegged assets (incl. RBTC, unlike the
-        // on-chain wei above), token units for ERC20.
-        test.each`
-            amount            | asset    | expected
-            ${2572605n}       | ${USDT0} | ${"2.572605 USDT"}
-            ${3348n}          | ${TBTC}  | ${"3348 sats"}
-            ${1016n}          | ${RBTC}  | ${"1016 sats"}
-            ${BigNumber(101)} | ${BTC}   | ${"101 sats"}
-        `(
-            "formats internal $amount of $asset as $expected",
-            ({ amount, asset, expected }) => {
                 expect(formatSwapAmountForLog(amount, asset)).toEqual(expected);
             },
         );
+    });
+
+    test("converts between BTC, sats and millisats", () => {
+        expect(btcToSat(BigNumber("0.00123123")).toNumber()).toEqual(123123);
+        expect(satToBtc(BigNumber(123123)).toNumber()).toEqual(0.00123123);
+        expect(satToMiliSat(BigNumber(1234)).toNumber()).toEqual(1234000);
+        expect(miliSatToSat(BigNumber(1234000)).toNumber()).toEqual(1234);
     });
 });

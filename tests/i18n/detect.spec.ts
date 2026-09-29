@@ -6,12 +6,10 @@ describe("detect", () => {
         navigatorLanguage | expected
         ${"en-US"}        | ${"en"}
         ${"en-UK"}        | ${"en"}
-        ${"de-DE"}        | ${"de"}
-        ${"de-AT"}        | ${"de"}
-        ${"de-CH"}        | ${"de"}
-        ${"de-LUX"}       | ${"de"}
-        ${"es-ES"}        | ${"es"}
-        ${"de"}           | ${"de"}
+        ${"en"}           | ${"en"}
+        ${"de-DE"}        | ${config.defaultLanguage}
+        ${"es-ES"}        | ${config.defaultLanguage}
+        ${"de"}           | ${config.defaultLanguage}
         ${"none-DE"}      | ${config.defaultLanguage}
         ${"ro-RO"}        | ${config.defaultLanguage}
         ${undefined}      | ${config.defaultLanguage}
@@ -32,23 +30,20 @@ describe("detect", () => {
             },
         );
 
-        test.each(["de", "en", "zh"])(
-            "should use valid language URL params",
-            (lang) => {
-                Object.defineProperty(window, "location", {
-                    value: {
-                        search: `?lang=${lang}`,
-                    },
-                    writable: true,
-                });
+        test.each(["en"])("should use valid language URL param %s", (lang) => {
+            Object.defineProperty(window, "location", {
+                value: {
+                    search: `?lang=${lang}`,
+                },
+                writable: true,
+            });
 
-                const setter = vi.fn();
-                expect(detectLanguage(null, "not used", setter)).toEqual(lang);
+            const setter = vi.fn();
+            expect(detectLanguage(null, "not used", setter)).toEqual(lang);
 
-                expect(setter).toHaveBeenCalledTimes(1);
-                expect(setter).toHaveBeenCalledWith(lang);
-            },
-        );
+            expect(setter).toHaveBeenCalledTimes(1);
+            expect(setter).toHaveBeenCalledWith(lang);
+        });
 
         test("should use last used URL params over browser default", () => {
             Object.defineProperty(window, "location", {
@@ -65,17 +60,26 @@ describe("detect", () => {
             expect(setter).toHaveBeenCalledTimes(0);
         });
 
-        test("should default to browser language for invalid language URL params", () => {
-            Object.defineProperty(window, "location", {
-                value: {
-                    search: `?lang=invalid`,
-                },
-                writable: true,
-            });
+        test.each(["invalid", "de", "zh"])(
+            "should default to browser language for unsupported language URL param %s",
+            (lang) => {
+                Object.defineProperty(window, "location", {
+                    value: {
+                        search: `?lang=${lang}`,
+                    },
+                    writable: true,
+                });
 
+                const setter = vi.fn();
+                expect(detectLanguage(null, null, setter)).toEqual("en");
+
+                expect(setter).toHaveBeenCalledTimes(0);
+            },
+        );
+
+        test("should use the browser language without a URL language", () => {
             const setter = vi.fn();
-            expect(detectLanguage(null, null, setter)).toEqual("en");
-
+            expect(detectLanguage(null, undefined, setter)).toEqual("en");
             expect(setter).toHaveBeenCalledTimes(0);
         });
     });

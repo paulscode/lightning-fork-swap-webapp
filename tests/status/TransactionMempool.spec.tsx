@@ -2,7 +2,7 @@ import { render, screen, waitFor } from "@solidjs/testing-library";
 import { SwapType } from "boltz-swaps/types";
 import { createSignal } from "solid-js";
 
-import { BTC, RBTC } from "../../src/consts/Assets";
+import { BTC, LN } from "../../src/consts/Assets";
 import type * as PayContextModule from "../../src/context/Pay";
 import i18n from "../../src/i18n/i18n";
 import TransactionMempool from "../../src/status/TransactionMempool";
@@ -41,40 +41,10 @@ describe("TransactionMempool", () => {
 
         expect(screen.getByText(i18n.en.tx_in_mempool)).toBeInTheDocument();
         expect(
-            screen.queryByText(i18n.en.tx_in_mempool_warning),
-        ).not.toBeInTheDocument();
+            screen.getByText(i18n.en.tx_in_mempool_subline),
+        ).toBeInTheDocument();
         expect(
             screen.queryByText(i18n.en.broadcasting_claim),
-        ).not.toBeInTheDocument();
-    });
-
-    test("renders the chain swap warning for chain swaps", () => {
-        const [swap] = createSignal<SomeSwap | null>({
-            type: SwapType.Chain,
-            assetReceive: RBTC,
-        } as SomeSwap);
-
-        render(() => <TransactionMempool swap={swap} />, {
-            wrapper: contextWrapper,
-        });
-
-        expect(
-            screen.getByText(i18n.en.tx_in_mempool_warning),
-        ).toBeInTheDocument();
-    });
-
-    test("does not render the warning for non-chain swaps", () => {
-        const [swap] = createSignal<SomeSwap | null>({
-            type: SwapType.Reverse,
-            assetReceive: BTC,
-        } as SomeSwap);
-
-        render(() => <TransactionMempool swap={swap} />, {
-            wrapper: contextWrapper,
-        });
-
-        expect(
-            screen.queryByText(i18n.en.tx_in_mempool_warning),
         ).not.toBeInTheDocument();
     });
 
@@ -82,8 +52,9 @@ describe("TransactionMempool", () => {
         payContextMock.isSwapClaiming = (id) => id === "swap-claiming";
         const [swap] = createSignal<SomeSwap | null>({
             id: "swap-claiming",
-            type: SwapType.Chain,
-            assetReceive: RBTC,
+            type: SwapType.Submarine,
+            assetSend: BTC,
+            assetReceive: LN,
         } as SomeSwap);
 
         render(() => <TransactionMempool swap={swap} />, {
@@ -95,9 +66,6 @@ describe("TransactionMempool", () => {
         ).toBeInTheDocument();
         expect(
             screen.queryByText(i18n.en.tx_in_mempool),
-        ).not.toBeInTheDocument();
-        expect(
-            screen.queryByText(i18n.en.tx_in_mempool_warning),
         ).not.toBeInTheDocument();
     });
 
@@ -146,8 +114,9 @@ describe("TransactionMempool", () => {
 
         const [swap] = createSignal<SomeSwap | null>({
             id: "swap-reactive",
-            type: SwapType.Chain,
-            assetReceive: RBTC,
+            type: SwapType.Submarine,
+            assetSend: BTC,
+            assetReceive: LN,
         } as SomeSwap);
 
         render(() => <TransactionMempool swap={swap} />, {
