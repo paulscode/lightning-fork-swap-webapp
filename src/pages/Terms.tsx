@@ -78,7 +78,7 @@ const Terms: Component = () => {
                 </ExternalLink>
                 . The source code of this service is available at{" "}
                 <ExternalLink href={config.repoUrl}>
-                    {config.repoUrl}
+                    {new URL(config.repoUrl, window.location.href).href}
                 </ExternalLink>
                 .
             </p>

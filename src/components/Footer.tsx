@@ -33,7 +33,11 @@ const Footer = () => {
             <p class="version">
                 {t("version")}: {__APP_VERSION__}, {t("commithash")}:{" "}
                 <ExternalLink
-                    href={`${config.repoUrl}/commit/${__GIT_COMMIT__}`}>
+                    href={
+                        config.repoUrl.startsWith("https://github.com/")
+                            ? `${config.repoUrl}/commit/${__GIT_COMMIT__}`
+                            : config.repoUrl
+                    }>
                     {__GIT_COMMIT__}
                 </ExternalLink>
             </p>
