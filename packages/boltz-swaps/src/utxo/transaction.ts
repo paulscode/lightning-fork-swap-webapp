@@ -54,12 +54,49 @@ export const parseTransaction = (hexStr: string): BtcTransaction =>
         allowUnknownInputs: true,
     });
 
+// The fee rate and the amounts a claim or refund is built from come from the
+// API or an explorer. Whatever they say, a transaction never gives more than
+// this to miners: 10 % of what it spends, or 3,000 sat for a small swap.
+export const maxFeeRate = 1_000; // sat/vbyte
+export const maxFee = (inputSum: number): number =>
+    Math.max(3_000, Math.floor(inputSum / 10));
+
+export const assertFeeWithinLimit = (fee: number, inputSum: number) => {
+    if (!Number.isFinite(fee) || fee < 0) {
+        throw new Error(`invalid fee: ${fee}`);
+    }
+    if (fee > maxFee(inputSum)) {
+        throw new Error(
+            `fee of ${fee} sat would exceed the limit of ${maxFee(inputSum)} sat for ${inputSum} sat`,
+        );
+    }
+};
+
+const inputSumOf = (details: { amount: bigint | number }[]): number => {
+    const sum = details.reduce(
+        (total, detail) => total + Number(detail.amount),
+        0,
+    );
+    if (!Number.isFinite(sum)) {
+        throw new Error("inputs without an amount");
+    }
+    return sum;
+};
+
 export const constructClaim = (
     utxos: ClaimDetails[],
     destinationScript: Uint8Array,
     fee: number,
     isRbf?: boolean,
-) => constructClaimTransaction(utxos, destinationScript, BigInt(fee), isRbf);
+) => {
+    assertFeeWithinLimit(fee, inputSumOf(utxos as never));
+    return constructClaimTransaction(
+        utxos,
+        destinationScript,
+        BigInt(fee),
+        isRbf,
+    );
+};
 
 export const constructRefund = (
     refundDetails: RefundDetails[],
@@ -67,16 +104,28 @@ export const constructRefund = (
     timeoutBlockHeight: number,
     feePerVbyte: number,
     isRbf: boolean,
-) =>
-    targetFee(feePerVbyte, (fee) =>
-        constructRefundTransaction(
+) => {
+    if (
+        typeof feePerVbyte !== "number" ||
+        !Number.isFinite(feePerVbyte) ||
+        feePerVbyte <= 0 ||
+        feePerVbyte > maxFeeRate
+    ) {
+        throw new Error(`invalid fee rate: ${String(feePerVbyte)} sat/vbyte`);
+    }
+
+    const inputSum = inputSumOf(refundDetails as never);
+    return targetFee(feePerVbyte, (fee) => {
+        assertFeeWithinLimit(Number(fee), inputSum);
+        return constructRefundTransaction(
             refundDetails,
             outputScript,
             timeoutBlockHeight,
             fee,
             isRbf,
-        ),
-    );
+        );
+    });
+};
 
 export const getOutputAmount = (output: TransactionOutput): number =>
     Number(output.amount);

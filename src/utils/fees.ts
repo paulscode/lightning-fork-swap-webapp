@@ -55,7 +55,11 @@ const addFloor = (asset: string, fee: number) => {
 export const getFeeEstimationsFailover = async (asset: string) => {
     try {
         const feeEstimations = await getFeeEstimations();
-        return feeEstimations[asset];
+        const fee = feeEstimations[asset];
+        if (typeof fee !== "number" || !Number.isFinite(fee) || fee <= 0) {
+            throw new Error(`invalid fee estimation: ${String(fee)}`);
+        }
+        return fee;
     } catch (e) {
         log.warn(
             `failed to get fee estimations via the API for ${asset}: ${formatError(e)}`,

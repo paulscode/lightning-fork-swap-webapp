@@ -87,7 +87,7 @@ describe("utxo/transaction", () => {
     });
 
     describe("constructClaim", () => {
-        const utxos = [{ marker: "utxo" }] as never;
+        const utxos = [{ marker: "utxo", amount: 50_000n }] as never;
         const destinationScript = hex.decode(REGTEST_SCRIPT_HEX);
 
         test("forwards to boltz-core constructClaimTransaction with a bigint fee", () => {
@@ -103,6 +103,42 @@ describe("utxo/transaction", () => {
             expect(btcCCT.mock.calls[0]).toHaveLength(4);
             expect(result).toEqual({ kind: "btc-tx" });
         });
+
+        test.each`
+            amount        | fee        | allowed
+            ${10_000n}    | ${3_000}   | ${true}
+            ${10_000n}    | ${3_001}   | ${false}
+            ${200_000n}   | ${20_000}  | ${true}
+            ${200_000n}   | ${20_001}  | ${false}
+            ${1_000_000n} | ${100_000} | ${true}
+        `(
+            "allows a fee of $fee for $amount: $allowed",
+            ({ amount, fee, allowed }) => {
+                const build = () =>
+                    constructClaim(
+                        [{ amount }] as never,
+                        destinationScript,
+                        fee,
+                        true,
+                    );
+                if (allowed) {
+                    expect(build).not.toThrow();
+                } else {
+                    expect(build).toThrow(/would exceed the limit/);
+                    expect(btcCCT).not.toHaveBeenCalled();
+                }
+            },
+        );
+
+        test("refuses inputs without an amount", () => {
+            expect(() =>
+                constructClaim(
+                    [{ marker: "utxo" }] as never,
+                    destinationScript,
+                    100,
+                ),
+            ).toThrow("inputs without an amount");
+        });
     });
 
     describe("getOutputAmount", () => {
@@ -113,7 +149,7 @@ describe("utxo/transaction", () => {
     });
 
     describe("constructRefund", () => {
-        const refundDetails = [{ marker: "refund" }] as never;
+        const refundDetails = [{ marker: "refund", amount: 100_000n }] as never;
         const outputScript = hex.decode(REGTEST_SCRIPT_HEX);
 
         test("targets the fee via targetFee and forwards the fee to the builder", () => {
@@ -136,6 +172,45 @@ describe("utxo/transaction", () => {
                 true,
             );
             expect(result).toEqual({ kind: "btc-refund-tx" });
+        });
+
+        test.each`
+            rate
+            ${0}
+            ${-1}
+            ${1_001}
+            ${Number.NaN}
+            ${Number.POSITIVE_INFINITY}
+            ${"5"}
+        `("refuses a fee rate of $rate", ({ rate }) => {
+            expect(() =>
+                constructRefund(refundDetails, outputScript, 150, rate, true),
+            ).toThrow(/invalid fee rate/);
+            expect(btcCRT).not.toHaveBeenCalled();
+        });
+
+        test("refuses a rate that would spend more than the limit", () => {
+            // The mock targets a fee equal to the rate: 1,000 sat on 5,000
+            // sat is within 3,000; on a 1,000 sat input, too
+            expect(() =>
+                constructRefund(
+                    [{ amount: 5_000n }] as never,
+                    outputScript,
+                    150,
+                    1_000,
+                    true,
+                ),
+            ).not.toThrow();
+            targetFeeMock.mockImplementationOnce((_rate, cb) => cb(4_000n));
+            expect(() =>
+                constructRefund(
+                    [{ amount: 5_000n }] as never,
+                    outputScript,
+                    150,
+                    20,
+                    true,
+                ),
+            ).toThrow(/would exceed the limit of 3000 sat for 5000 sat/);
         });
     });
 

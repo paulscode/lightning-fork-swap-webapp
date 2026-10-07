@@ -45,6 +45,28 @@ describe("fees", () => {
             expect(mockGetFeeEstimationsFromBlockchain).not.toHaveBeenCalled();
         });
 
+        test.each`
+            value
+            ${undefined}
+            ${"5000"}
+            ${0}
+            ${-3}
+            ${Number.NaN}
+        `(
+            "should fall back to the explorer when the API answers $value",
+            async ({ value }) => {
+                mockGetFeeEstimationsFromBoltz.mockResolvedValue({
+                    [BTC]: value,
+                });
+                mockGetFeeEstimationsFromBlockchain.mockResolvedValue(4);
+
+                await expect(getFeeEstimationsFailover(BTC)).resolves.toEqual(
+                    4,
+                );
+                expect(mockGetFeeEstimationsFromBlockchain).toHaveBeenCalled();
+            },
+        );
+
         test("should fallback to explorer when Boltz API fails", async () => {
             mockGetFeeEstimationsFromBoltz.mockRejectedValue(
                 new Error("boltz down"),
