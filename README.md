@@ -38,6 +38,18 @@ Compared to boltz-web-app 2.2.1:
 - **English only**, with the i18n machinery kept.
 - **Rebrand**: name, icons, a single dark theme, short Terms and Privacy pages,
   a footer with only source, legal, rescue and (optional) onion links.
+- **Hardening** after a review:
+  - the payment screen of a submarine swap shows and links to a BIP21 built
+    from the address and amount the app has verified; the API's BIP21 is
+    checked strictly but never used;
+  - a claim or refund never gives more than 10 % of what it spends (or
+    3,000 sat for a small swap) to miners, nor uses a fee rate above 1,000
+    sat/vbyte, whatever the API or the explorer say;
+  - an LNURL or Lightning address must be a public HTTPS host, and its
+    invoice must be for the amount asked;
+  - stored logs never hold preimages, private keys or the rescue key;
+  - no inline script or style in the page (for the site's
+    Content-Security-Policy); Boltz's embedded mode is gone.
 - The rescue key derivation is unchanged from Boltz (`m/44/0/0/0/<index>`).
 
 ## Build
@@ -73,7 +85,12 @@ pause notice instead of the swap box; refunds and rescue keep working).
 
 ## Deployment expectations
 
-The mainnet build talks only to its own origin:
+The page has no inline script or style, so it works under a policy such as
+`script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'` (the
+deployment's nginx config has the full one).
+
+The mainnet build talks only to its own origin, plus the HTTPS hosts of LNURL
+and Lightning address services a user pastes:
 
 | Path                | Served by                                                                      |
 | ------------------- | ------------------------------------------------------------------------------ |
