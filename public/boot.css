@@ -1,0 +1,40 @@
+/* The page before the app has loaded. A file, not an inline style, so the
+   Content-Security-Policy can allow styles from this origin only. */
+:root {
+    --backgroundColor: #070b16;
+    --accentColor: #4e93ff;
+}
+html,
+body {
+    background: var(--backgroundColor);
+}
+@keyframes lf-pulse {
+    0%,
+    100% {
+        transform: translate(-50%, -50%) scale(1);
+        box-shadow: 0 0 24px 0 var(--accentColor);
+    }
+    50% {
+        transform: translate(-50%, -50%) scale(1.06);
+        box-shadow: 0 0 48px 4px var(--accentColor);
+    }
+}
+body > .boot-logo {
+    display: none;
+}
+.loading > .boot-logo {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 96px;
+    height: 96px;
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    display: block;
+    animation: lf-pulse 2.4s ease-in-out infinite;
+}
+@media (prefers-reduced-motion: reduce) {
+    .loading > .boot-logo {
+        animation: none;
+    }
+}
