@@ -3,15 +3,9 @@ import "@fontsource/noto-mono/index.css";
 import "@fontsource/noto-sans/200.css";
 import "@fontsource/noto-sans/800.css";
 import "@fontsource/noto-sans/index.css";
-import {
-    Route,
-    type RouteSectionProps,
-    Router,
-    useLocation,
-} from "@solidjs/router";
+import { Route, type RouteSectionProps, Router } from "@solidjs/router";
 import { setLogger } from "boltz-swaps/logger";
 import log from "loglevel";
-import { Show } from "solid-js";
 import { render } from "solid-js/web";
 
 import { configureBoltzSwaps } from "./boltzSwapsConfig";
@@ -65,38 +59,27 @@ const resourceErrorHandler = (event: Event) => {
 };
 window.addEventListener("error", resourceErrorHandler, true);
 
-const urlParams = new URLSearchParams(window.location.search);
-const embeddedParam = urlParams.get("embedded");
-const parentOriginParam = urlParams.get("parentOrigin");
-
 // There is a single dark theme
 document.documentElement.setAttribute("boltz-theme", "default");
 document.body.classList.remove("loading");
 
+// Boltz's embedded mode (?embedded=true&parentOrigin=...) is not offered:
+// the site cannot be framed, and a link with those parameters would only
+// hide the navigation and the rescue link, or send swap updates to an origin
+// the link chose.
 const App = (props: RouteSectionProps) => {
-    const isEmbedded = embeddedParam === "true";
-    const location = useLocation();
-
-    const isEmbeddedRoot = () => isEmbedded && location.pathname === "/";
-
     return (
         <GlobalProvider
-            initialEmbeddedMode={isEmbedded}
-            initialParentOrigin={parentOriginParam ?? undefined}>
+            initialEmbeddedMode={false}
+            initialParentOrigin={undefined}>
             <CreateProvider>
                 <PayProvider>
                     <RescueProvider>
                         <SwapChecker />
-                        <Show when={!isEmbedded}>
-                            <Nav network={config.network} />
-                        </Show>
-                        <Show when={!isEmbeddedRoot()} fallback={<Create />}>
-                            {props.children}
-                        </Show>
+                        <Nav network={config.network} />
+                        {props.children}
                         <Notification />
-                        <Show when={!isEmbedded}>
-                            <Footer />
-                        </Show>
+                        <Footer />
                     </RescueProvider>
                 </PayProvider>
             </CreateProvider>

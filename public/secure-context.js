@@ -2,6 +2,7 @@
 // inline script, so the Content-Security-Policy can allow scripts from this
 // origin only.
 if (!window.isSecureContext) {
+    // eslint-disable-next-line no-console
     console.error(
         "Error: This site requires a secure context (HTTPS) to function.",
     );
