@@ -49,17 +49,47 @@ const validateAddress = (
     }
 };
 
+const bip21Amount = (expectedAmount: number): string =>
+    formatAmountDenomination(
+        BigNumber(expectedAmount),
+        Denomination.Btc,
+        ".",
+        BTC,
+    );
+
+// The parameters the backend puts in a submarine swap's BIP21; any other
+// (lightning=, a second amount=, ...) would tell a wallet to pay something
+// else
+const bip21AllowedParams = new Set(["amount", "label"]);
+
+/**
+ * The BIP21 the app shows and links to, built from the address and amount it
+ * has checked; the server's string is validated but never used.
+ */
+export const swapBip21 = (address: string, expectedAmount: number): string =>
+    expectedAmount === 0
+        ? `bitcoin:${address}`
+        : `bitcoin:${address}?amount=${bip21Amount(expectedAmount)}`;
+
 const validateBip21 = (
     bip21: string,
     address: string,
     expectedAmount: number,
 ): void => {
-    const bip21Split = bip21.split("?");
-    if (bip21Split[0].split(":")[1] !== address) {
+    const [target, query, ...rest] = bip21.split("?");
+    if (rest.length > 0 || target !== `bitcoin:${address}`) {
         throw new Error("invalid BIP21 format");
     }
 
-    const params = new URLSearchParams(bip21Split[1]);
+    const params = new URLSearchParams(query ?? "");
+    for (const key of params.keys()) {
+        if (!bip21AllowedParams.has(key)) {
+            throw new Error(`unexpected parameter in BIP21: ${key}`);
+        }
+    }
+    if (params.getAll("amount").length > 1) {
+        throw new Error("more than one amount in BIP21");
+    }
 
     if (expectedAmount === 0) {
         const hasAmount = params.has("amount");
@@ -71,15 +101,7 @@ const validateBip21 = (
         return;
     }
 
-    if (
-        params.get("amount") !==
-        formatAmountDenomination(
-            BigNumber(expectedAmount),
-            Denomination.Btc,
-            ".",
-            BTC,
-        )
-    ) {
+    if (params.get("amount") !== bip21Amount(expectedAmount)) {
         throw new Error(
             `invalid BIP21 amount. Expected ${expectedAmount}, got ${params.get("amount")}`,
         );

@@ -16,7 +16,11 @@ import log from "loglevel";
 import { BTC, LN } from "../../src/consts/Assets";
 import { decodeAddress } from "../../src/utils/compat";
 import { ECPair } from "../../src/utils/ecpair";
-import { validateInvoice, validateResponse } from "../../src/utils/validation";
+import {
+    swapBip21,
+    validateInvoice,
+    validateResponse,
+} from "../../src/utils/validation";
 import {
     blake2bInvoice,
     invoiceAmount,
@@ -107,6 +111,12 @@ describe("validate responses", () => {
             ${"BTC invalid invalid address"}       | ${false} | ${{ ...swapBtc, address: "2NGVzk8fgA8zHRkLBwkAgZKnBn3aYG6wwSx" }}
             ${"BTC invalid BIP21 amount"}          | ${false} | ${{ ...swapBtc, bip21: "bitcoin:bcrt1pp7enx7jean5tp79satht9lz7dn76kcvfmw636d3a62sr2gepj0nqtupeyc?amount=0.0210054&label=Send%20to%20BTC%20lightning" }}
             ${"BTC invalid BIP21 address"}         | ${false} | ${{ ...swapBtc, bip21: "bitcoin:bcrt1pn67yl0hqj6g2unq943y6yyheyg3pk0hn23snrq3tpz6vqz2exfsqggkv9y?amount=0.0010054&label=Send%20to%20BTC%20lightning" }}
+            ${"BTC BIP21 as a javascript: link"}   | ${false} | ${{ ...swapBtc, bip21: "javascript:bcrt1pp7enx7jean5tp79satht9lz7dn76kcvfmw636d3a62sr2gepj0nqtupeyc:alert(1)//?amount=0.0010054" }}
+            ${"BTC BIP21 with another scheme"}     | ${false} | ${{ ...swapBtc, bip21: "litecoin:bcrt1pp7enx7jean5tp79satht9lz7dn76kcvfmw636d3a62sr2gepj0nqtupeyc?amount=0.0010054" }}
+            ${"BTC BIP21 with a lightning param"}  | ${false} | ${{ ...swapBtc, bip21: "bitcoin:bcrt1pp7enx7jean5tp79satht9lz7dn76kcvfmw636d3a62sr2gepj0nqtupeyc?amount=0.0010054&lightning=lnbcrt1" }}
+            ${"BTC BIP21 with two amounts"}        | ${false} | ${{ ...swapBtc, bip21: "bitcoin:bcrt1pp7enx7jean5tp79satht9lz7dn76kcvfmw636d3a62sr2gepj0nqtupeyc?amount=0.0010054&amount=0.5" }}
+            ${"BTC BIP21 with a second query"}     | ${false} | ${{ ...swapBtc, bip21: "bitcoin:bcrt1pp7enx7jean5tp79satht9lz7dn76kcvfmw636d3a62sr2gepj0nqtupeyc?amount=0.0010054?x=1" }}
+            ${"BTC BIP21 without a label"}         | ${true}  | ${{ ...swapBtc, bip21: "bitcoin:bcrt1pp7enx7jean5tp79satht9lz7dn76kcvfmw636d3a62sr2gepj0nqtupeyc?amount=0.0010054" }}
         `("$desc", async ({ valid, swap }) => {
             const promise = validateResponse(swap, () =>
                 ECPair.fromPrivateKey(hex.decode(swap.refundPrivateKey)),
@@ -232,5 +242,14 @@ describe("validateInvoice", () => {
         expect(() =>
             validateInvoice(`${blake2bInvoice.slice(0, -1)}q`),
         ).toThrow("invalid_invoice");
+    });
+});
+
+describe("swapBip21", () => {
+    test("is built from the checked address and amount only", () => {
+        expect(swapBip21("bc1paddress", 100540)).toEqual(
+            "bitcoin:bc1paddress?amount=0.0010054",
+        );
+        expect(swapBip21("bc1paddress", 0)).toEqual("bitcoin:bc1paddress");
     });
 });
