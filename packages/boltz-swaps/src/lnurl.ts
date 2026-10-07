@@ -80,11 +80,44 @@ const checkLnurlResponse = (amountMsat: bigint, data: LnurlResponse): void => {
     }
 };
 
+/**
+ * An LNURL is fetched by the browser: it must name a public HTTPS service
+ * (LUD-01 allows plain HTTP only for onion hosts), not an address on the
+ * user's own network or this site's API.
+ */
+export const assertPublicLnurlEndpoint = (endpoint: string): void => {
+    let url: URL;
+    try {
+        url = new URL(endpoint);
+    } catch {
+        throw new Error("invalid LNURL endpoint");
+    }
+
+    const host = url.hostname.toLowerCase();
+    const isOnion = host.endsWith(".onion");
+    if (url.protocol !== "https:" && !(url.protocol === "http:" && isOnion)) {
+        throw new Error("LNURL endpoint must use HTTPS");
+    }
+    if (
+        host.startsWith("[") ||
+        host.includes(":") ||
+        /^[0-9.]+$/.test(host) ||
+        !host.includes(".") ||
+        host === "localhost" ||
+        host.endsWith(".localhost") ||
+        host.endsWith(".local") ||
+        host.endsWith(".internal")
+    ) {
+        throw new Error("LNURL endpoint is not a public host");
+    }
+};
+
 export const fetchLnurlInvoice = async (
     amountMsat: bigint,
     data: LnurlResponse,
     opts?: FetchOptions,
 ): Promise<string> => {
+    assertPublicLnurlEndpoint(data.callback);
     const url = new URL(data.callback);
     url.searchParams.set("amount", amountMsat.toString());
     getLogger().debug("fetching invoice", url.toString());
@@ -110,6 +143,8 @@ export const fetchLnurl = async (
         const { bytes } = bech32.decodeToBytes(normalized.toLowerCase());
         url = utf8.encode(bytes);
     }
+
+    assertPublicLnurlEndpoint(url);
 
     const timeoutMs = opts?.timeoutMs ?? defaultFetchTimeoutMs;
     const signal = timeoutSignal({ signal: opts?.signal, timeoutMs });

@@ -28,9 +28,23 @@ describe("resolveInvoice", () => {
         isLnurlMock.mockReturnValue(false);
         decodeInvoiceMock.mockImplementation(() => ({
             type: InvoiceType.Bolt11,
-            satoshis: 0,
+            satoshis: 1000,
             preimageHash: "",
         }));
+    });
+
+    test("refuses an LNURL invoice for another amount than the one asked for", async () => {
+        isLnurlMock.mockReturnValue(true);
+        fetchLnurlMock.mockResolvedValue("lnbc1fromlnurl");
+        decodeInvoiceMock.mockImplementation(() => ({
+            type: InvoiceType.Bolt11,
+            satoshis: 100_000,
+            preimageHash: "",
+        }));
+
+        await expect(resolveInvoice("lnurl1abc", 1000)).rejects.toThrow(
+            "LNURL service returned an invoice for 100000 sat instead of 1000",
+        );
     });
 
     test("passes a plain BOLT11 invoice through", async () => {
@@ -83,13 +97,13 @@ describe("resolveInvoice", () => {
         isLnurlMock.mockReturnValue(true);
         fetchLnurlMock.mockResolvedValue("lnbc1fromaddress");
 
-        const result = await resolveInvoice("user@example.com", 4242);
+        const result = await resolveInvoice("user@example.com", 1000);
 
         expect(result).toEqual({
             invoice: "lnbc1fromaddress",
             type: InvoiceType.Bolt11,
         });
-        expect(fetchLnurlMock).toHaveBeenCalledWith("user@example.com", 4242, {
+        expect(fetchLnurlMock).toHaveBeenCalledWith("user@example.com", 1000, {
             signal: undefined,
             timeoutMs: undefined,
         });

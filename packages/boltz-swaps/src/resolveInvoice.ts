@@ -22,7 +22,14 @@ export const resolveInvoice = async (
             signal: opts?.signal,
             timeoutMs: opts?.timeoutMs,
         });
-        return { invoice, type: decodeInvoice(invoice).type };
+        const decoded = decodeInvoice(invoice);
+        // The service picks the invoice: it must be for what was asked
+        if (decoded.satoshis !== Math.round(amountSat)) {
+            throw new Error(
+                `LNURL service returned an invoice for ${decoded.satoshis} sat instead of ${Math.round(amountSat)}`,
+            );
+        }
+        return { invoice, type: decoded.type };
     }
 
     // Network-aware gate: rejects e.g. BOLT11 invoices for another network,

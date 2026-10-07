@@ -1,6 +1,7 @@
 import { bech32, utf8 } from "@scure/base";
 import { LnurlAmountError, LnurlAmountErrorKind } from "boltz-swaps/errors";
 import {
+    assertPublicLnurlEndpoint,
     fetchLnurl,
     fetchLnurlInvoice,
     isLnurl,
@@ -290,6 +291,37 @@ describe("fetchLnurlInvoice", () => {
             "https://example.com/cb?comment=hi&amount=1000000",
             undefined,
             { signal: undefined },
+        );
+    });
+});
+
+describe("assertPublicLnurlEndpoint", () => {
+    test.each`
+        endpoint
+        ${"https://example.com/.well-known/lnurlp/alice"}
+        ${"https://pay.example.co.uk/lnurl?x=1"}
+        ${"http://abcdefghijklmnop.onion/lnurlp/alice"}
+    `("accepts $endpoint", ({ endpoint }) => {
+        expect(() => assertPublicLnurlEndpoint(endpoint)).not.toThrow();
+    });
+
+    test.each`
+        endpoint                                | reason
+        ${"http://example.com/lnurlp/alice"}    | ${"HTTPS"}
+        ${"javascript:alert(1)"}                | ${"HTTPS"}
+        ${"https://192.168.1.1/lnurlp/alice"}   | ${"public host"}
+        ${"https://[::1]/lnurlp/alice"}         | ${"public host"}
+        ${"https://localhost/lnurlp/alice"}     | ${"public host"}
+        ${"https://router/lnurlp/alice"}        | ${"public host"}
+        ${"https://printer.local/lnurlp/alice"} | ${"public host"}
+        ${"not a url"}                          | ${"invalid"}
+    `("refuses $endpoint", ({ endpoint, reason }) => {
+        expect(() => assertPublicLnurlEndpoint(endpoint)).toThrow(reason);
+    });
+
+    test("is applied to a Lightning address on an IP literal", async () => {
+        await expect(fetchLnurl("alice@192.168.1.1", 1000)).rejects.toThrow(
+            "public host",
         );
     });
 });
