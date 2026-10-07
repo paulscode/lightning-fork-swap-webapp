@@ -43,7 +43,5 @@ if (!window.isSecureContext) {
 
     document.body.appendChild(errorContainer);
 
-    throw new Error(
-        "Insecure context - blocking app initialization",
-    );
+    throw new Error("Insecure context - blocking app initialization");
 }
