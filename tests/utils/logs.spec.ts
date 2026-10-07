@@ -91,9 +91,13 @@ describe("logs", () => {
     });
 
     test.each`
-        line                             | expected
-        ${["some", "strings"]}           | ${"some strings"}
-        ${["some", { data: "objects" }]} | ${'some {"data":"objects"}'}
+        line                                                              | expected
+        ${["some", "strings"]}                                            | ${"some strings"}
+        ${["some", { data: "objects" }]}                                  | ${'some {"data":"objects"}'}
+        ${["swap", { id: "x", preimage: "aa", preimageHash: "bb" }]}      | ${'swap {"id":"x","preimage":"[redacted]","preimageHash":"bb"}'}
+        ${[{ refundPrivateKey: "cc", refundPrivateKeyIndex: 3 }]}         | ${'{"refundPrivateKey":"[redacted]","refundPrivateKeyIndex":3}'}
+        ${[{ claimPrivateKey: "dd", nested: { mnemonic: "w o r d s" } }]} | ${'{"claimPrivateKey":"[redacted]","nested":{"mnemonic":"[redacted]"}}'}
+        ${[{ xpriv: "tprv", rescueFile: { mnemonic: "m" } }]}             | ${'{"xpriv":"[redacted]","rescueFile":"[redacted]"}'}
     `("should format log lines for storage", ({ line, expected }) => {
         const fixedDate = new Date("2025-10-14T08:14:36.616Z");
         vi.setSystemTime(fixedDate);

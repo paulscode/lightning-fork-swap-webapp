@@ -24,7 +24,14 @@ export const parseDate = (date: string): Date => {
     return parsed;
 };
 
-const replaceBigInt = (_key: string, value: unknown) => {
+// Logs are kept for a week and can be exported for support: never with a
+// secret in them (preimages, private keys, the rescue key's words)
+const secretKey = /^(preimage|mnemonic|xpriv|seed|rescueFile|.*privateKey)$/i;
+
+const replaceBigInt = (key: string, value: unknown) => {
+    if (secretKey.test(key) && value !== undefined && value !== null) {
+        return "[redacted]";
+    }
     return typeof value === "bigint" ? value.toString() : value;
 };
 
