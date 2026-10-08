@@ -23,10 +23,9 @@ const defaults = {
 
     loglevel: "info" as log.LogLevelDesc,
     defaultLanguage: "en",
-    // Where the source code of the running service can be downloaded, as the
-    // AGPL requires: the deployment serves it at /source/ on the same origin.
-    // A GitHub URL also works (the footer then links the exact commit).
-    repoUrl: "/source/",
+    // The source of what runs, as AGPL-3.0 section 13 requires: this
+    // repository links to the backend and web app repositories
+    repoUrl: "https://github.com/paulscode/lightning-fork-swap",
 };
 
 const isTor = () =>

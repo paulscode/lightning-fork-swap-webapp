@@ -113,7 +113,6 @@ const dict = {
         invalid_address: "Invalid {{ asset }} address",
         scan_qr_code: "Scan QR Code",
         version: "Version",
-        commithash: "Commit Hash",
         open_in_wallet: "Open in Wallet",
         broadcasting_claim: "Broadcasting claim transaction...",
         paste_invalid:
@@ -232,8 +231,7 @@ const dict = {
         suspension_p1: "New swaps are paused for now.",
         suspension_p2:
             "Pending swaps keep working, and refunds and the rescue page stay available. If a swap of yours failed, you can refund it on the rescue page.",
-        source_code: "Source code",
-        built_on_boltz: "Built on Boltz (AGPL-3.0)",
+        open_source: "Open source on GitHub (AGPL-3.0)",
         hero_submarine_title: "Submarine swaps",
         hero_submarine_text:
             "Send on-chain BTC on the Bitcoin (BLAKE2b) chain; the service pays your Lightning invoice.",
