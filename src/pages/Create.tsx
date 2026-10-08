@@ -12,16 +12,16 @@ import {
 
 import AddressInput from "../components/AddressInput";
 import Asset from "../components/Asset";
+import CopyButton from "../components/CopyButton";
 import CreateButton from "../components/CreateButton";
 import Fees from "../components/Fees";
 import InvoiceInput from "../components/InvoiceInput";
 import QrScan from "../components/QrScan";
 import Reverse from "../components/Reverse";
 import SwapLimits from "../components/SwapLimits";
-import WeblnButton from "../components/WeblnButton";
 import SettingsCog from "../components/settings/SettingsCog";
 import SettingsMenu from "../components/settings/SettingsMenu";
-import { LN, getAssetNetwork } from "../consts/Assets";
+import { BTC, LN, getAssetNetwork } from "../consts/Assets";
 import { Denomination, Side } from "../consts/Enums";
 import { useCreateContext } from "../context/Create";
 import { useGlobalContext } from "../context/Global";
@@ -51,7 +51,6 @@ const Create = () => {
         setDenomination,
         denomination,
         wasmSupported,
-        webln,
         t,
         notify,
         embeddedMode,
@@ -658,8 +657,25 @@ const Create = () => {
                     </Show>
                 </Show>
                 <Show when={requiresInvoiceInput() && !destinationLocked()}>
-                    <Show when={webln()}>
-                        <WeblnButton />
+                    <Show when={receiveAmount().isGreaterThan(0)}>
+                        <CopyButton
+                            label="copy_invoice_amount"
+                            labelValues={{
+                                denomination: formatDenomination(
+                                    denomination(),
+                                    BTC,
+                                ),
+                            }}
+                            btnClass="btn btn-light"
+                            data={() =>
+                                formatAmount(
+                                    receiveAmount(),
+                                    denomination(),
+                                    separator(),
+                                    BTC,
+                                )
+                            }
+                        />
                         <hr class="spacer" />
                     </Show>
                     <InvoiceInput />

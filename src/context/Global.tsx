@@ -39,7 +39,6 @@ import {
 } from "../utils/rescueFile";
 import type { SomeSwap } from "../utils/swapCreator";
 import { checkWasmSupported } from "../utils/wasmSupport";
-import { detectWebLNProvider } from "../utils/webln";
 
 type NotificationType = "success" | "error";
 export type deriveKeyFn = (index: number, asset: AssetType) => ECKeys;
@@ -66,8 +65,6 @@ export type GlobalContextType = {
     setNotification: Setter<string>;
     notificationType: Accessor<string>;
     setNotificationType: Setter<string>;
-    webln: Accessor<boolean>;
-    setWebln: Setter<boolean>;
     i18nConfigured: Accessor<string | null>;
     setI18nConfigured: Setter<string | null>;
     denomination: Accessor<Denomination>;
@@ -136,8 +133,6 @@ const GlobalProvider = (props: {
 
     const [notification, setNotification] = createSignal<string>("");
     const [notificationType, setNotificationType] = createSignal<string>("");
-
-    const [webln, setWebln] = createSignal<boolean>(false);
 
     const [hideHero, setHideHero] = createSignal<boolean>(false);
 
@@ -362,7 +357,6 @@ const GlobalProvider = (props: {
     };
 
     setI18n(detectLanguage(i18nConfigured(), i18nUrl(), setI18nUrl));
-    void detectWebLNProvider().then((state) => setWebln(state));
     setWasmSupported(checkWasmSupported());
 
     const [privacyMode, setPrivacyMode] = makePersisted(
@@ -432,8 +426,6 @@ const GlobalProvider = (props: {
                 setNotification,
                 notificationType,
                 setNotificationType,
-                webln,
-                setWebln,
                 i18nConfigured,
                 setI18nConfigured,
                 denomination,

@@ -38,7 +38,6 @@
         "@trivago/prettier-plugin-sort-imports": "^6.0.2",
         "@types/node": "^25.9.3",
         "@types/qrcode": "^1.5.6",
-        "@webbtc/webln-types": "^3.0.0",
         "axios": "^1.18.1",
         "eslint": "^9.39.4",
         "eslint-plugin-import-x": "^4.17.1",
@@ -488,8 +487,6 @@
     "@vitest/utils": ["@vitest/utils@4.1.10", "", { "dependencies": { "@vitest/pretty-format": "4.1.10", "convert-source-map": "^2.0.0", "tinyrainbow": "^3.1.0" } }, "sha512-fy9am/HWxbaGt/Sawrp90vt6Y6jQwf1RX77cz3uwoJwJVMli/e1IEwRPnMNJ7vKfPTwo0diXifkpPvwH9v7nGA=="],
 
     "@vulpemventures/secp256k1-zkp": ["@vulpemventures/secp256k1-zkp@3.2.1", "", { "dependencies": { "long": "^5.2.3" } }, "sha512-2U4nuNbXuUgMmxhuoILbRMoD2DE7KND3udk5cYilIS1MHvMtje9ywUm/zsI0g7d7x8g2A57xri+wvqCC/fCnJg=="],
-
-    "@webbtc/webln-types": ["@webbtc/webln-types@3.0.0", "", {}, "sha512-aXfTHLKz5lysd+6xTeWl+qHNh/p3qVYbeLo+yDN5cUDmhie2ZoGvkppfWxzbGkcFBzb6dJyQ2/i2cbmDHas+zQ=="],
 
     "acorn": ["acorn@8.17.0", "", { "bin": { "acorn": "bin/acorn" } }, "sha512-xRQbDb9BnwDafYNn6Vwl839DYVjqXYb1XVGtWAZ1kcDc6iwAL4hg3B1dZlRiuENFeO2H53gFG3in621AdERVAg=="],
 

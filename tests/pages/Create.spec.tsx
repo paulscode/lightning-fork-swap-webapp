@@ -10,6 +10,7 @@ import i18n from "../../src/i18n/i18n";
 import Create from "../../src/pages/Create";
 import Pair from "../../src/utils/Pair";
 import { calculateReceiveAmount } from "../../src/utils/calculate";
+import { formatDenomination } from "../../src/utils/denomination";
 import type * as HelperModule from "../../src/utils/helper";
 import { isMobile } from "../../src/utils/helper";
 import { blake2bInvoice } from "../fixtures/invoices";
@@ -1132,5 +1133,61 @@ describe("Create", () => {
         await new Promise((resolve) => setTimeout(resolve, 0));
         expect(screen.queryByText(globalSignals.t("scan_qr_code"))).toBeNull();
         expect(screen.queryByTestId("invoice")).toBeNull();
+    });
+
+    test("should copy the receive amount for the invoice in the selected denomination", async () => {
+        const writeText = vi.fn(() => Promise.resolve());
+        Object.defineProperty(navigator, "clipboard", {
+            value: { writeText },
+            configurable: true,
+        });
+
+        renderCreate();
+        globalSignals.setOnline(true);
+        globalSignals.setPairs(pairs);
+        globalSignals.setDenomination(Denomination.Sat);
+        setPairAssets(BTC, LN);
+        await waitFor(() => {
+            expect(signals.minimum()).toBeGreaterThan(0);
+        });
+
+        expect(screen.queryByTestId("copy_invoice_amount")).toBeNull();
+
+        const receiveAmountInput = (await screen.findByTestId(
+            "receiveAmount",
+        )) as HTMLInputElement;
+        fireEvent.input(receiveAmountInput, { target: { value: "25000" } });
+
+        const copyButton = await screen.findByTestId("copy_invoice_amount");
+        expect(copyButton.textContent).toEqual("Copy amount in sats");
+        fireEvent.click(copyButton);
+        expect(writeText).toHaveBeenLastCalledWith("25000");
+
+        globalSignals.setDenomination(Denomination.Btc);
+        await waitFor(() => {
+            expect(copyButton.textContent).toEqual(
+                `Copy amount in ${formatDenomination(Denomination.Btc, BTC)}`,
+            );
+        });
+        fireEvent.click(copyButton);
+        expect(writeText).toHaveBeenLastCalledWith("0.00025");
+    });
+
+    test("should take the invoice in a textarea that ignores Enter", async () => {
+        renderCreate();
+        globalSignals.setOnline(true);
+        globalSignals.setPairs(pairs);
+        setPairAssets(BTC, LN);
+
+        const invoiceInput = await screen.findByTestId("invoice");
+        expect(invoiceInput.tagName).toEqual("TEXTAREA");
+        const enter = new KeyboardEvent("keydown", {
+            key: "Enter",
+            bubbles: true,
+            cancelable: true,
+        });
+        invoiceInput.dispatchEvent(enter);
+        expect(enter.defaultPrevented).toEqual(true);
+        expect(screen.queryByText("Create invoice via WebLN")).toBeNull();
     });
 });

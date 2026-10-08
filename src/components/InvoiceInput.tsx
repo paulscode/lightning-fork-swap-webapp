@@ -24,7 +24,7 @@ type InvoiceInputProps = {
 };
 
 const InvoiceInput = (props: InvoiceInputProps = {}) => {
-    let inputRef!: HTMLInputElement;
+    let inputRef!: HTMLTextAreaElement;
     let validationRequest = 0;
 
     const { t, notify, pairs } = useGlobalContext();
@@ -47,7 +47,7 @@ const InvoiceInput = (props: InvoiceInputProps = {}) => {
         setQuoteLoading,
     } = useCreateContext();
 
-    const clearInputError = (input: HTMLInputElement) => {
+    const clearInputError = (input: HTMLTextAreaElement) => {
         input.classList.remove("invalid");
         input.setCustomValidity("");
         setInvoiceError(undefined);
@@ -61,7 +61,7 @@ const InvoiceInput = (props: InvoiceInputProps = {}) => {
     const canSwitchToAsset = (asset: string | null): asset is string =>
         asset !== LN && asset !== null;
 
-    const validateInput = (input: HTMLInputElement) => {
+    const validateInput = (input: HTMLTextAreaElement) => {
         const inputValue = input.value.trim();
         const address = extractAddress(inputValue);
         const invoiceValue = extractInvoice(inputValue) ?? "";
@@ -76,7 +76,7 @@ const InvoiceInput = (props: InvoiceInputProps = {}) => {
     };
 
     const validate = async (
-        input: HTMLInputElement,
+        input: HTMLTextAreaElement,
         inputValue = input.value.trim(),
     ) => {
         const requestId = ++validationRequest;
@@ -190,12 +190,20 @@ const InvoiceInput = (props: InvoiceInputProps = {}) => {
     );
 
     return (
-        <input
+        <textarea
             required
             ref={inputRef}
             onInput={(e) => validateInput(e.currentTarget)}
-            type="text"
-            class={props.class}
+            onKeyDown={(e) => {
+                // An invoice is one line: Enter must not add a line break
+                if (e.key === "Enter") {
+                    e.preventDefault();
+                }
+            }}
+            rows={3}
+            spellcheck={false}
+            autocapitalize="off"
+            class={`invoice-input ${props.class ?? ""}`.trim()}
             id="invoice"
             data-testid="invoice"
             name="invoice"

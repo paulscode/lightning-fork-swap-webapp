@@ -62,6 +62,7 @@ const dict = {
         copy_invoice: "Lightning invoice",
         copy_address: "Address",
         copy_amount: "Amount",
+        copy_invoice_amount: "Copy amount in {{ denomination }}",
         copy_bip21: "BIP21",
         rescue_a_swap_mnemonic:
             "Enter your rescue key to rescue a swap that is not available in this browser’s swap history.",
@@ -84,8 +85,6 @@ const dict = {
         tx_in_mempool_subline: "Waiting for confirmation to complete the swap.",
         invoice_pending: "Transaction received, paying invoice.",
         invoice_expired: "Invoice expired, try again!",
-        create_invoice_webln: "Create invoice via WebLN",
-        pay_invoice_webln: "Pay invoice via WebLN",
         search: "Search",
         tx_confirmed: "Transaction confirmed",
         tx_ready_to_claim: "Claiming transaction now...",

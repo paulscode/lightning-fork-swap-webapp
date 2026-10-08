@@ -15,6 +15,7 @@ import { clipboard } from "../utils/helper";
 
 const CopyButton = (props: {
     label: DictKey;
+    labelValues?: Record<string, string>;
     data: string | Accessor<string>;
     removeSpaces?: boolean;
     btnClass?: string;
@@ -51,7 +52,7 @@ const CopyButton = (props: {
                 fallback={<BiRegularCopy size={21} />}>
                 <IoCheckmark size={21} />
             </Show>
-            {t(merged.label)}
+            {t(merged.label, merged.labelValues)}
         </span>
     );
 };

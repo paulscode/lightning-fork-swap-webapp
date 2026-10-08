@@ -689,6 +689,10 @@ textarea.invalid {
     outline: none;
     border-color: var(--color-error-500);
 }
+textarea.invoice-input {
+    word-break: break-all;
+    overflow-wrap: anywhere;
+}
 .committed-invoice-row {
     position: relative;
 }

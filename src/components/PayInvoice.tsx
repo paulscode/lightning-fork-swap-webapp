@@ -1,5 +1,4 @@
 import { BigNumber } from "bignumber.js";
-import log from "loglevel";
 import { Show } from "solid-js";
 
 import CopyButton from "../components/CopyButton";
@@ -9,21 +8,10 @@ import { useGlobalContext } from "../context/Global";
 import { formatAmount, formatDenomination } from "../utils/denomination";
 import { isMobile } from "../utils/helper";
 import { invoicePrefix } from "../utils/invoice";
-import { enableWebln } from "../utils/webln";
 import CopyBox from "./CopyBox";
 
 const PayInvoice = (props: { sendAmount: number; invoice: string }) => {
-    const { t, denomination, separator, webln } = useGlobalContext();
-
-    const payWeblnInvoice = async (pr: string) => {
-        await enableWebln(async () => {
-            if (window.webln === undefined) {
-                throw new Error("webln is not available");
-            }
-            const result = await window.webln.sendPayment(pr);
-            log.debug("webln payment result:", result);
-        });
-    };
+    const { t, denomination, separator } = useGlobalContext();
 
     return (
         <div>
@@ -48,13 +36,6 @@ const PayInvoice = (props: { sendAmount: number; invoice: string }) => {
             <Show when={isMobile()}>
                 <h3>{t("warning_return")}</h3>
                 <hr />
-            </Show>
-            <Show when={webln() && !isMobile()}>
-                <span
-                    class="btn btn-light"
-                    onClick={() => payWeblnInvoice(props.invoice)}>
-                    {t("pay_invoice_webln")}
-                </span>
             </Show>
             <Show when={isMobile()}>
                 <a href={invoicePrefix + props.invoice} class="btn btn-light">
