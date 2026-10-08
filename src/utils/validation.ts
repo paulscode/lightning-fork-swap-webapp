@@ -16,11 +16,12 @@ import {
 } from "boltz-swaps/invoice";
 import { SwapType } from "boltz-swaps/types";
 import { createMusig, tweakMusig } from "boltz-swaps/utxo";
+import log from "loglevel";
 
 import { type AssetType, BTC } from "../consts/Assets";
 import { Denomination } from "../consts/Enums";
 import type { deriveKeyFn } from "../context/Global";
-import { getBlockTipHeight } from "./blockchain";
+import { getBlockTipHeight, hasBlockExplorer } from "./blockchain";
 import { decodeAddress } from "./compat";
 import { formatAmountDenomination } from "./denomination";
 import type { ECKeys } from "./ecpair";
@@ -252,6 +253,10 @@ const validateTimeout = async (swap: SomeSwap): Promise<void> => {
     const bounds = timeoutBounds[swap.type as keyof typeof timeoutBounds];
     const asset =
         swap.type === SwapType.Reverse ? swap.assetReceive : swap.assetSend;
+    if (!hasBlockExplorer(asset)) {
+        log.warn(`No explorer to check the timeout of swap ${swap.id} with`);
+        return;
+    }
     const tip = Number(await getBlockTipHeight(asset));
     const blocks = swap.timeoutBlockHeight - tip;
     if (

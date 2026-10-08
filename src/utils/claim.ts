@@ -20,6 +20,7 @@ import {
     broadcastTransaction,
     getBlockTipHeight,
     getRawTransaction,
+    hasBlockExplorer,
 } from "./blockchain";
 import { parsePrivateKey } from "./helper";
 import type { ReverseSwap, SubmarineSwap } from "./swapCreator";
@@ -94,6 +95,10 @@ export const verifyReverseLockup = async (
     swap: ReverseSwap,
     lockupHex: string,
 ): Promise<void> => {
+    if (!hasBlockExplorer(swap.assetReceive)) {
+        log.warn(`No explorer to check the lockup of swap ${swap.id} with`);
+        return;
+    }
     const txid = txToId(parseTransaction(lockupHex));
 
     let explorerHex: string | undefined;

@@ -25,6 +25,7 @@ vi.mock("../../src/utils/blockchain", () => ({
     broadcastTransaction: vi.fn(),
     getRawTransaction: vi.fn(),
     getBlockTipHeight: vi.fn(),
+    hasBlockExplorer: vi.fn(() => true),
 }));
 
 const { broadcastTransaction, getBlockTipHeight, getRawTransaction } =

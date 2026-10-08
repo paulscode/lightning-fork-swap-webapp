@@ -14,7 +14,10 @@ import { SwapType } from "boltz-swaps/types";
 import log from "loglevel";
 
 import { BTC, LN } from "../../src/consts/Assets";
-import { getBlockTipHeight } from "../../src/utils/blockchain";
+import {
+    getBlockTipHeight,
+    hasBlockExplorer,
+} from "../../src/utils/blockchain";
 import { decodeAddress } from "../../src/utils/compat";
 import { ECPair } from "../../src/utils/ecpair";
 import type { SomeSwap } from "../../src/utils/swapCreator";
@@ -44,6 +47,7 @@ vi.mock("boltz-swaps/invoice", async (importOriginal) => {
 
 vi.mock("../../src/utils/blockchain", () => ({
     getBlockTipHeight: vi.fn(),
+    hasBlockExplorer: vi.fn(() => true),
 }));
 
 const decodeInvoiceMock = vi.mocked(decodeInvoice);
@@ -226,6 +230,19 @@ describe("validate responses", () => {
                         ),
                 ),
             ).rejects.toThrow(/costs 11001 sat of 100000, more than 11000/);
+        });
+
+        test("should not ask for the tip in a build without an explorer", async () => {
+            vi.mocked(hasBlockExplorer).mockReturnValueOnce(false);
+            vi.mocked(getBlockTipHeight).mockClear();
+            await expect(
+                validateResponse(reverseSwapBtc as SomeSwap, () =>
+                    ECPair.fromPrivateKey(
+                        hex.decode(reverseSwapBtc.claimPrivateKey),
+                    ),
+                ),
+            ).resolves.toBeUndefined();
+            expect(getBlockTipHeight).not.toHaveBeenCalled();
         });
 
         test("should refuse a swap when the tip is unknown", async () => {

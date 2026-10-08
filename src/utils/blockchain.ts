@@ -179,6 +179,11 @@ export const getRawTransaction = async (asset: string, txid: string) => {
     return await fetchBlockExplorer<string>(asset, `/tx/${txid}/hex`);
 };
 
+// Builds without an explorer (regtest) cannot check the server's word
+// against one; every mainnet build has one
+export const hasBlockExplorer = (asset: string): boolean =>
+    (config.assets?.[asset]?.blockExplorerApis ?? []).length > 0;
+
 export const getBlockTipHeight = async (asset: string) => {
     const height = await fetchBlockExplorer<string>(
         asset,
