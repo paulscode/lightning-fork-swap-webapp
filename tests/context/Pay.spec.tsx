@@ -166,6 +166,7 @@ describe("PayProvider claimSwap", () => {
                 expect.objectContaining({ id: reverseSwap.id }),
                 lockup,
                 true,
+                false,
             );
             expect(stored[reverseSwap.id].claimTx).toEqual("claimtxid");
             expect(context.swap()?.claimTx).toEqual("claimtxid");
@@ -225,6 +226,7 @@ describe("PayProvider claimSwap", () => {
                 expect.objectContaining({ id: reverseSwap.id }),
                 expect.objectContaining({ hex: "fetchedhex" }),
                 true,
+                false,
             );
         });
 
@@ -243,6 +245,8 @@ describe("PayProvider claimSwap", () => {
 
             expect(getReverseTransaction).toHaveBeenCalledWith(reverseSwap.id);
             expect(claim).toHaveBeenCalledTimes(1);
+            // Settled: the preimage is out, so the claim skips the lockup check
+            expect(vi.mocked(claim).mock.calls[0][4]).toEqual(true);
             expect(stored[reverseSwap.id].claimTx).toEqual("claimtxid");
         });
 

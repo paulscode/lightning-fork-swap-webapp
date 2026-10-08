@@ -30,6 +30,7 @@ import { getSwapIconAssets } from "../components/SwapIcons";
 import { hiddenInformation } from "../components/settings/PrivacyMode";
 import SettingsMenu from "../components/settings/SettingsMenu";
 import { type AssetType, LN } from "../consts/Assets";
+import { swapStatusSuccess } from "../consts/SwapStatus";
 import { useCreateContext } from "../context/Create";
 import { useGlobalContext } from "../context/Global";
 import { useRescueContext } from "../context/Rescue";
@@ -243,6 +244,7 @@ const ClaimRescue = () => {
                 },
                 swap.transaction as { hex: string },
                 true,
+                swap.status === swapStatusSuccess.InvoiceSettled,
             );
             notify(
                 "success",

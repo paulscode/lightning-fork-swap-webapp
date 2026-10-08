@@ -175,7 +175,7 @@ const getAddressUTXOs = async (
     return utxos as UTXO[];
 };
 
-const getRawTransaction = async (asset: string, txid: string) => {
+export const getRawTransaction = async (asset: string, txid: string) => {
     return await fetchBlockExplorer<string>(asset, `/tx/${txid}/hex`);
 };
 

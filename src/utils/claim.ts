@@ -9,13 +9,18 @@ import {
     parseTransaction,
     tweakMusig,
     txToHex,
+    txToId,
 } from "boltz-swaps/utxo";
 import log from "loglevel";
 
 import { config } from "../config";
 import type { AssetType } from "../consts/Assets";
 import type { deriveKeyFn } from "../context/Global";
-import { broadcastTransaction } from "./blockchain";
+import {
+    broadcastTransaction,
+    getBlockTipHeight,
+    getRawTransaction,
+} from "./blockchain";
 import { parsePrivateKey } from "./helper";
 import type { ReverseSwap, SubmarineSwap } from "./swapCreator";
 
@@ -73,12 +78,69 @@ export const findSwapOutputVout = (
     return detectSwap(tweaked.aggPubkey, lockupTx)?.vout;
 };
 
+// Blocks a lockup must still have before its timeout for the preimage to
+// be revealed: the claim must confirm before the server could refund
+export const minClaimMarginBlocks = 30;
+
+export const lockupCheckRetry = { attempts: 6, delayMs: 5_000 };
+
+/**
+ * Claiming reveals the preimage, which lets the server settle the user's
+ * Lightning payment. Before that, the lockup the server reports must be one
+ * the explorer (not the server) knows, and far enough from its timeout that
+ * the server cannot refund it first.
+ */
+export const verifyReverseLockup = async (
+    swap: ReverseSwap,
+    lockupHex: string,
+): Promise<void> => {
+    const txid = txToId(parseTransaction(lockupHex));
+
+    let explorerHex: string | undefined;
+    for (let attempt = 1; ; attempt++) {
+        try {
+            explorerHex = await getRawTransaction(swap.assetReceive, txid);
+            break;
+        } catch (e) {
+            // A lockup only just broadcast may not have reached it yet
+            if (attempt >= lockupCheckRetry.attempts) {
+                throw new Error(
+                    `the explorer does not know lockup ${txid} of swap ${swap.id}`,
+                    { cause: e },
+                );
+            }
+            await new Promise((resolve) =>
+                setTimeout(resolve, lockupCheckRetry.delayMs),
+            );
+        }
+    }
+
+    if (explorerHex.trim().toLowerCase() !== lockupHex.trim().toLowerCase()) {
+        throw new Error(
+            `lockup ${txid} of swap ${swap.id} differs from the explorer's`,
+        );
+    }
+
+    const tip = Number(await getBlockTipHeight(swap.assetReceive));
+    if (swap.timeoutBlockHeight - tip < minClaimMarginBlocks) {
+        throw new Error(
+            `swap ${swap.id} times out at block ${swap.timeoutBlockHeight}, too close to the tip ${tip} to claim safely`,
+        );
+    }
+};
+
 export const claim = async (
     deriveKey: deriveKeyFn,
     swap: ReverseSwap,
     swapStatusTransaction: { hex: string },
     cooperative: boolean,
+    // Once the invoice is settled the preimage is out already: claim at once
+    invoiceSettled = false,
 ): Promise<ReverseSwap> => {
+    if (!invoiceSettled) {
+        await verifyReverseLockup(swap, swapStatusTransaction.hex);
+    }
+
     const lockupTx = parseTransaction(swapStatusTransaction.hex);
     const claimTransaction = await claimReverseSwap(
         deriveKey,
@@ -94,9 +156,14 @@ export const claim = async (
     );
     log.debug("Claim transaction broadcast result", res);
 
-    if (res.id) {
-        swap.claimTx = res.id;
+    // Record the transaction that was built, not what a broadcaster says
+    const claimTxId = txToId(claimTransaction);
+    if (res.id !== undefined && res.id !== claimTxId) {
+        log.warn(
+            `Broadcaster returned ${res.id} for claim transaction ${claimTxId}`,
+        );
     }
+    swap.claimTx = claimTxId;
 
     return swap;
 };

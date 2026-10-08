@@ -168,6 +168,7 @@ const PayProvider = (props: { children: JSX.Element }) => {
                             claimableSwap,
                             transaction,
                             true,
+                            data.status === swapStatusSuccess.InvoiceSettled,
                         );
                         const claimedSwap = await modifySwap(result.id, (s) => {
                             s.claimTx = result.claimTx;
