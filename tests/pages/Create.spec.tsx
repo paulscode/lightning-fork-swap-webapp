@@ -469,28 +469,6 @@ describe("Create", () => {
         },
     );
 
-    test("should hide the max button for a locked destination", async () => {
-        renderCreate();
-
-        globalSignals.setPairs(pairs);
-        await waitFor(() => {
-            expect(signals.maximum()).toBeGreaterThan(0);
-        });
-        expect(screen.getByTestId("limit-max-button")).toBeInTheDocument();
-
-        signals.setDestinationLocked(true);
-
-        await waitFor(() => {
-            expect(screen.queryByTestId("limit-max-button")).toBeNull();
-        });
-        expect(
-            (screen.getByTestId("sendAmount") as HTMLInputElement).disabled,
-        ).toBe(true);
-        expect(
-            (screen.getByTestId("receiveAmount") as HTMLInputElement).disabled,
-        ).toBe(true);
-    });
-
     test("should prioritize amount errors", async () => {
         renderCreate();
         globalSignals.setPairs(pairs);
@@ -1099,41 +1077,6 @@ describe("Create", () => {
             }
         },
     );
-
-    test("should hide QR scanner for locked Lightning destinations on mobile", async () => {
-        vi.mocked(isMobile).mockReturnValue(true);
-
-        const LockedCreate = () => {
-            const [showCreate, setShowCreate] = createSignal(false);
-
-            onMount(() => {
-                signals.setPair(new Pair(pairs, BTC, LN));
-                signals.setDestinationLocked(true);
-                setShowCreate(true);
-            });
-
-            return (
-                <>
-                    <TestComponent />
-                    <Show when={showCreate()}>
-                        <Create />
-                    </Show>
-                </>
-            );
-        };
-
-        render(() => <LockedCreate />, {
-            wrapper: contextWrapper,
-        });
-
-        await waitFor(() => {
-            expect(signals.destinationLocked()).toBe(true);
-        });
-
-        await new Promise((resolve) => setTimeout(resolve, 0));
-        expect(screen.queryByText(globalSignals.t("scan_qr_code"))).toBeNull();
-        expect(screen.queryByTestId("invoice")).toBeNull();
-    });
 
     test("should copy the receive amount for the invoice in the selected denomination", async () => {
         const writeText = vi.fn(() => Promise.resolve());

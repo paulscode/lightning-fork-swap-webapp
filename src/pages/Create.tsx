@@ -85,7 +85,6 @@ const Create = () => {
         setQuoteLoading,
         quoteError,
         setQuoteError,
-        destinationLocked,
     } = useCreateContext();
     let quoteRequestId = 0;
 
@@ -524,16 +523,14 @@ const Create = () => {
                                 <span class="amount-row-label">
                                     {t("send")}
                                 </span>
-                                <Show when={!destinationLocked()}>
-                                    <SwapLimits
-                                        maximum={maximum()}
-                                        maxLabel={t("max")}
-                                        loading={limitActionsLoading()}
-                                        maximumEnabled={maximum() > 0}
-                                        onSelectAmount={setAmount}
-                                        onSelectMaximum={setMaxAmount}
-                                    />
-                                </Show>
+                                <SwapLimits
+                                    maximum={maximum()}
+                                    maxLabel={t("max")}
+                                    loading={limitActionsLoading()}
+                                    maximumEnabled={maximum() > 0}
+                                    onSelectAmount={setAmount}
+                                    onSelectMaximum={setMaxAmount}
+                                />
                                 <Show when={sendAmountQuoteLoading()}>
                                     <div
                                         class="amount-value-skeleton"
@@ -562,10 +559,7 @@ const Create = () => {
                                     id="sendAmount"
                                     data-testid="sendAmount"
                                     autocomplete="off"
-                                    disabled={
-                                        sendAmountQuoteLoading() ||
-                                        destinationLocked()
-                                    }
+                                    disabled={sendAmountQuoteLoading()}
                                     classList={{
                                         "amount-input--quote-pending":
                                             sendAmountQuoteLoading(),
@@ -582,9 +576,7 @@ const Create = () => {
                             </label>
                         </div>
                     </div>
-                    <Show when={!destinationLocked()}>
-                        <Reverse />
-                    </Show>
+                    <Reverse />
                     <div>
                         <Asset
                             side={Side.Receive}
@@ -622,10 +614,7 @@ const Create = () => {
                                     id="receiveAmount"
                                     data-testid="receiveAmount"
                                     autocomplete="off"
-                                    disabled={
-                                        receiveAmountQuoteLoading() ||
-                                        destinationLocked()
-                                    }
+                                    disabled={receiveAmountQuoteLoading()}
                                     classList={{
                                         "amount-input--quote-pending":
                                             receiveAmountQuoteLoading(),
@@ -651,12 +640,10 @@ const Create = () => {
                         (pair().requiredInput === RequiredInput.Unknown &&
                             pair().toAsset !== LN)
                     }>
-                    <Show when={!destinationLocked()}>
-                        <AddressInput />
-                        <hr class="spacer" />
-                    </Show>
+                    <AddressInput />
+                    <hr class="spacer" />
                 </Show>
-                <Show when={requiresInvoiceInput() && !destinationLocked()}>
+                <Show when={requiresInvoiceInput()}>
                     <Show when={receiveAmount().isGreaterThan(0)}>
                         <CopyButton
                             label="copy_invoice_amount"
@@ -671,7 +658,8 @@ const Create = () => {
                                 formatAmount(
                                     receiveAmount(),
                                     denomination(),
-                                    separator(),
+                                    // A plain decimal point: wallets parse it whatever the locale
+                                    ".",
                                     BTC,
                                 )
                             }
@@ -681,7 +669,7 @@ const Create = () => {
                     <InvoiceInput />
                     <hr class="spacer" />
                 </Show>
-                <Show when={isMobile() && !destinationLocked()}>
+                <Show when={isMobile()}>
                     <QrScan />
                     <hr class="spacer" />
                 </Show>

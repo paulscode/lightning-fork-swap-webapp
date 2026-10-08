@@ -192,44 +192,7 @@ describe("signals", () => {
         expect(Number(signals.sendAmount())).toEqual(0);
     });
 
-    test.each`
-        embedded  | description
-        ${"true"} | ${"embedded mode"}
-        ${null}   | ${"non-embedded mode"}
-    `(
-        "should set destinationLocked with lockOutput + bolt11 destination in $description",
-        async ({ embedded }: { embedded: string | null }) => {
-            mockUrlParams({
-                destination: blake2bInvoice,
-                lockOutput: "true",
-                embedded,
-            });
-
-            render(() => <TestComponent />, { wrapper: contextWrapper });
-
-            await waitFor(() => {
-                expect(signals.destinationLocked()).toBe(true);
-            });
-
-            expect(signals.pair().toAsset).toEqual(LN);
-            expect(signals.invoice()).toEqual(blake2bInvoice);
-            expect(signals.invoiceValid()).toEqual(true);
-            expect(Number(signals.receiveAmount())).toEqual(invoiceAmount);
-        },
-    );
-
-    test("should not set destinationLocked when lockOutput is missing", async () => {
-        mockUrlParams({ destination: blake2bInvoice, embedded: "true" });
-
-        render(() => <TestComponent />, { wrapper: contextWrapper });
-
-        await waitFor(() => {
-            expect(signals.invoice()).toEqual(blake2bInvoice);
-        });
-        expect(signals.destinationLocked()).toBe(false);
-    });
-
-    test("should not lock or take the amount of an invoice without the BLAKE2b feature bit", async () => {
+    test("should not take the amount of an invoice without the BLAKE2b feature bit", async () => {
         mockUrlParams({ destination: sha256Invoice, lockOutput: "true" });
 
         render(() => <TestComponent />, { wrapper: contextWrapper });
@@ -237,7 +200,6 @@ describe("signals", () => {
         await waitFor(() => {
             expect(signals.invoice()).toEqual(sha256Invoice);
         });
-        expect(signals.destinationLocked()).toBe(false);
         expect(Number(signals.receiveAmount())).toEqual(0);
     });
 

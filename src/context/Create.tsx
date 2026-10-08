@@ -140,7 +140,6 @@ const handleUrlParams = (
     setReceiveAmount: Setter<BigNumber>,
     setAddressValid: Setter<boolean>,
     setInvoiceValid: Setter<boolean>,
-    setDestinationLocked: Setter<boolean>,
 ) => {
     const setAssetReceive = (asset: string) => {
         setPair(new Pair(pair().pairs, pair().fromAsset, asset));
@@ -205,9 +204,6 @@ const handleUrlParams = (
             if (sats > 0) {
                 setAmountChanged(Side.Receive);
                 setReceiveAmount(BigNumber(sats));
-                if (getUrlParam(UrlParam.LockOutput) === "true") {
-                    setDestinationLocked(true);
-                }
             }
         } catch {
             // Invalid invoice; leave amount unse.
@@ -277,8 +273,6 @@ export type CreateContextType = {
     setQuoteLoading: Setter<boolean>;
     quoteError: Accessor<DictKey | undefined>;
     setQuoteError: Setter<DictKey | undefined>;
-    destinationLocked: Accessor<boolean>;
-    setDestinationLocked: Setter<boolean>;
 };
 
 const CreateContext = createContext<CreateContextType>();
@@ -315,7 +309,6 @@ const CreateProvider = (props: { children: JSX.Element }) => {
     const [quoteError, setQuoteError] = createSignal<DictKey | undefined>(
         undefined,
     );
-    const [destinationLocked, setDestinationLocked] = createSignal(false);
 
     createEffect(() => {
         if (amountValid() && pair().isRoutable) {
@@ -378,7 +371,6 @@ const CreateProvider = (props: { children: JSX.Element }) => {
         setReceiveAmount,
         setAddressValid,
         setInvoiceValid,
-        setDestinationLocked,
     );
 
     return (
@@ -427,8 +419,6 @@ const CreateProvider = (props: { children: JSX.Element }) => {
                 setQuoteLoading,
                 quoteError,
                 setQuoteError,
-                destinationLocked,
-                setDestinationLocked,
             }}>
             {props.children}
         </CreateContext.Provider>

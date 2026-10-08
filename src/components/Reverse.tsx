@@ -6,14 +6,11 @@ import Pair from "../utils/Pair";
 
 const Reverse = () => {
     const { pairs } = useGlobalContext();
-    const { pair, setPair, setOnchainAddress, setInvoice, destinationLocked } =
-        useCreateContext();
+    const { pair, setPair, setOnchainAddress, setInvoice } = useCreateContext();
 
     const setDirection = () => {
         setOnchainAddress("");
-        if (!destinationLocked()) {
-            setInvoice("");
-        }
+        setInvoice("");
         setPair(new Pair(pairs(), pair().toAsset, pair().fromAsset));
     };
 
