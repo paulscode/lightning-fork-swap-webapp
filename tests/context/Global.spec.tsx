@@ -2,6 +2,7 @@ import { render } from "@solidjs/testing-library";
 import type * as BoltzClientModule from "boltz-swaps/client";
 import { SwapType } from "boltz-swaps/types";
 
+import { BTC } from "../../src/consts/Assets";
 import type { SomeSwap } from "../../src/utils/swapCreator";
 
 const { getPairsMock } = vi.hoisted(() => ({
@@ -185,6 +186,30 @@ describe("Global context", () => {
             expect(await globalSignals.updateSwapStatus("nope", "x")).toBe(
                 false,
             );
+        });
+    });
+
+    describe("keys across tabs", () => {
+        const renderProvider = () => {
+            getPairsMock.mockResolvedValue(emptyPairs);
+            render(() => (
+                <GlobalProvider>
+                    <Probe />
+                </GlobalProvider>
+            ));
+        };
+
+        test("newKey continues from an index another tab used", async () => {
+            renderProvider();
+            const first = await globalSignals.newKey(BTC);
+            // Another tab handed out indexes up to 6 meanwhile
+            localStorage.setItem("lastUsedKey", "7");
+
+            const second = await globalSignals.newKey(BTC);
+
+            expect(first.index).toEqual(0);
+            expect(second.index).toEqual(7);
+            expect(localStorage.getItem("lastUsedKey")).toEqual("8");
         });
     });
 });

@@ -197,8 +197,26 @@ const GlobalProvider = (props: {
         },
     );
 
+    // Persisted signals are read once per tab: read the stored value again
+    // where another tab may have written it since
+    const readStored = <T,>(name: string): T | null => {
+        try {
+            const raw = localStorage.getItem(name);
+            return raw === null ? null : (JSON.parse(raw) as T);
+        } catch {
+            return null;
+        }
+    };
+
     createEffect(() => {
         if (rescueFile() === null) {
+            // A tab opened alongside may have made one already: keep a single
+            // rescue file, the one the user backs up
+            const stored = readStored<RescueFile>("rescueFile");
+            if (stored !== null) {
+                setRescueFile(stored);
+                return;
+            }
             log.debug("Generating rescue file");
             setRescueFile(generateRescueFile());
         }
@@ -216,10 +234,23 @@ const GlobalProvider = (props: {
         return ECPair.fromPrivateKey(new Uint8Array(derived.privateKey));
     };
 
-    const newKey = (asset: AssetType) => {
-        const index = lastUsedKey();
-        setLastUsedKey(index + 1);
-        return Promise.resolve({ index, key: deriveKeyWrapper(index, asset) });
+    // Key indexes must never repeat across tabs: a reverse swap's preimage is
+    // derived from its index
+    const newKey = async (asset: AssetType) => {
+        const allocate = () => {
+            const stored = readStored<number>("lastUsedKey");
+            const index = Math.max(
+                lastUsedKey(),
+                Number.isSafeInteger(stored) ? (stored as number) : 0,
+            );
+            setLastUsedKey(index + 1);
+            return { index, key: deriveKeyWrapper(index, asset) };
+        };
+
+        if (navigator.locks?.request === undefined) {
+            return allocate();
+        }
+        return await navigator.locks.request("lfswap:keyIndex", allocate);
     };
 
     const getXpubWrapper = () => {
