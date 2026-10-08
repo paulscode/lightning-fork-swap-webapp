@@ -145,8 +145,34 @@ const fetchBlockExplorerParallel = async <T>(
     }
 };
 
-const getAddressUTXOs = async (asset: string, address: string) => {
-    return await fetchBlockExplorer<UTXO[]>(asset, `/address/${address}/utxo`);
+// The explorer is proxied as text/plain (so that nothing it returns can run
+// on this origin), so its JSON arrives as a string to parse here
+const explorerJson = (value: unknown): unknown =>
+    typeof value === "string" ? JSON.parse(value) : value;
+
+const isTxid = (value: unknown): value is string =>
+    typeof value === "string" && /^[0-9a-f]{64}$/.test(value);
+
+const getAddressUTXOs = async (
+    asset: string,
+    address: string,
+): Promise<UTXO[]> => {
+    const utxos = explorerJson(
+        await fetchBlockExplorer<unknown>(asset, `/address/${address}/utxo`),
+    );
+    if (
+        !Array.isArray(utxos) ||
+        !utxos.every(
+            (utxo: Partial<UTXO> | null) =>
+                typeof utxo === "object" &&
+                utxo !== null &&
+                isTxid(utxo.txid) &&
+                Number.isSafeInteger(utxo.vout),
+        )
+    ) {
+        throw new Error("block explorer returned malformed UTXOs");
+    }
+    return utxos as UTXO[];
 };
 
 const getRawTransaction = async (asset: string, txid: string) => {
@@ -173,10 +199,21 @@ export const getTransactionOutSpend = async (
     txid: string,
     vout: number,
 ) => {
-    return await fetchBlockExplorer<{ spent: boolean; txid?: string }>(
-        asset,
-        `/tx/${txid}/outspend/${vout}`,
-    );
+    const outspend = explorerJson(
+        await fetchBlockExplorer<unknown>(
+            asset,
+            `/tx/${txid}/outspend/${vout}`,
+        ),
+    ) as { spent?: unknown; txid?: unknown } | null;
+    if (
+        typeof outspend !== "object" ||
+        outspend === null ||
+        typeof outspend.spent !== "boolean" ||
+        (outspend.txid !== undefined && !isTxid(outspend.txid))
+    ) {
+        throw new Error("block explorer returned a malformed outspend");
+    }
+    return outspend as { spent: boolean; txid?: string };
 };
 
 export const broadcastToExplorer = async (

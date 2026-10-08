@@ -165,12 +165,15 @@ describe("blockchain", () => {
         });
     });
 
+    const tx1 = "1".repeat(64);
+    const tx2 = "2".repeat(64);
+
     test("should get the spend status of an output", async () => {
-        fetchMock.mockResolvedValue(jsonResponse({ spent: true, txid: "ab" }));
+        fetchMock.mockResolvedValue(jsonResponse({ spent: true, txid: tx1 }));
 
         await expect(getTransactionOutSpend(BTC, "txid", 1)).resolves.toEqual({
             spent: true,
-            txid: "ab",
+            txid: tx1,
         });
         expect(fetchMock).toHaveBeenCalledWith(
             `${firstApi}/tx/txid/outspend/1`,
@@ -183,8 +186,8 @@ describe("blockchain", () => {
             if (url.endsWith("/utxo")) {
                 return Promise.resolve(
                     jsonResponse([
-                        { txid: "tx1", vout: 0 },
-                        { txid: "tx2", vout: 1 },
+                        { txid: tx1, vout: 0 },
+                        { txid: tx2, vout: 1 },
                     ]),
                 );
             }
@@ -200,13 +203,81 @@ describe("blockchain", () => {
         } as SubmarineSwap;
 
         await expect(getSwapUTXOs(swap)).resolves.toEqual([
-            { hex: "hex-tx1", id: "tx1", timeoutBlockHeight: 321 },
-            { hex: "hex-tx2", id: "tx2", timeoutBlockHeight: 321 },
+            { hex: `hex-${tx1}`, id: tx1, timeoutBlockHeight: 321 },
+            { hex: `hex-${tx2}`, id: tx2, timeoutBlockHeight: 321 },
         ]);
         expect(fetchMock).toHaveBeenCalledWith(
             `${firstApi}/address/bcrt1qaddress/utxo`,
             expect.anything(),
         );
+    });
+
+    describe("an explorer proxied as text/plain", () => {
+        const swap = {
+            type: SwapType.Submarine,
+            assetSend: BTC,
+            address: "bcrt1qaddress",
+            timeoutBlockHeight: 321,
+        } as SubmarineSwap;
+
+        test("should still read its JSON", async () => {
+            fetchMock.mockImplementation((url: string) => {
+                if (url.endsWith("/utxo")) {
+                    return Promise.resolve(
+                        textResponse(JSON.stringify([{ txid: tx1, vout: 0 }])),
+                    );
+                }
+                if (url.includes("/outspend/")) {
+                    return Promise.resolve(
+                        textResponse(JSON.stringify({ spent: false })),
+                    );
+                }
+                return Promise.resolve(textResponse("rawhex"));
+            });
+
+            await expect(getSwapUTXOs(swap)).resolves.toEqual([
+                { hex: "rawhex", id: tx1, timeoutBlockHeight: 321 },
+            ]);
+            await expect(getTransactionOutSpend(BTC, tx1, 0)).resolves.toEqual({
+                spent: false,
+            });
+            expect(fetchMock).not.toHaveBeenCalledWith(
+                expect.stringContaining("undefined"),
+                expect.anything(),
+            );
+        });
+
+        test("should find no UTXOs in an empty answer", async () => {
+            fetchMock.mockResolvedValue(textResponse("[]"));
+
+            await expect(getSwapUTXOs(swap)).resolves.toEqual([]);
+            expect(fetchMock).toHaveBeenCalledTimes(1);
+        });
+
+        test.each([
+            ["not JSON", "<html>"],
+            ["not a list", JSON.stringify({ txid: "1".repeat(64), vout: 0 })],
+            [
+                "a txid that is a path",
+                JSON.stringify([{ txid: "../x", vout: 0 }]),
+            ],
+            ["no vout", JSON.stringify([{ txid: "1".repeat(64) }])],
+        ])("should refuse UTXOs that are %s", async (_, body) => {
+            fetchMock.mockResolvedValue(textResponse(body));
+
+            await expect(getSwapUTXOs(swap)).rejects.toThrow();
+            expect(fetchMock).toHaveBeenCalledTimes(1);
+        });
+
+        test("should refuse a malformed outspend", async () => {
+            fetchMock.mockResolvedValue(
+                textResponse(JSON.stringify({ spent: "yes" })),
+            );
+
+            await expect(getTransactionOutSpend(BTC, tx1, 0)).rejects.toThrow(
+                /malformed outspend/,
+            );
+        });
     });
 
     describe("broadcastToExplorer", () => {
