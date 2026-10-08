@@ -57,7 +57,8 @@ export default class Pair {
         }
 
         this.hop = Pair.findPair(pairs, from, to);
-        if (this.hop === undefined) {
+        // Before the pairs have loaded there is nothing to find yet
+        if (this.hop === undefined && pairs !== undefined) {
             log.info(`No pair found for ${from} -> ${to}`);
         }
     }
