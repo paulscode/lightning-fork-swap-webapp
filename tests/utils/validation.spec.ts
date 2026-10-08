@@ -14,8 +14,10 @@ import { SwapType } from "boltz-swaps/types";
 import log from "loglevel";
 
 import { BTC, LN } from "../../src/consts/Assets";
+import { getBlockTipHeight } from "../../src/utils/blockchain";
 import { decodeAddress } from "../../src/utils/compat";
 import { ECPair } from "../../src/utils/ecpair";
+import type { SomeSwap } from "../../src/utils/swapCreator";
 import {
     swapBip21,
     validateInvoice,
@@ -39,6 +41,10 @@ vi.mock("boltz-swaps/invoice", async (importOriginal) => {
         decodeInvoice: vi.fn(actual.decodeInvoice),
     };
 });
+
+vi.mock("../../src/utils/blockchain", () => ({
+    getBlockTipHeight: vi.fn(),
+}));
 
 const decodeInvoiceMock = vi.mocked(decodeInvoice);
 
@@ -118,6 +124,7 @@ describe("validate responses", () => {
             ${"BTC BIP21 with a second query"}     | ${false} | ${{ ...swapBtc, bip21: "bitcoin:bcrt1pp7enx7jean5tp79satht9lz7dn76kcvfmw636d3a62sr2gepj0nqtupeyc?amount=0.0010054?x=1" }}
             ${"BTC BIP21 without a label"}         | ${true}  | ${{ ...swapBtc, bip21: "bitcoin:bcrt1pp7enx7jean5tp79satht9lz7dn76kcvfmw636d3a62sr2gepj0nqtupeyc?amount=0.0010054" }}
         `("$desc", async ({ valid, swap }) => {
+            vi.mocked(getBlockTipHeight).mockResolvedValue("154");
             const promise = validateResponse(swap, () =>
                 ECPair.fromPrivateKey(hex.decode(swap.refundPrivateKey)),
             );
@@ -171,6 +178,7 @@ describe("validate responses", () => {
             ${"BTC invalid lockupAddress"}         | ${false} | ${{ ...reverseSwapBtc, lockupAddress: "bcrt1qcqyj0mdse8ewusdxgm30ynsnqw4j5700vsdgm8xg0eft5rqdnpgs9ndhwx" }}
             ${"BTC invalid refundPublicKey"}       | ${false} | ${{ ...reverseSwapBtc, refundPublicKey: "02abfe68c69da9e1f3f3c07db115901157dfe865f5263b5b4a9d84edddb756ba2d" }}
         `("$desc", async ({ valid, swap }) => {
+            vi.mocked(getBlockTipHeight).mockResolvedValue("146");
             const promise = validateResponse(swap, () =>
                 ECPair.fromPrivateKey(hex.decode(swap.claimPrivateKey)),
             );
@@ -179,6 +187,58 @@ describe("validate responses", () => {
             } else {
                 await expect(promise).rejects.toThrow();
             }
+        });
+
+        // reverseSwapBtc times out at 290
+        test.each`
+            desc                          | tip       | valid
+            ${"144 blocks out"}           | ${"146"}  | ${true}
+            ${"too close: 30 blocks out"} | ${"260"}  | ${false}
+            ${"already past"}             | ${"300"}  | ${false}
+            ${"too far: 1000 blocks out"} | ${"-710"} | ${false}
+        `("should check a reverse timeout $desc", async ({ tip, valid }) => {
+            vi.mocked(getBlockTipHeight).mockResolvedValue(tip);
+            const promise = validateResponse(reverseSwapBtc as SomeSwap, () =>
+                ECPair.fromPrivateKey(
+                    hex.decode(reverseSwapBtc.claimPrivateKey),
+                ),
+            );
+            if (valid) {
+                await expect(promise).resolves.toBeUndefined();
+            } else {
+                await expect(promise).rejects.toThrow(/times out/);
+            }
+        });
+
+        test("should refuse a reverse swap that costs too much", async () => {
+            vi.mocked(getBlockTipHeight).mockResolvedValue("146");
+            // 1 % of 100,000 plus 10,000 is the most it may cost
+            await expect(
+                validateResponse(
+                    {
+                        ...reverseSwapBtc,
+                        onchainAmount: 88_999,
+                        receiveAmount: 88_998,
+                    } as SomeSwap,
+                    () =>
+                        ECPair.fromPrivateKey(
+                            hex.decode(reverseSwapBtc.claimPrivateKey),
+                        ),
+                ),
+            ).rejects.toThrow(/costs 11001 sat of 100000, more than 11000/);
+        });
+
+        test("should refuse a swap when the tip is unknown", async () => {
+            vi.mocked(getBlockTipHeight).mockRejectedValue(
+                new Error("all block explorer APIs failed"),
+            );
+            await expect(
+                validateResponse(reverseSwapBtc as SomeSwap, () =>
+                    ECPair.fromPrivateKey(
+                        hex.decode(reverseSwapBtc.claimPrivateKey),
+                    ),
+                ),
+            ).rejects.toThrow(/explorer/);
         });
     });
 });

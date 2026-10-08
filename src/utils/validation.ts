@@ -20,6 +20,7 @@ import { createMusig, tweakMusig } from "boltz-swaps/utxo";
 import { type AssetType, BTC } from "../consts/Assets";
 import { Denomination } from "../consts/Enums";
 import type { deriveKeyFn } from "../context/Global";
+import { getBlockTipHeight } from "./blockchain";
 import { decodeAddress } from "./compat";
 import { formatAmountDenomination } from "./denomination";
 import type { ECKeys } from "./ecpair";
@@ -132,6 +133,8 @@ const validateReverse = (swap: ReverseSwap, deriveKey: deriveKeyFn): void => {
         );
     }
 
+    checkCost(swap, swap.sendAmount, swap.onchainAmount);
+
     // SwapTree
     const tree = SwapTreeSerializer.deserializeSwapTree(swap.swapTree);
 
@@ -181,6 +184,7 @@ const validateSubmarine = (
 
     // SwapTree
     const invoiceData = decodeInvoice(swap.invoice);
+    checkCost(swap, swap.expectedAmount, invoiceData.satoshis);
 
     const tree = SwapTreeSerializer.deserializeSwapTree(swap.swapTree);
 
@@ -217,28 +221,68 @@ const validateSubmarine = (
     validateBip21(swap.bip21, swap.address, swap.expectedAmount);
 };
 
-export const validateResponse = (
+// The timeouts the server should give, in blocks from the tip, with room
+// for blocks found while the swap is created (the backend's timeoutDelta:
+// reverse 1440 minutes = 144 blocks, submarine 10080 minutes = 1008 blocks).
+// A reverse timeout too close leaves no time to claim before the server can
+// refund; a submarine timeout too far keeps the user from refunding.
+export const timeoutBounds = {
+    [SwapType.Reverse]: { min: 72, max: 300 },
+    [SwapType.Submarine]: { min: 72, max: 2100 },
+};
+
+// The most a swap may cost the user, service and network fees together:
+// well above this service's terms (0.1 % submarine, 0.5 % reverse, miner
+// fees of a few hundred sat), so that only a server asking far more is
+// refused.
+export const maxSwapCost = { percent: 1, sat: 10_000 };
+
+const checkCost = (swap: SomeSwap, paid: number, received: number) => {
+    const ceiling = Math.floor(
+        (paid * maxSwapCost.percent) / 100 + maxSwapCost.sat,
+    );
+    if (paid - received > ceiling) {
+        throw new Error(
+            `swap ${swap.id} costs ${paid - received} sat of ${paid}, more than ${ceiling}`,
+        );
+    }
+};
+
+const validateTimeout = async (swap: SomeSwap): Promise<void> => {
+    const bounds = timeoutBounds[swap.type as keyof typeof timeoutBounds];
+    const asset =
+        swap.type === SwapType.Reverse ? swap.assetReceive : swap.assetSend;
+    const tip = Number(await getBlockTipHeight(asset));
+    const blocks = swap.timeoutBlockHeight - tip;
+    if (
+        !Number.isSafeInteger(swap.timeoutBlockHeight) ||
+        blocks < bounds.min ||
+        blocks > bounds.max
+    ) {
+        throw new Error(
+            `swap ${swap.id} times out ${blocks} blocks from the tip ${tip}, outside ${bounds.min} to ${bounds.max}`,
+        );
+    }
+};
+
+export const validateResponse = async (
     swap: SomeSwap,
     deriveKey: deriveKeyFn,
 ): Promise<void> => {
-    try {
-        switch (swap.type) {
-            case SwapType.Submarine:
-                validateSubmarine(swap, deriveKey);
-                break;
+    switch (swap.type) {
+        case SwapType.Submarine:
+            validateSubmarine(swap, deriveKey);
+            break;
 
-            case SwapType.Reverse:
-                validateReverse(swap, deriveKey);
-                break;
+        case SwapType.Reverse:
+            validateReverse(swap, deriveKey);
+            break;
 
-            default:
-                throw new Error("unknown_swap_type");
-        }
-    } catch (e) {
-        return Promise.reject(e as Error);
+        default:
+            throw new Error("unknown_swap_type");
     }
 
-    return Promise.resolve();
+    await validateTimeout(swap);
 };
 
 export const validateInvoice = (inputValue: string): number => {
