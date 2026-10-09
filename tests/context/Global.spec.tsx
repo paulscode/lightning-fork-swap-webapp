@@ -236,4 +236,49 @@ describe("Global context", () => {
             expect(persist).toHaveBeenCalledTimes(1);
         });
     });
+
+    describe("rescue file across tabs", () => {
+        const other = {
+            mnemonic:
+                "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about",
+        };
+        const renderProvider = () => {
+            getPairsMock.mockResolvedValue(emptyPairs);
+            render(() => (
+                <GlobalProvider>
+                    <Probe />
+                </GlobalProvider>
+            ));
+        };
+        const storeFromOtherTab = () => {
+            localStorage.setItem("rescueFile", JSON.stringify(other));
+            window.dispatchEvent(
+                new StorageEvent("storage", {
+                    key: "rescueFile",
+                    newValue: JSON.stringify(other),
+                }),
+            );
+        };
+
+        test("takes the one another tab stored while it used none", () => {
+            renderProvider();
+            expect(globalSignals.rescueFile()?.mnemonic).not.toEqual(
+                other.mnemonic,
+            );
+
+            storeFromOtherTab();
+
+            expect(globalSignals.rescueFile()).toEqual(other);
+        });
+
+        test("keeps its own once it handed out a key", async () => {
+            renderProvider();
+            const own = globalSignals.rescueFile();
+            await globalSignals.newKey(BTC);
+
+            storeFromOtherTab();
+
+            expect(globalSignals.rescueFile()).toEqual(own);
+        });
+    });
 });

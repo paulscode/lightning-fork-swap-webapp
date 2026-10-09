@@ -17,6 +17,7 @@ import {
     createEffect,
     createMemo,
     createSignal,
+    onCleanup,
     useContext,
 } from "solid-js";
 
@@ -218,6 +219,28 @@ const GlobalProvider = (props: {
         }
     });
 
+    // Two tabs that load at once may still each make one, and the last
+    // written wins in storage. A tab that has not used its rescue file for a
+    // key yet takes the one in storage, so that every swap is covered by the
+    // one rescue file the user backs up.
+    let keyUsedInThisTab = false;
+    const onStorage = (event: StorageEvent) => {
+        if (
+            event.key !== "rescueFile" ||
+            event.newValue === null ||
+            keyUsedInThisTab
+        ) {
+            return;
+        }
+        const stored = readStored<RescueFile>("rescueFile");
+        if (stored !== null && stored.mnemonic !== rescueFile()?.mnemonic) {
+            log.debug("Taking the rescue file another tab stored");
+            setRescueFile(stored);
+        }
+    };
+    window.addEventListener("storage", onStorage);
+    onCleanup(() => window.removeEventListener("storage", onStorage));
+
     const deriveKeyWrapper = (index: number, asset: AssetType) => {
         const rf = rescueFile();
         if (rf === null) {
@@ -240,6 +263,7 @@ const GlobalProvider = (props: {
                 Number.isSafeInteger(stored) ? (stored as number) : 0,
             );
             setLastUsedKey(index + 1);
+            keyUsedInThisTab = true;
             return { index, key: deriveKeyWrapper(index, asset) };
         };
 
