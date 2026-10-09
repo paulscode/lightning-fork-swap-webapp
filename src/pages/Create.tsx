@@ -35,7 +35,6 @@ import {
 } from "../utils/denomination";
 import { isMobile } from "../utils/helper";
 import { isDeferredInvoiceDestination } from "../utils/invoice";
-import ErrorWasm from "./ErrorWasm";
 
 // TODO: formatted amounts should be *instant* and not depend on quote being calculated
 
@@ -50,7 +49,6 @@ const Create = () => {
         setSeparator,
         setDenomination,
         denomination,
-        wasmSupported,
         t,
         notify,
         embeddedMode,
@@ -506,187 +504,175 @@ const Create = () => {
     );
 
     return (
-        <Show when={wasmSupported()} fallback={<ErrorWasm />}>
-            <div class="frame">
-                <SettingsCog />
-                <h2 class="frame-title" data-testid="create-swap-title">
-                    {t("create_swap")}
-                </h2>
-                <div class="icons">
-                    <div>
-                        <Asset
-                            side={Side.Send}
-                            signal={() => pair().fromAsset}
-                        />
-                        <div class="amount-field input-with-label">
-                            <div class="amount-input-wrap">
-                                <span class="amount-row-label">
-                                    {t("send")}
-                                </span>
-                                <SwapLimits
-                                    maximum={maximum()}
-                                    maxLabel={t("max")}
-                                    loading={limitActionsLoading()}
-                                    maximumEnabled={maximum() > 0}
-                                    onSelectAmount={setAmount}
-                                    onSelectMaximum={setMaxAmount}
+        <div class="frame">
+            <SettingsCog />
+            <h2 class="frame-title" data-testid="create-swap-title">
+                {t("create_swap")}
+            </h2>
+            <div class="icons">
+                <div>
+                    <Asset side={Side.Send} signal={() => pair().fromAsset} />
+                    <div class="amount-field input-with-label">
+                        <div class="amount-input-wrap">
+                            <span class="amount-row-label">{t("send")}</span>
+                            <SwapLimits
+                                maximum={maximum()}
+                                maxLabel={t("max")}
+                                loading={limitActionsLoading()}
+                                maximumEnabled={maximum() > 0}
+                                onSelectAmount={setAmount}
+                                onSelectMaximum={setMaxAmount}
+                            />
+                            <Show when={sendAmountQuoteLoading()}>
+                                <div
+                                    class="amount-value-skeleton"
+                                    aria-hidden="true"
                                 />
-                                <Show when={sendAmountQuoteLoading()}>
-                                    <div
-                                        class="amount-value-skeleton"
-                                        aria-hidden="true"
-                                    />
-                                </Show>
-                                <input
-                                    ref={sendAmountRef}
-                                    autofocus
-                                    required
-                                    type="text"
-                                    placeholder="0"
-                                    maxlength={
-                                        maximum() > 0
-                                            ? calculateDigits(
-                                                  maximum(),
-                                                  denomination(),
-                                              )
-                                            : undefined
-                                    }
-                                    inputmode={
-                                        denomination() == "btc"
-                                            ? "decimal"
-                                            : "numeric"
-                                    }
-                                    id="sendAmount"
-                                    data-testid="sendAmount"
-                                    autocomplete="off"
-                                    disabled={sendAmountQuoteLoading()}
-                                    classList={{
-                                        "amount-input--quote-pending":
-                                            sendAmountQuoteLoading(),
-                                    }}
-                                    aria-busy={sendAmountQuoteLoading()}
-                                    value={sendAmountFormatted()}
-                                    onPaste={(e) => validatePaste(e)}
-                                    onKeyPress={(e) => validateInput(e)}
-                                    onInput={(e) => changeSendAmount(e)}
-                                />
-                            </div>
-                            <label for="sendAmount" class="input-label">
-                                {getAssetNetwork(pair().fromAsset)}
-                            </label>
+                            </Show>
+                            <input
+                                ref={sendAmountRef}
+                                autofocus
+                                required
+                                type="text"
+                                placeholder="0"
+                                maxlength={
+                                    maximum() > 0
+                                        ? calculateDigits(
+                                              maximum(),
+                                              denomination(),
+                                          )
+                                        : undefined
+                                }
+                                inputmode={
+                                    denomination() == "btc"
+                                        ? "decimal"
+                                        : "numeric"
+                                }
+                                id="sendAmount"
+                                data-testid="sendAmount"
+                                autocomplete="off"
+                                disabled={sendAmountQuoteLoading()}
+                                classList={{
+                                    "amount-input--quote-pending":
+                                        sendAmountQuoteLoading(),
+                                }}
+                                aria-busy={sendAmountQuoteLoading()}
+                                value={sendAmountFormatted()}
+                                onPaste={(e) => validatePaste(e)}
+                                onKeyPress={(e) => validateInput(e)}
+                                onInput={(e) => changeSendAmount(e)}
+                            />
                         </div>
-                    </div>
-                    <Reverse />
-                    <div>
-                        <Asset
-                            side={Side.Receive}
-                            signal={() => pair().toAsset}
-                        />
-                        <div class="amount-field input-with-label">
-                            <div class="amount-input-wrap">
-                                <span class="amount-row-label">
-                                    {t("receive")}
-                                </span>
-                                <Show when={receiveAmountQuoteLoading()}>
-                                    <div
-                                        class="amount-value-skeleton"
-                                        aria-hidden="true"
-                                    />
-                                </Show>
-                                <input
-                                    ref={receiveAmountRef}
-                                    required
-                                    type="text"
-                                    placeholder="0"
-                                    maxlength={
-                                        maximum() > 0
-                                            ? calculateDigits(
-                                                  maximum(),
-                                                  denomination(),
-                                              )
-                                            : undefined
-                                    }
-                                    inputmode={
-                                        denomination() == "btc"
-                                            ? "decimal"
-                                            : "numeric"
-                                    }
-                                    id="receiveAmount"
-                                    data-testid="receiveAmount"
-                                    autocomplete="off"
-                                    disabled={receiveAmountQuoteLoading()}
-                                    classList={{
-                                        "amount-input--quote-pending":
-                                            receiveAmountQuoteLoading(),
-                                    }}
-                                    aria-busy={receiveAmountQuoteLoading()}
-                                    value={receiveAmountFormatted()}
-                                    onPaste={(e) => validatePaste(e)}
-                                    onKeyPress={(e) => validateInput(e)}
-                                    onInput={(e) => changeReceiveAmount(e)}
-                                />
-                            </div>
-                            <label for="receiveAmount" class="input-label">
-                                {getAssetNetwork(pair().toAsset)}
-                            </label>
-                        </div>
+                        <label for="sendAmount" class="input-label">
+                            {getAssetNetwork(pair().fromAsset)}
+                        </label>
                     </div>
                 </div>
-                <Fees />
-                <hr class="spacer" />
-                <Show
-                    when={
-                        pair().requiredInput === RequiredInput.Address ||
-                        (pair().requiredInput === RequiredInput.Unknown &&
-                            pair().toAsset !== LN)
-                    }>
-                    <AddressInput />
-                    <hr class="spacer" />
-                </Show>
-                <Show when={requiresInvoiceInput()}>
-                    <Show when={receiveAmount().isGreaterThan(0)}>
-                        <CopyButton
-                            label="copy_invoice_amount"
-                            labelValues={{
-                                denomination: formatDenomination(
-                                    denomination(),
-                                    BTC,
-                                ),
-                            }}
-                            btnClass="btn btn-light"
-                            data={() =>
-                                formatAmount(
-                                    receiveAmount(),
-                                    denomination(),
-                                    // A plain decimal point: wallets parse it whatever the locale
-                                    ".",
-                                    BTC,
-                                )
-                            }
-                        />
-                        <hr class="spacer" />
-                    </Show>
-                    <InvoiceInput />
-                    <hr class="spacer" />
-                </Show>
-                <Show when={isMobile()}>
-                    <QrScan />
-                    <hr class="spacer" />
-                </Show>
-                <CreateButton />
-                <Show when={embeddedMode()}>
-                    <div class="embedded-branding">
-                        <a
-                            href="https://lightningfork.com"
-                            target="_blank"
-                            rel="noopener noreferrer">
-                            Powered by Lightning Fork Swap
-                        </a>
+                <Reverse />
+                <div>
+                    <Asset side={Side.Receive} signal={() => pair().toAsset} />
+                    <div class="amount-field input-with-label">
+                        <div class="amount-input-wrap">
+                            <span class="amount-row-label">{t("receive")}</span>
+                            <Show when={receiveAmountQuoteLoading()}>
+                                <div
+                                    class="amount-value-skeleton"
+                                    aria-hidden="true"
+                                />
+                            </Show>
+                            <input
+                                ref={receiveAmountRef}
+                                required
+                                type="text"
+                                placeholder="0"
+                                maxlength={
+                                    maximum() > 0
+                                        ? calculateDigits(
+                                              maximum(),
+                                              denomination(),
+                                          )
+                                        : undefined
+                                }
+                                inputmode={
+                                    denomination() == "btc"
+                                        ? "decimal"
+                                        : "numeric"
+                                }
+                                id="receiveAmount"
+                                data-testid="receiveAmount"
+                                autocomplete="off"
+                                disabled={receiveAmountQuoteLoading()}
+                                classList={{
+                                    "amount-input--quote-pending":
+                                        receiveAmountQuoteLoading(),
+                                }}
+                                aria-busy={receiveAmountQuoteLoading()}
+                                value={receiveAmountFormatted()}
+                                onPaste={(e) => validatePaste(e)}
+                                onKeyPress={(e) => validateInput(e)}
+                                onInput={(e) => changeReceiveAmount(e)}
+                            />
+                        </div>
+                        <label for="receiveAmount" class="input-label">
+                            {getAssetNetwork(pair().toAsset)}
+                        </label>
                     </div>
-                </Show>
-                <SettingsMenu />
+                </div>
             </div>
-        </Show>
+            <Fees />
+            <hr class="spacer" />
+            <Show
+                when={
+                    pair().requiredInput === RequiredInput.Address ||
+                    (pair().requiredInput === RequiredInput.Unknown &&
+                        pair().toAsset !== LN)
+                }>
+                <AddressInput />
+                <hr class="spacer" />
+            </Show>
+            <Show when={requiresInvoiceInput()}>
+                <Show when={receiveAmount().isGreaterThan(0)}>
+                    <CopyButton
+                        label="copy_invoice_amount"
+                        labelValues={{
+                            denomination: formatDenomination(
+                                denomination(),
+                                BTC,
+                            ),
+                        }}
+                        btnClass="btn btn-light"
+                        data={() =>
+                            formatAmount(
+                                receiveAmount(),
+                                denomination(),
+                                // A plain decimal point: wallets parse it whatever the locale
+                                ".",
+                                BTC,
+                            )
+                        }
+                    />
+                    <hr class="spacer" />
+                </Show>
+                <InvoiceInput />
+                <hr class="spacer" />
+            </Show>
+            <Show when={isMobile()}>
+                <QrScan />
+                <hr class="spacer" />
+            </Show>
+            <CreateButton />
+            <Show when={embeddedMode()}>
+                <div class="embedded-branding">
+                    <a
+                        href="https://lightningfork.com"
+                        target="_blank"
+                        rel="noopener noreferrer">
+                        Powered by Lightning Fork Swap
+                    </a>
+                </div>
+            </Show>
+            <SettingsMenu />
+        </div>
     );
 };
 

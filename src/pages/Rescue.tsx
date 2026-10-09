@@ -5,51 +5,43 @@ import SettingsMenu from "../components/settings/SettingsMenu";
 import { useGlobalContext } from "../context/Global";
 import "../style/asset.scss";
 import "../style/rescueExternal.scss";
-import ErrorWasm from "./ErrorWasm";
 import { MethodSelection } from "./external-rescue/MethodSelection";
 import { Results } from "./external-rescue/Results";
 import { useExternalRescueSearch } from "./external-rescue/useExternalRescueSearch";
 
 const Rescue = () => {
-    const { t, wasmSupported } = useGlobalContext();
+    const { t } = useGlobalContext();
     const { actions, results, selection, state } = useExternalRescueSearch();
 
     return (
-        <Show when={wasmSupported()} fallback={<ErrorWasm />}>
-            <div id="refund" class="rescue-external">
-                <div
-                    class="frame rescue-external-frame"
-                    data-testid="refundFrame">
-                    <header>
-                        <SettingsCog />
-                        <h2 class="frame-title">{t("rescue_swaps")}</h2>
-                    </header>
+        <div id="refund" class="rescue-external">
+            <div class="frame rescue-external-frame" data-testid="refundFrame">
+                <header>
+                    <SettingsCog />
+                    <h2 class="frame-title">{t("rescue_swaps")}</h2>
+                </header>
 
-                    <Show
-                        when={!selection.showResultsPage()}
-                        fallback={
-                            <>
-                                <Results state={state} results={results} />
-                                <div class="btns rescue-external-actions">
-                                    <button
-                                        class="btn"
-                                        type="button"
-                                        onClick={actions.backToMethodSelection}>
-                                        {t("back")}
-                                    </button>
-                                </div>
-                            </>
-                        }>
-                        <MethodSelection
-                            actions={actions}
-                            selection={selection}
-                        />
-                    </Show>
+                <Show
+                    when={!selection.showResultsPage()}
+                    fallback={
+                        <>
+                            <Results state={state} results={results} />
+                            <div class="btns rescue-external-actions">
+                                <button
+                                    class="btn"
+                                    type="button"
+                                    onClick={actions.backToMethodSelection}>
+                                    {t("back")}
+                                </button>
+                            </div>
+                        </>
+                    }>
+                    <MethodSelection actions={actions} selection={selection} />
+                </Show>
 
-                    <SettingsMenu />
-                </div>
+                <SettingsMenu />
             </div>
-        </Show>
+        </div>
     );
 };
 

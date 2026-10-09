@@ -212,4 +212,28 @@ describe("Global context", () => {
             expect(localStorage.getItem("lastUsedKey")).toEqual("8");
         });
     });
+
+    describe("persistent storage", () => {
+        test("asks once, when a swap is first stored", async () => {
+            const persist = vi.fn(() => Promise.resolve(true));
+            const persisted = vi.fn(() => Promise.resolve(false));
+            Object.defineProperty(navigator, "storage", {
+                value: { persist, persisted },
+                configurable: true,
+            });
+            getPairsMock.mockResolvedValue(emptyPairs);
+            render(() => (
+                <GlobalProvider>
+                    <Probe />
+                </GlobalProvider>
+            ));
+            expect(persist).not.toHaveBeenCalled();
+
+            await globalSignals.setSwapStorage({ id: "a" } as SomeSwap);
+            await globalSignals.setSwapStorage({ id: "b" } as SomeSwap);
+            await new Promise((resolve) => setTimeout(resolve, 0));
+
+            expect(persist).toHaveBeenCalledTimes(1);
+        });
+    });
 });

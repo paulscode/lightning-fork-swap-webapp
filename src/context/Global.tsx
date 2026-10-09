@@ -38,7 +38,6 @@ import {
     getXpub,
 } from "../utils/rescueFile";
 import type { SomeSwap } from "../utils/swapCreator";
-import { checkWasmSupported } from "../utils/wasmSupport";
 
 type NotificationType = "success" | "error";
 export type deriveKeyFn = (index: number, asset: AssetType) => ECKeys;
@@ -53,8 +52,6 @@ export type GlobalContextType = {
     setOnline: Setter<boolean>;
     pairs: Accessor<Pairs | undefined>;
     setPairs: Setter<Pairs | undefined>;
-    wasmSupported: Accessor<boolean>;
-    setWasmSupported: Setter<boolean>;
     refundAddress: Accessor<string | null>;
     setRefundAddress: Setter<string | null>;
     transactionToRefund: Accessor<string | null>;
@@ -122,7 +119,6 @@ const GlobalProvider = (props: {
     const [online, setOnline] = createSignal<boolean>(true);
     const [pairs, setPairs] = createSignal<Pairs | undefined>(undefined);
 
-    const [wasmSupported, setWasmSupported] = createSignal<boolean>(true);
     const [refundAddress, setRefundAddress] = createSignal<string | null>(null);
 
     const [transactionToRefund, setTransactionToRefund] = createSignal<
@@ -319,8 +315,32 @@ const GlobalProvider = (props: {
         log.error("Storage migration failed:", e),
     );
 
+    // Swaps and the rescue key live in this origin's storage, which browsers
+    // may clear under pressure (Safari after a week without a visit) unless
+    // it is persistent. Asked when a swap is first stored: Firefox asks the
+    // user, and that is the moment it matters.
+    let storagePersistRequested = false;
+    const requestPersistentStorage = async () => {
+        if (
+            storagePersistRequested ||
+            navigator.storage?.persist === undefined
+        ) {
+            return;
+        }
+        storagePersistRequested = true;
+        try {
+            if (!(await navigator.storage.persisted())) {
+                const granted = await navigator.storage.persist();
+                log.info(`Persistent storage granted: ${granted}`);
+            }
+        } catch (e) {
+            log.warn("Could not ask for persistent storage", e);
+        }
+    };
+
     const setSwapStorage = async (swap: SomeSwap) => {
         await swapsForage.setItem(swap.id, swap);
+        void requestPersistentStorage();
     };
 
     const deleteSwap = async (id: string) => await swapsForage.removeItem(id);
@@ -388,7 +408,6 @@ const GlobalProvider = (props: {
     };
 
     setI18n(detectLanguage(i18nConfigured(), i18nUrl(), setI18nUrl));
-    setWasmSupported(checkWasmSupported());
 
     const [privacyMode, setPrivacyMode] = makePersisted(
         // eslint-disable-next-line solid/reactivity
@@ -445,8 +464,6 @@ const GlobalProvider = (props: {
                 setOnline,
                 pairs,
                 setPairs,
-                wasmSupported,
-                setWasmSupported,
                 refundAddress,
                 setRefundAddress,
                 transactionToRefund,

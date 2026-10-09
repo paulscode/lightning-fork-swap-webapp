@@ -7,7 +7,6 @@ import path from "path";
 import { defineConfig } from "vite";
 import { nodePolyfills } from "vite-plugin-node-polyfills";
 import solidPlugin from "vite-plugin-solid";
-import wasm from "vite-plugin-wasm";
 
 const traverse = _traverse.default ?? _traverse;
 
@@ -179,7 +178,6 @@ export default defineConfig({
     plugins: [
         logPersistenceTransformPlugin(),
         solidPlugin(),
-        wasm(),
         nodePolyfills(),
     ],
     resolve: {

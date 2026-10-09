@@ -5,7 +5,6 @@ const dict = {
         status: "Status",
         error: "Error",
         error_subline: "Invalid response from the API, something is wrong.",
-        error_wasm: "WebAssembly not supported",
         history: "History",
         swap: "Swap",
         refund: "Refund",
@@ -95,7 +94,6 @@ const dict = {
         api_offline_msg:
             "Could not connect to the swap API, please try again later",
         refund_explainer: "You will be able to refund after the swap timeout!",
-        wasm_not_supported: "Please activate WebAssembly in your browser",
         created: "Created",
         id: "ID",
         headline: "Lightning Fork Swap",

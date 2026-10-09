@@ -172,14 +172,6 @@ describe("Create", () => {
         expect(screen.queryByTestId("onchainAddress")).toBeNull();
     });
 
-    test("should show WASM error", async () => {
-        renderCreate();
-        globalSignals.setWasmSupported(false);
-        expect(
-            await screen.findAllByText(i18n.en.error_wasm),
-        ).not.toBeUndefined();
-    });
-
     test("should block creation when a quote resolves to zero", async () => {
         renderCreate();
 

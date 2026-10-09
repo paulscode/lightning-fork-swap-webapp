@@ -4,7 +4,7 @@ import reload_svg from "../assets/reload.svg";
 import { useGlobalContext } from "../context/Global";
 
 const Warnings = () => {
-    const { t, online, fetchPairs, wasmSupported } = useGlobalContext();
+    const { t, online, fetchPairs } = useGlobalContext();
 
     return (
         <div>
@@ -14,11 +14,6 @@ const Warnings = () => {
                     <span class="icon-reload" onClick={() => fetchPairs()}>
                         <img src={reload_svg} />
                     </span>
-                </div>
-            </Show>
-            <Show when={!wasmSupported()}>
-                <div id="noWasm" class="banner">
-                    {t("wasm_not_supported")}
                 </div>
             </Show>
         </div>

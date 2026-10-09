@@ -21,7 +21,7 @@ import {
 import { useExternalRescueSearch } from "../../src/pages/external-rescue/useExternalRescueSearch";
 import { RescueAction } from "../../src/utils/rescue";
 import { getXpub } from "../../src/utils/rescueFile";
-import { TestComponent, contextWrapper, globalSignals } from "../helper";
+import { TestComponent, contextWrapper } from "../helper";
 
 vi.mock("../../packages/boltz-swaps/src/client.ts", () => {
     return {
@@ -158,14 +158,6 @@ describe("Rescue", () => {
     beforeEach(() => {
         vi.clearAllMocks();
         mockGetRestorableSwaps.mockReset();
-    });
-
-    test("should render WASM error", async () => {
-        renderRescue();
-        globalSignals.setWasmSupported(false);
-        expect(
-            await screen.findAllByText(i18n.en.error_wasm),
-        ).not.toBeUndefined();
     });
 
     test("should render the rescue key method page", async () => {
