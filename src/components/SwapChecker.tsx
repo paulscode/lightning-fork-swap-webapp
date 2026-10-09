@@ -15,6 +15,7 @@ import {
 } from "../consts/SwapStatus";
 import { useGlobalContext } from "../context/Global";
 import { usePayContext } from "../context/Pay";
+import { claimWatchIntervalMs, watchClaims } from "../utils/claimWatcher";
 import { useParentNotifier } from "../utils/notifyParent";
 import type { SomeSwap } from "../utils/swapCreator";
 
@@ -28,7 +29,8 @@ export const SwapChecker = () => {
         setFailureReason,
         shouldIgnoreBackendStatus,
     } = usePayContext();
-    const { updateSwapStatus, getSwap, getSwaps } = useGlobalContext();
+    const { updateSwapStatus, getSwap, getSwaps, modifySwapStorage } =
+        useGlobalContext();
     const { notifyParent } = useParentNotifier();
 
     const statusSource = createDefaultStatusSource();
@@ -127,7 +129,15 @@ export const SwapChecker = () => {
         }
     });
 
+    const checkClaims = () =>
+        void watchClaims({ getSwaps, modifySwap: modifySwapStorage }).catch(
+            (error) => log.error("Watching claims failed", error),
+        );
+    onMount(checkClaims);
+    const claimWatch = setInterval(checkClaims, claimWatchIntervalMs);
+
     onCleanup(() => {
+        clearInterval(claimWatch);
         statusSource.close?.();
     });
 

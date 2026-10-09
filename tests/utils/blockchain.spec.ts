@@ -11,6 +11,7 @@ import {
     getFeeEstimations,
     getNetworkName,
     getSwapUTXOs,
+    getTransactionConfirmed,
     getTransactionOutSpend,
 } from "../../src/utils/blockchain";
 import type { SubmarineSwap } from "../../src/utils/swapCreator";
@@ -267,6 +268,19 @@ describe("blockchain", () => {
 
             await expect(getSwapUTXOs(swap)).rejects.toThrow();
             expect(fetchMock).toHaveBeenCalledTimes(1);
+        });
+
+        test("should read a transaction's confirmation status", async () => {
+            fetchMock.mockResolvedValue(
+                textResponse(JSON.stringify({ confirmed: true })),
+            );
+            await expect(getTransactionConfirmed(BTC, tx1)).resolves.toEqual(
+                true,
+            );
+            fetchMock.mockResolvedValue(textResponse("{}"));
+            await expect(getTransactionConfirmed(BTC, tx1)).rejects.toThrow(
+                /malformed status/,
+            );
         });
 
         test("should refuse a malformed outspend", async () => {

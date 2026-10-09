@@ -199,6 +199,23 @@ export const getBlockTipHeight = async (asset: string) => {
     return height;
 };
 
+export const getTransactionConfirmed = async (
+    asset: string,
+    txid: string,
+): Promise<boolean> => {
+    const status = explorerJson(
+        await fetchBlockExplorer<unknown>(asset, `/tx/${txid}/status`),
+    ) as { confirmed?: unknown } | null;
+    if (
+        typeof status !== "object" ||
+        status === null ||
+        typeof status.confirmed !== "boolean"
+    ) {
+        throw new Error("block explorer returned a malformed status");
+    }
+    return status.confirmed;
+};
+
 export const getTransactionOutSpend = async (
     asset: string,
     txid: string,

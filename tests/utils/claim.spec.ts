@@ -144,6 +144,7 @@ describe("claim", () => {
 
             expect(broadcastTransaction).toHaveBeenCalledWith(BTC, "claimhex");
             expect(claimed.claimTx).toEqual("a".repeat(64));
+            expect(claimed.claimTxHex).toEqual("claimhex");
         },
     );
 

@@ -169,6 +169,7 @@ export const claim = async (
         );
     }
     swap.claimTx = claimTxId;
+    swap.claimTxHex = txToHex(claimTransaction);
 
     return swap;
 };

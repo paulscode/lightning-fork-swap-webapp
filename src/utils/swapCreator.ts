@@ -24,6 +24,9 @@ export type SwapBaseData = {
 
     // Not set for submarine swaps; but set for interface compatibility
     claimTx?: string;
+    // A reverse swap's claim, kept to broadcast again until it confirms
+    claimTxHex?: string;
+    claimConfirmed?: boolean;
     refundTx?: string;
     lockupTx?: string;
 
