@@ -1,8 +1,11 @@
 import { BigNumber } from "bignumber.js";
+import log from "loglevel";
 import { createSignal } from "solid-js";
 
+import { config } from "../config";
 import { BTC } from "../consts/Assets";
 import { Denomination } from "../consts/Enums";
+import { validateAddress } from "./compat";
 import { formatAmountDenomination } from "./denomination";
 
 export type DonateTab = "onchain" | "channel";
@@ -14,8 +17,28 @@ export { donateTab };
 export const openDonate = (tab: DonateTab = "onchain") => setDonateTab(tab);
 export const closeDonate = () => setDonateTab(undefined);
 
+// The donation line after a swap, once hidden, stays hidden until the page
+// is loaded again (nothing is stored)
+const [donateLineHidden, setDonateLineHidden] = createSignal(false);
+export { donateLineHidden, setDonateLineHidden };
+
 export const isDonateTab = (value: unknown): value is DonateTab =>
     value === "onchain" || value === "channel";
+
+// The configured donation address, when it is one of this network's: a
+// build with a broken address shows no Donate tab rather than a QR code
+// that sends coins nowhere (build.py also refuses one for mainnet)
+export const donationAddress = (): string | undefined => {
+    const address = config.donation?.address;
+    if (address === undefined || address === "") {
+        return undefined;
+    }
+    if (!validateAddress(BTC, address)) {
+        log.error(`donation address ${address} is not valid on this network`);
+        return undefined;
+    }
+    return address;
+};
 
 // Suggested amounts, in sat
 export const donationPresets = [10_000, 100_000, 1_000_000];

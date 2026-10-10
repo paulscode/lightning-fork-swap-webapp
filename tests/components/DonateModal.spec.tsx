@@ -14,7 +14,12 @@ import {
     getAddressMempoolTxids,
     getAddressStats,
 } from "../../src/utils/blockchain";
-import { closeDonate, donateTab, openDonate } from "../../src/utils/donate";
+import {
+    closeDonate,
+    donateTab,
+    donationAddress,
+    openDonate,
+} from "../../src/utils/donate";
 import type * as ReplayModule from "../../src/utils/replay";
 import { getReplayVerdict } from "../../src/utils/replay";
 import { TestComponent, contextWrapper, globalSignals } from "../helper";
@@ -30,7 +35,8 @@ vi.mock("../../src/utils/replay", async (importOriginal) => ({
     getReplayVerdict: vi.fn(),
 }));
 
-const address = "bcrt1pdonationaddressxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
+const address =
+    "bcrt1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqc8gma6";
 const writeText = vi.fn();
 Object.defineProperty(navigator, "clipboard", {
     value: { writeText },
@@ -231,6 +237,37 @@ describe("DonateModal", () => {
         expect(lastCopied()).toEqual(
             `lncli openchannel --node_key ${pubkey} --connect 1.2.3.4:9735 --local_amt 1000000`,
         );
+    });
+
+    test("an address that is not valid on this network is not offered", async () => {
+        for (const bad of [
+            "bcrt1qdonation",
+            "bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqzk5jj0",
+            address.slice(0, -1) + "q",
+        ]) {
+            config.donation = { address: bad };
+            expect(donationAddress()).toBeUndefined();
+        }
+        config.donation = { address };
+        expect(donationAddress()).toEqual(address);
+
+        config.donation = { address: "bcrt1qdonation" };
+        renderModal();
+        openDonate("onchain");
+        expect(await screen.findByTestId("donate-channel")).toBeTruthy();
+        expect(screen.queryByTestId("donate-tab-onchain")).toBeNull();
+    });
+
+    test("one donation so far is one donation", async () => {
+        vi.mocked(getAddressStats).mockResolvedValue({
+            receivedSat: 10_000,
+            txCount: 1,
+        });
+        renderModal();
+        openDonate();
+        const stats = await screen.findByTestId("donate-stats");
+        expect(stats.textContent).toContain("in 1 donation");
+        expect(stats.textContent).not.toContain("donations");
     });
 
     test("without a donation address only the channel tab, without either nothing", async () => {

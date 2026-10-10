@@ -13,7 +13,11 @@ import { useGlobalContext } from "../context/Global";
 import { usePayContext } from "../context/Pay";
 import { useModifySwap } from "../hooks/useModifySwap";
 import { formatAmount, formatDenomination } from "../utils/denomination";
-import { openDonate } from "../utils/donate";
+import {
+    donateLineHidden,
+    openDonate,
+    setDonateLineHidden,
+} from "../utils/donate";
 import { formatError } from "../utils/errors";
 import { type SubmarineSwap, getFinalAssetReceive } from "../utils/swapCreator";
 import Broadcasting from "./Broadcasting";
@@ -103,11 +107,20 @@ const TransactionClaimed = () => {
                         data={preimage()!}
                     />
                 </Show>
-                <Show when={donationAvailable()}>
+                <Show when={donationAvailable() && !donateLineHidden()}>
                     <p class="donate-line" data-testid="donate-line">
                         {t("donate_line")}{" "}
                         <button type="button" onClick={() => openDonate()}>
                             {t("donate_line_action")}
+                        </button>
+                        <button
+                            type="button"
+                            class="donate-line-dismiss"
+                            data-testid="donate-line-dismiss"
+                            aria-label={t("donate_line_dismiss")}
+                            title={t("donate_line_dismiss")}
+                            onClick={() => setDonateLineHidden(true)}>
+                            ×
                         </button>
                     </p>
                 </Show>

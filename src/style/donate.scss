@@ -332,4 +332,16 @@ body.donate-open {
         cursor: pointer;
         text-decoration: underline;
     }
+
+    .donate-line-dismiss {
+        margin-left: 0.5rem;
+        padding: 0 0.3rem;
+        color: var(--color-text-muted);
+        text-decoration: none;
+
+        &:hover,
+        &:focus-visible {
+            color: var(--color-text);
+        }
+    }
 }

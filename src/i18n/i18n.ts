@@ -261,6 +261,8 @@ const dict = {
         donate_view_explorer: "See what this address has received",
         donate_received_so_far:
             "Donations so far: {{ amount }} {{ denomination }} in {{ count }} donations",
+        donate_received_so_far_one:
+            "Donations so far: {{ amount }} {{ denomination }} in 1 donation",
         donate_thanks: "Received, thank you!",
         donate_thanks_detail:
             "Your donation is in the mempool and confirms with the next blocks.",
@@ -289,6 +291,7 @@ const dict = {
         channel_command: "Or open it with lncli:",
         donate_line: "Swaps run on shared liquidity.",
         donate_line_action: "Help it grow",
+        donate_line_dismiss: "Hide this",
     },
 };
 

@@ -29,6 +29,7 @@ import {
     type DonateTab,
     closeDonate,
     donateTab,
+    donationAddress,
     donationBip21,
     donationPresets,
     nodeUri,
@@ -55,7 +56,7 @@ const replayPollLimitMs = 10 * 60_000;
 const maxSat = 21_000_000 * 100_000_000;
 
 const tabs = (): DonateTab[] => [
-    ...(config.donation ? (["onchain"] as DonateTab[]) : []),
+    ...(donationAddress() ? (["onchain"] as DonateTab[]) : []),
     ...(config.ourNode ? (["channel"] as DonateTab[]) : []),
 ];
 
@@ -312,11 +313,16 @@ const DonateOnChain = (props: { address: string }) => {
 
             <Show when={stats()}>
                 <p class="donate-stats" data-testid="donate-stats">
-                    {t("donate_received_so_far", {
-                        amount: show(stats()!.receivedSat),
-                        denomination: unit(),
-                        count: String(stats()!.txCount),
-                    })}
+                    {t(
+                        stats()!.txCount === 1
+                            ? "donate_received_so_far_one"
+                            : "donate_received_so_far",
+                        {
+                            amount: show(stats()!.receivedSat),
+                            denomination: unit(),
+                            count: String(stats()!.txCount),
+                        },
+                    )}
                 </p>
             </Show>
             <Show when={config.assets?.[BTC]?.blockExplorerUrl}>
@@ -496,8 +502,8 @@ const DonateWindow = () => {
                     class="donate-scroll"
                     role="tabpanel"
                     aria-labelledby={`donate-tab-${tab()}`}>
-                    <Show when={tab() === "onchain" && config.donation}>
-                        <DonateOnChain address={config.donation!.address} />
+                    <Show when={tab() === "onchain" && donationAddress()}>
+                        <DonateOnChain address={donationAddress()!} />
                     </Show>
                     <Show when={tab() === "channel" && config.ourNode}>
                         <OpenChannel

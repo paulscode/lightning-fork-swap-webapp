@@ -1,6 +1,6 @@
 import { sha256 } from "@noble/hashes/sha2.js";
 import { hex } from "@scure/base";
-import { render, screen, waitFor } from "@solidjs/testing-library";
+import { fireEvent, render, screen, waitFor } from "@solidjs/testing-library";
 import type * as ClientModule from "boltz-swaps/client";
 import { getSubmarinePreimage } from "boltz-swaps/client";
 import type * as InvoiceModule from "boltz-swaps/invoice";
@@ -12,7 +12,11 @@ import { config } from "../../src/config";
 import { BTC, LN } from "../../src/consts/Assets";
 import i18n from "../../src/i18n/i18n";
 import TransactionClaimed from "../../src/status/TransactionClaimed";
-import { closeDonate, donateTab } from "../../src/utils/donate";
+import {
+    closeDonate,
+    donateTab,
+    setDonateLineHidden,
+} from "../../src/utils/donate";
 import type { SomeSwap } from "../../src/utils/swapCreator";
 import { TestComponent, contextWrapper, payContext } from "../helper";
 
@@ -167,7 +171,10 @@ describe("TransactionClaimed", () => {
     });
 
     test("should open the donation window from the line after a swap", async () => {
-        config.donation = { address: "bcrt1qdonation" };
+        config.donation = {
+            address:
+                "bcrt1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqc8gma6",
+        };
         try {
             renderClaimed({
                 id: "rev",
@@ -183,6 +190,29 @@ describe("TransactionClaimed", () => {
             expect(donateTab()).toEqual("onchain");
         } finally {
             closeDonate();
+            config.donation = undefined;
+        }
+    });
+
+    test("should hide the donation line for good once dismissed", async () => {
+        config.donation = {
+            address:
+                "bcrt1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqc8gma6",
+        };
+        try {
+            renderClaimed({
+                id: "rev",
+                type: SwapType.Reverse,
+                assetSend: LN,
+                assetReceive: BTC,
+                claimTx: "txid",
+                receiveAmount: 1,
+            } as SomeSwap);
+            fireEvent.click(await screen.findByTestId("donate-line-dismiss"));
+            expect(screen.queryByTestId("donate-line")).toBeNull();
+            expect(donateTab()).toBeUndefined();
+        } finally {
+            setDonateLineHidden(false);
             config.donation = undefined;
         }
     });
