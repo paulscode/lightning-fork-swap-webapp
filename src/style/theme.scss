@@ -93,6 +93,16 @@ $lightning_fork_icon: url(../assets/lightning-fork-icon.webp);
         transparent
     );
     --color-primary-lighter: #9cc6ff;
+
+    // The lightning of the icon and the network sky
+    --color-sky-0: #02040a;
+    --color-arc-core: #ffffff;
+    --color-arc-glow: #9cc6ff;
+    --color-plasma: #7df9ff;
+    --color-arc-violet: #b48cff;
+    --color-glow-sm: 0 0 8px var(--color-primary-glow);
+    --color-glow-md: 0 0 18px var(--color-primary-glow);
+    --color-glow-lg: 0 0 40px var(--color-primary-glow);
     --color-primary-glow: color-mix(
         in srgb,
         var(--color-primary) 40%,

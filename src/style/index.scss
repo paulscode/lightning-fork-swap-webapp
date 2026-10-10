@@ -16,7 +16,39 @@ body {
     font-size: 14px;
     line-height: 1.45;
     margin: 0;
-    background: var(--color-secondary-600);
+    // A still, faint starfield behind every page (the home page draws the
+    // living one over it)
+    --color-star: color-mix(in srgb, var(--color-arc-core) 55%, transparent);
+    --color-star-dim: color-mix(
+        in srgb,
+        var(--color-arc-glow) 30%,
+        transparent
+    );
+    background:
+        radial-gradient(1px 1px at 23px 41px, var(--color-star), transparent),
+        radial-gradient(
+            1px 1px at 131px 87px,
+            var(--color-star-dim),
+            transparent
+        ),
+        radial-gradient(
+            1.5px 1.5px at 197px 163px,
+            var(--color-star),
+            transparent
+        ),
+        radial-gradient(
+            1px 1px at 61px 211px,
+            var(--color-star-dim),
+            transparent
+        ),
+        radial-gradient(
+            1px 1px at 167px 19px,
+            var(--color-star-dim),
+            transparent
+        ),
+        var(--color-secondary-600);
+    background-size: 240px 240px;
+    background-attachment: fixed;
     color: var(--color-text);
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
@@ -481,6 +513,34 @@ hr.spacer {
     gap: 0.35rem;
     svg {
         margin-right: 0;
+    }
+}
+
+// The primary button charges on hover: a sweep of light across it
+.btn:not(.btn-light, .btn-danger, .btn-success, :disabled) {
+    background-image: linear-gradient(
+        100deg,
+        transparent 30%,
+        color-mix(in srgb, var(--color-arc-core) 45%, transparent) 50%,
+        transparent 70%
+    );
+    background-repeat: no-repeat;
+    background-size: 250% 100%;
+    background-position: 150% 0;
+    transition:
+        background-position 0.5s ease-out,
+        box-shadow 0.2s ease-out;
+
+    &:hover,
+    &:focus-visible {
+        background-position: -50% 0;
+        box-shadow: var(--color-glow-md);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .btn {
+        transition: none;
     }
 }
 
