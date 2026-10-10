@@ -1,4 +1,5 @@
 import {
+    connectableAddresses,
     loadMeta,
     loadNode,
     loadTile,
@@ -153,5 +154,33 @@ describe("the sky's data", () => {
         expect(await searchNodes(m, "x")).toEqual([]);
         fetchMock.mockResolvedValue(json({}, 500));
         await expect(loadMeta()).rejects.toThrow();
+    });
+});
+
+describe("connectableAddresses", () => {
+    test("keeps host:port addresses and drops anything else", () => {
+        const onion =
+            "uo4swnsgfzlstnyx44eimndqkykz5aqbep7bqmwwg42foofgr7h2pqyd.onion:9735";
+        expect(
+            connectableAddresses([
+                "91.190.100.60:9735",
+                onion,
+                "[2a01:4f8:c0c:1::1]:9735",
+                "lightning.example.com:9735",
+                "no-port.example.com",
+                "<b>x</b>:9735",
+                "a b:9735",
+                "x".repeat(100) + ":9735",
+                42,
+                null,
+            ]),
+        ).toEqual([
+            "91.190.100.60:9735",
+            onion,
+            "[2a01:4f8:c0c:1::1]:9735",
+            "lightning.example.com:9735",
+        ]);
+        expect(connectableAddresses(undefined)).toEqual([]);
+        expect(connectableAddresses("1.2.3.4:9735")).toEqual([]);
     });
 });

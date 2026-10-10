@@ -431,6 +431,11 @@ const dict = {
         network_channels: "Channels",
         network_share: "Share of the network",
         network_addresses: "Addresses",
+        network_no_address:
+            "This node announces no address, so a channel to it has to start from a node it already knows.",
+        network_copy_uri: "Copy the node's address",
+        network_copy_key: "Copy the node's public key",
+        network_copied: "Copied",
         network_ours: "The swap service's node",
         network_open_channel: "Open a channel to us",
         network_donate: "Donate",

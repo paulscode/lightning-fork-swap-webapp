@@ -24,7 +24,7 @@ import { prefersReducedMotion, webglAvailable } from "../network/support";
 import "../style/network.scss";
 import { formatAmount, formatDenomination } from "../utils/denomination";
 import { openDonate } from "../utils/donate";
-import CopyButton from "./CopyButton";
+import NodeUris, { CopyIcon } from "./NodeUris";
 
 // The network sky: the background of the home page ("background"), or
 // the explorer of /network ("full") with search, the info panel and a
@@ -328,11 +328,10 @@ const NetworkSky = (props: {
                         <p class="sky-badge">{t("network_ours")}</p>
                     </Show>
                     <p class="sky-key">
-                        <code>{selected()}</code>{" "}
-                        <CopyButton
-                            label="copy_node"
-                            btnClass="btn btn-small"
+                        <code>{selected()}</code>
+                        <CopyIcon
                             data={selected()!}
+                            label={t("network_copy_key")}
                         />
                     </p>
                     <dl>
@@ -345,14 +344,11 @@ const NetworkSky = (props: {
                         <dt>{t("network_share")}</dt>
                         <dd>{share().toFixed(1)} %</dd>
                     </dl>
+                    <NodeUris
+                        pubkey={selected()!}
+                        addresses={info()!.addresses}
+                    />
                     <Show when={ours()}>
-                        <For each={meta()!.ours.uris}>
-                            {(uri) => (
-                                <p class="sky-uri">
-                                    <code>{uri}</code>
-                                </p>
-                            )}
-                        </For>
                         <div class="btns">
                             <button
                                 type="button"

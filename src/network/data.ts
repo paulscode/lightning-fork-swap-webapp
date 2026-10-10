@@ -189,6 +189,21 @@ export const parseShard = (
 
 export const shardOf = (pubkey: string) => pubkey.slice(2, 4);
 
+// A host (name, IPv4, onion) or a bracketed IPv6, and a port
+const addressPattern = /^(\[[0-9a-fA-F:.]+\]|[A-Za-z0-9.-]+):[0-9]{1,5}$/;
+
+// The addresses a node announced that look like something to connect to:
+// they come from gossip, so anything else is left out
+export const connectableAddresses = (addresses: unknown): string[] =>
+    Array.isArray(addresses)
+        ? addresses.filter(
+              (a): a is string =>
+                  typeof a === "string" &&
+                  a.length <= 100 &&
+                  addressPattern.test(a),
+          )
+        : [];
+
 export const loadMeta = async (): Promise<GraphMeta> => {
     const meta = parseMeta(await fetchJson("meta.json"));
     if (meta === undefined) {
