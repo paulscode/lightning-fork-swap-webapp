@@ -24,7 +24,7 @@ import { prefersReducedMotion, webglAvailable } from "../network/support";
 import "../style/network.scss";
 import { formatAmount, formatDenomination } from "../utils/denomination";
 import { openDonate } from "../utils/donate";
-import NodeUris, { CopyIcon } from "./NodeUris";
+import NodeUris from "./NodeUris";
 
 // The network sky: the background of the home page ("background"), or
 // the explorer of /network ("full") with search, the info panel and a
@@ -329,10 +329,6 @@ const NetworkSky = (props: {
                     </Show>
                     <p class="sky-key">
                         <code>{selected()}</code>
-                        <CopyIcon
-                            data={selected()!}
-                            label={t("network_copy_key")}
-                        />
                     </p>
                     <dl>
                         <dt>{t("network_capacity")}</dt>

@@ -173,17 +173,9 @@
             font-weight: 700;
         }
 
-        .sky-key {
-            display: flex;
-            gap: 0.4rem;
-            align-items: flex-start;
-
-            code {
-                flex: 1;
-                min-width: 0;
-                font-size: 0.7rem;
-                overflow-wrap: anywhere;
-            }
+        .sky-key code {
+            font-size: 0.7rem;
+            overflow-wrap: anywhere;
         }
 
         .sky-uris {

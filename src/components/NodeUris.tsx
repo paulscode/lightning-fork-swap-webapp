@@ -9,7 +9,7 @@ import { nodeUri } from "../utils/donate";
 import { clipboard } from "../utils/helper";
 
 // A copy button that is an icon only, and a real button (keyboard, label)
-export const CopyIcon = (props: { data: string; label: string }) => {
+const CopyIcon = (props: { data: string; label: string }) => {
     const { t } = useGlobalContext();
     const [copied, setCopied] = createSignal(false);
     return (
