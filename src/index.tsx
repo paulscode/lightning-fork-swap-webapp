@@ -21,6 +21,7 @@ import { CreateProvider } from "./context/Create";
 import { GlobalProvider } from "./context/Global";
 import { PayProvider } from "./context/Pay";
 import { RescueProvider } from "./context/Rescue";
+import ChannelDonation from "./pages/ChannelDonation";
 import ClaimRescue from "./pages/ClaimRescue";
 import Create from "./pages/Create";
 import Error from "./pages/Error";
@@ -122,6 +123,7 @@ const cleanup = render(
             {legacyRescueRedirects()}
             <Route path="/history" component={History} />
             <Route path="/donate" component={DonatePage} />
+            <Route path="/donate/channel/:id" component={ChannelDonation} />
             <Route path="/terms" component={Terms} />
             <Route path="/privacy" component={Privacy} />
             <Route path="*404" component={NotFound} />

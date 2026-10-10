@@ -1,5 +1,5 @@
-import { useNavigate } from "@solidjs/router";
-import { Show, createResource, createSignal, onMount } from "solid-js";
+import { A, useNavigate } from "@solidjs/router";
+import { For, Show, createResource, createSignal, onMount } from "solid-js";
 
 import LoadingSpinner from "../components/LoadingSpinner";
 import Pagination, { mobileItemsPerPage } from "../components/Pagination";
@@ -11,6 +11,7 @@ import SwapList, {
 import SettingsCog from "../components/settings/SettingsCog";
 import SettingsMenu from "../components/settings/SettingsMenu";
 import { type tFn, useGlobalContext } from "../context/Global";
+import { storedDonations } from "../utils/channelDonation";
 import { downloadJson, getExportFileName } from "../utils/download";
 import { isMobile } from "../utils/helper";
 import { latestStorageVersion } from "../utils/migration";
@@ -41,6 +42,8 @@ const History = () => {
     const { getSwaps, clearSwaps, t } = useGlobalContext();
 
     const [swaps, setSwaps] = createSignal<SomeSwap[]>([]);
+    // Channel donations made from this browser (their links)
+    const donations = storedDonations();
     const [currentPage, setCurrentPage] = createSignal(1);
     const [currentSwaps, setCurrentSwaps] = createSignal<SomeSwap[]>([]);
     const [historyList] = createResource(
@@ -149,6 +152,24 @@ const History = () => {
                     <button class="btn btn-danger" onClick={deleteLocalStorage}>
                         {t("refund_clear")}
                     </button>
+                </Show>
+                <Show when={donations.length > 0}>
+                    <h3 class="history-donations-title">
+                        {t("history_donations")}
+                    </h3>
+                    <ul
+                        class="history-donations"
+                        data-testid="history-donations">
+                        <For each={donations}>
+                            {(d) => (
+                                <li>
+                                    <A href={`/donate/channel/${d.id}`}>
+                                        {new Date(d.createdAt).toLocaleString()}
+                                    </A>
+                                </li>
+                            )}
+                        </For>
+                    </ul>
                 </Show>
                 <SettingsMenu />
             </div>

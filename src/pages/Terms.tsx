@@ -95,6 +95,20 @@ const Terms: Component = () => {
                 and costs you only its miner fee; the coins in your side of it
                 stay yours. We may close channels at any time.
             </p>
+            <p>
+                You may also ask for your donation to be used to open a channel
+                from our node to yours. This is a donation, not a purchase, and
+                not a contract or an agreement of any kind. The channel is best
+                effort: we will try to open it, but we do not promise that it
+                will open, when, at what size, or how long it stays open. If we
+                cannot open it, the donation goes to the service's liquidity
+                like any other, and nothing is refunded in any case. The channel
+                and its coins belong to the service; we may close it at any
+                time. We may decline or stop any such donation, change its sizes
+                and rules, or stop offering it, without notice. The status shown
+                while it is processed is for information only and may be late or
+                wrong.
+            </p>
 
             <h2>6. Open source</h2>
             <p>

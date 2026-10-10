@@ -292,6 +292,127 @@ const dict = {
         donate_line: "Swaps run on shared liquidity.",
         donate_line_action: "Help it grow",
         donate_line_dismiss: "Hide this",
+        channel_switch: "Use my donation to open a channel to my node",
+        channel_switch_hint:
+            "Your node gets room to receive payments (inbound capacity). The coins in the channel stay the service's.",
+        channel_short_title: "Best effort, not a promise.",
+        channel_short_text:
+            "We will try to open the channel, but we can't guarantee it. If we can't, your donation still goes to the service's liquidity. Donations are never refunded.",
+        channel_terms_link: "Terms",
+        channel_node_label: "Your node",
+        channel_node_placeholder: "pubkey@host:port, or just the pubkey",
+        channel_node_help:
+            "The key alone is enough if your node is already connected to ours or announces a public address.",
+        channel_node_invalid:
+            "That isn't a node key (66 characters, starting with 02 or 03), optionally followed by @host:port.",
+        channel_sizes:
+            "Send at least {{ min }} {{ unit }}: a channel of at least {{ channel }} {{ unit }} plus its miner fee (about {{ fee }} {{ unit }} now). A channel is at most {{ max }} {{ unit }}; anything above stays with the service as a general donation.",
+        channel_paused:
+            "Channel donations are paused right now. You can still donate on chain.",
+        channel_full_title: "Please read before donating",
+        channel_full_gift_title: "This is a donation, not a purchase.",
+        channel_full_gift:
+            "You are giving coins to Lightning Fork Swap. You are not buying a channel, a service or anything else, and this is not a contract or an agreement of any kind.",
+        channel_full_effort_title: "The channel is best effort.",
+        channel_full_effort:
+            "We will try to use your donation to open a channel from our node to yours, but we can't promise that it will open, when, at what size, or how long it stays open. Your node may be unreachable, may refuse the channel, or something on our side or on the network may prevent it.",
+        channel_full_stays_title:
+            "If we can't open it, the donation stays with the service",
+        channel_full_stays:
+            "and goes to its liquidity, like any other donation. Nothing is refunded, in any case, including amounts sent by mistake, too little, too much, late, or to the wrong node details.",
+        channel_full_ours_title:
+            "The channel and its coins belong to Lightning Fork Swap.",
+        channel_full_ours:
+            "Your node gets room to receive payments (inbound capacity). You can't withdraw our side of the channel, and we may close it at any time, for example if your node is offline for a long time.",
+        channel_full_send_title: "Only send what you are happy to give,",
+        channel_full_send:
+            "and only from a wallet on the Bitcoin (BLAKE2b) chain, to the address shown for this donation.",
+        channel_accept:
+            "I understand: this is a gift, the channel is best effort only, and nothing is refunded.",
+        channel_create: "Create my donation address",
+        channel_working: "Preparing your donation address",
+        channel_error_bad_node: "That node key isn't valid.",
+        channel_error_not_public:
+            "That address isn't reachable from the internet. Give a public address or an onion address, or just the key.",
+        channel_error_bad_host: "We couldn't find that host. Check its name.",
+        channel_error_our_node: "That's our own node.",
+        channel_error_node_limit: "This node already has its donated channels.",
+        channel_error_budget:
+            "Many donations are waiting right now. Please try again in a while.",
+        channel_error_disclaimer:
+            "The terms of this donation changed. Reload the page and read them again.",
+        channel_error_work: "That took too long. Please try again.",
+        channel_error_unavailable:
+            "Channel donations are unavailable right now. Please try again later.",
+        cd_title: "Your channel donation",
+        cd_keep_link:
+            "Keep this link: it brings you back here, and it lets you change your node's details if needed.",
+        cd_copy_link: "Link",
+        cd_send:
+            "Send at least {{ min }} {{ unit }} to this address, made for this donation only.",
+        cd_max: "Up to {{ max }} {{ unit }} becomes the channel; anything above stays with the service.",
+        cd_expires: "We wait for your payment until {{ time }}.",
+        cd_received:
+            "Received {{ amount }} {{ unit }}; {{ confirmed }} {{ unit }} with {{ n }} confirmations.",
+        cd_step_awaiting_payment: "Waiting for your payment",
+        cd_step_payment_seen: "Payment seen",
+        cd_step_payment_confirmed: "Payment confirmed",
+        cd_step_connecting: "Connecting to your node",
+        cd_step_opening: "Opening the channel",
+        cd_step_funding_broadcast: "Channel transaction sent",
+        cd_step_open: "Channel opened",
+        cd_state_retrying:
+            "We couldn't open the channel yet. Next try around {{ time }}.",
+        cd_state_needs_attention: "Please check your node's details.",
+        cd_state_fell_back:
+            "Your donation went to general liquidity, as described when you donated. Thank you, it helps all the same.",
+        cd_state_closed: "The channel was closed.",
+        cd_state_expired: "Nothing was received in time.",
+        cd_state_rejected:
+            "Too many donations were waiting, so this one was not started.",
+        cd_error_unreachable:
+            "We couldn't reach your node. Check that it is online and reachable from the internet.",
+        cd_error_wrong_node:
+            "A different node answered at that address. Check the key and the address.",
+        cd_error_not_fork_node:
+            "That node isn't on the Lightning Fork network.",
+        cd_error_no_address:
+            "We don't know where to reach your node. Add its address (host:port).",
+        cd_error_peer_rejected:
+            "Your node refused the channel. Check its rules for incoming channels.",
+        cd_error_peer_too_small:
+            "Your node's minimum channel size is larger than this channel. Lower it on your node.",
+        cd_error_peer_pending:
+            "Your node has too many channels opening at once. We will try again.",
+        cd_error_disconnected:
+            "Your node stopped responding while the channel was opening. We will try again.",
+        cd_error_our_node: "That's our own node.",
+        cd_error_node_limit: "This node already has its donated channels.",
+        cd_error_too_little: "Less than the minimum arrived in time.",
+        cd_error_internal:
+            "Something went wrong on our side. We will try again.",
+        cd_error_gave_up: "We tried for two days without success.",
+        cd_error_no_edit: "The node's details were not changed in time.",
+        cd_error_fees_high:
+            "Network fees are high right now. We will try again when they fall.",
+        cd_error_lnd_unavailable: "Our node is busy. We will try again.",
+        cd_error_operator: "Ended by the service.",
+        cd_error_budget: "Too many donations were waiting.",
+        cd_channel: "Channel of {{ amount }} {{ unit }}",
+        cd_remainder:
+            "{{ amount }} {{ unit }} stayed with the service as a general donation. Thank you.",
+        cd_funding_confs:
+            "Confirmations: {{ n }} (a channel is ready after 6, usually about an hour)",
+        cd_edit_title: "Change your node's details",
+        cd_edit_save: "Save",
+        cd_edit_saved: "Saved. We'll try again with these details.",
+        cd_edit_no_secret:
+            "To change the node, open this page from the link you kept when you donated, in the browser you used.",
+        cd_about: "About this donation",
+        cd_not_found: "We can't find this donation.",
+        cd_your_node: "Your node",
+        history_donations: "Channel donations",
+        history_donations_none: "No channel donations from this browser.",
     },
 };
 

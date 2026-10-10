@@ -20,6 +20,7 @@ import {
     getAddressStats,
     hasBlockExplorer,
 } from "../utils/blockchain";
+import { getChannelInfo } from "../utils/channelDonation";
 import {
     convertAmount,
     formatAmount,
@@ -44,6 +45,7 @@ import {
     isFinalVerdict,
 } from "../utils/replay";
 import Accordion from "./Accordion";
+import ChannelDonationForm from "./ChannelDonationForm";
 import CopyButton from "./CopyButton";
 import ExternalLink from "./ExternalLink";
 import QrCode from "./QrCode";
@@ -77,6 +79,10 @@ const DonateOnChain = (props: { address: string }) => {
     const [howOpen, setHowOpen] = createSignal(false);
     const [received, setReceived] = createSignal<string | undefined>();
     const [verdict, setVerdict] = createSignal<ReplayVerdict | undefined>();
+    // Channel donations: offered when the service has them on (its API
+    // answers /donate/v1/info); the switch is off until the donor turns it
+    const [channelInfo] = createResource(getChannelInfo);
+    const [channelMode, setChannelMode] = createSignal(false);
 
     const bip21 = createMemo(() => donationBip21(props.address, amountSat()));
     const unit = () => formatDenomination(denomination(), BTC);
@@ -164,97 +170,130 @@ const DonateOnChain = (props: { address: string }) => {
         <div class="donate-onchain" data-testid="donate-onchain">
             <p class="donate-intro">{t("donate_intro")}</p>
 
-            <div
-                class="donate-amounts"
-                role="radiogroup"
-                aria-label={t("donate_amount")}>
-                <button
-                    type="button"
-                    role="radio"
-                    aria-checked={amountSat() === 0 && custom() === ""}
-                    class="donate-chip"
-                    onClick={() => {
-                        setCustom("");
-                        setCustomInvalid(false);
-                        setAmountSat(0);
-                    }}>
-                    {t("donate_any_amount")}
-                </button>
-                <For each={donationPresets}>
-                    {(sat) => (
-                        <button
-                            type="button"
-                            role="radio"
-                            aria-checked={
-                                amountSat() === sat && custom() === ""
-                            }
-                            class="donate-chip"
-                            data-testid={`donate-preset-${sat}`}
-                            onClick={() => {
-                                setCustom("");
-                                setCustomInvalid(false);
-                                setAmountSat(sat);
-                            }}>
-                            {show(sat)} {unit()}
-                        </button>
-                    )}
-                </For>
-                <input
-                    class="donate-custom"
-                    classList={{ invalid: customInvalid() }}
-                    data-testid="donate-custom"
-                    inputmode={
-                        denomination() === Denomination.Btc
-                            ? "decimal"
-                            : "numeric"
-                    }
-                    autocomplete="off"
-                    aria-label={t("donate_custom_placeholder", {
-                        denomination: unit(),
-                    })}
-                    aria-invalid={customInvalid()}
-                    placeholder={t("donate_custom_placeholder", {
-                        denomination: unit(),
-                    })}
-                    value={custom()}
-                    onInput={(e) => chooseCustom(e.currentTarget.value)}
-                />
-            </div>
-
-            <div class="donate-qr">
-                <a href={bip21()} aria-label={t("donate_open_wallet")}>
-                    <QrCode data={bip21()} asset={BTC} />
-                </a>
-            </div>
-
-            <p class="donate-address" data-testid="donate-address">
-                <strong>{parts()[0]}</strong>
-                <span>{parts()[1]}</span>
-                <strong>{parts()[2]}</strong>
-            </p>
-            <p class="donate-address-hint">{t("donate_address_hint")}</p>
-
-            <div class="btns donate-actions">
-                <CopyButton label="copy_address" data={props.address} />
-                <Show when={amountSat() > 0}>
-                    <CopyButton
-                        label="copy_amount"
-                        data={() =>
-                            formatAmount(
-                                BigNumber(amountSat()),
-                                denomination(),
-                                ".",
-                                BTC,
-                            )
+            <Show when={channelInfo()}>
+                <label class="channel-switch">
+                    <input
+                        type="checkbox"
+                        role="switch"
+                        data-testid="channel-switch"
+                        checked={channelMode()}
+                        aria-checked={channelMode()}
+                        onChange={(e) =>
+                            setChannelMode(e.currentTarget.checked)
                         }
                     />
+                    <span>
+                        <strong>{t("channel_switch")}</strong>
+                        <small>{t("channel_switch_hint")}</small>
+                    </span>
+                </label>
+            </Show>
+
+            <Show when={channelMode() && channelInfo()}>
+                <Show
+                    when={channelInfo()!.available}
+                    fallback={
+                        <p class="channel-paused" data-testid="channel-paused">
+                            {t("channel_paused")}
+                        </p>
+                    }>
+                    <ChannelDonationForm info={channelInfo()!} />
                 </Show>
-                <CopyButton label="copy_bip21" data={bip21} />
-            </div>
-            <Show when={isMobile()}>
-                <a class="btn btn-light donate-open-wallet" href={bip21()}>
-                    {t("donate_open_wallet")}
-                </a>
+            </Show>
+
+            <Show when={!channelMode()}>
+                <div
+                    class="donate-amounts"
+                    role="radiogroup"
+                    aria-label={t("donate_amount")}>
+                    <button
+                        type="button"
+                        role="radio"
+                        aria-checked={amountSat() === 0 && custom() === ""}
+                        class="donate-chip"
+                        onClick={() => {
+                            setCustom("");
+                            setCustomInvalid(false);
+                            setAmountSat(0);
+                        }}>
+                        {t("donate_any_amount")}
+                    </button>
+                    <For each={donationPresets}>
+                        {(sat) => (
+                            <button
+                                type="button"
+                                role="radio"
+                                aria-checked={
+                                    amountSat() === sat && custom() === ""
+                                }
+                                class="donate-chip"
+                                data-testid={`donate-preset-${sat}`}
+                                onClick={() => {
+                                    setCustom("");
+                                    setCustomInvalid(false);
+                                    setAmountSat(sat);
+                                }}>
+                                {show(sat)} {unit()}
+                            </button>
+                        )}
+                    </For>
+                    <input
+                        class="donate-custom"
+                        classList={{ invalid: customInvalid() }}
+                        data-testid="donate-custom"
+                        inputmode={
+                            denomination() === Denomination.Btc
+                                ? "decimal"
+                                : "numeric"
+                        }
+                        autocomplete="off"
+                        aria-label={t("donate_custom_placeholder", {
+                            denomination: unit(),
+                        })}
+                        aria-invalid={customInvalid()}
+                        placeholder={t("donate_custom_placeholder", {
+                            denomination: unit(),
+                        })}
+                        value={custom()}
+                        onInput={(e) => chooseCustom(e.currentTarget.value)}
+                    />
+                </div>
+
+                <div class="donate-qr">
+                    <a href={bip21()} aria-label={t("donate_open_wallet")}>
+                        <QrCode data={bip21()} asset={BTC} />
+                    </a>
+                </div>
+
+                <p class="donate-address" data-testid="donate-address">
+                    <strong>{parts()[0]}</strong>
+                    <span>{parts()[1]}</span>
+                    <strong>{parts()[2]}</strong>
+                </p>
+                <p class="donate-address-hint">{t("donate_address_hint")}</p>
+
+                <div class="btns donate-actions">
+                    <CopyButton label="copy_address" data={props.address} />
+                    <Show when={amountSat() > 0}>
+                        <CopyButton
+                            label="copy_amount"
+                            data={() =>
+                                formatAmount(
+                                    BigNumber(amountSat()),
+                                    denomination(),
+                                    ".",
+                                    BTC,
+                                )
+                            }
+                        />
+                    </Show>
+                    <CopyButton label="copy_bip21" data={bip21} />
+                </div>
+                <Show when={isMobile()}>
+                    <a class="btn btn-light donate-open-wallet" href={bip21()}>
+                        {t("donate_open_wallet")}
+                    </a>
+                </Show>
             </Show>
 
             <Show when={received()}>
