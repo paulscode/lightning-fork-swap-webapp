@@ -8,6 +8,7 @@ import {
     BufferGeometry,
     Color,
     InstancedMesh,
+    type InterleavedBufferAttribute,
     LineBasicMaterial,
     LineSegments,
     Matrix4,
@@ -37,6 +38,7 @@ import {
     type Vec3,
     arcPoints,
     curvePoints,
+    grownPoints,
     nodeColor,
     nodeRadius,
     random,
@@ -658,8 +660,9 @@ export const createSky = (
                 a.seed,
                 0.12 + 0.25 * Math.max(0, 1 - age / 400),
             );
-            (a.line.geometry as LineGeometry).setPositions(
-                Array.from(jagged.subarray(0, shown * 3)),
+            writeLine(
+                a.line.geometry as LineGeometry,
+                grownPoints(jagged, shown),
             );
             // The strike: the far node flashes as the arc arrives
             if (a.neighbour < count && all[a.neighbour] !== selected) {
@@ -772,6 +775,24 @@ export const createSky = (
             return out;
         },
     };
+};
+
+// Writes a line's points into its existing buffer: the same number of
+// segments every frame, and no new buffer each time
+export const writeLine = (geometry: LineGeometry, points: Float32Array) => {
+    const start = geometry.getAttribute(
+        "instanceStart",
+    ) as InterleavedBufferAttribute;
+    const data = start.data.array as Float32Array;
+    const segmentsIn = points.length / 3 - 1;
+    if (data.length !== segmentsIn * 6) {
+        geometry.setPositions(points);
+        return;
+    }
+    for (let i = 0; i < segmentsIn; i++) {
+        data.set(points.subarray(i * 3, i * 3 + 6), i * 6);
+    }
+    start.data.needsUpdate = true;
 };
 
 const reverse = (curve: Float32Array): Float32Array => {

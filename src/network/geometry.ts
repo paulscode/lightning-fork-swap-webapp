@@ -133,3 +133,21 @@ export const arcPoints = (
     }
     return out;
 };
+
+// An arc grown part of the way: all its points, those past the tip laid
+// on the tip. The line keeps its number of segments as it grows (three.js
+// draws an instanced line with the segment count it first had).
+export const grownPoints = (
+    points: Float32Array,
+    shown: number,
+): Float32Array => {
+    const n = points.length / 3;
+    const tip = Math.min(n, Math.max(1, shown)) - 1;
+    const out = points.slice();
+    for (let i = tip + 1; i < n; i++) {
+        out[i * 3] = points[tip * 3];
+        out[i * 3 + 1] = points[tip * 3 + 1];
+        out[i * 3 + 2] = points[tip * 3 + 2];
+    }
+    return out;
+};

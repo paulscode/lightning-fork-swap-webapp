@@ -3,6 +3,7 @@ import {
     controlPoints,
     curvePoints,
     fbm,
+    grownPoints,
     nodeColor,
     nodeRadius,
     random,
@@ -90,5 +91,21 @@ describe("the sky's shapes", () => {
         for (let x = 0; x < 20; x += 0.37) {
             expect(Math.abs(fbm(x, 9))).toBeLessThanOrEqual(1);
         }
+    });
+
+    test("an arc grown part way keeps all its points, the rest on its tip", () => {
+        const curve = curvePoints([0, 0, 0], [5, 0, 0], 1, 10);
+        const part = grownPoints(curve, 4);
+        expect(part.length).toEqual(curve.length);
+        expect(Array.from(part.slice(0, 12))).toEqual(
+            Array.from(curve.slice(0, 12)),
+        );
+        for (let i = 4; i <= 10; i++) {
+            expect(Array.from(part.slice(i * 3, i * 3 + 3))).toEqual(
+                Array.from(curve.slice(9, 12)),
+            );
+        }
+        expect(grownPoints(curve, 99)).toEqual(curve);
+        expect(Array.from(grownPoints(curve, 0).slice(-3))).toEqual([0, 0, 0]);
     });
 });
