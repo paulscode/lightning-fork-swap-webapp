@@ -304,6 +304,8 @@ body.donate-open {
 
 // The Donate button in the navigation, and the line after a swap
 .nav-donate {
+    flex-shrink: 0;
+    margin-left: auto;
     padding: 0.35rem 0.9rem;
     border: 1px solid var(--color-primary);
     border-radius: 999px;
@@ -316,6 +318,17 @@ body.donate-open {
     &:focus-visible {
         background: var(--color-primary-glow);
         color: var(--color-text);
+    }
+}
+
+// On phones the button is its bolt alone, so the header never gets wider
+// than the screen
+@media (max-width: 480px) {
+    .nav-donate {
+        padding: 0.35rem 0.65rem;
+    }
+    .nav-donate-label {
+        display: none;
     }
 }
 

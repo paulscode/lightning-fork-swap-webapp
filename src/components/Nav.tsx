@@ -63,11 +63,16 @@ const Nav = (props: { network: string }) => {
                         type="button"
                         class="nav-donate"
                         data-testid="nav-donate"
+                        aria-label={t("donate")}
                         onClick={() => {
                             setHamburger(false);
                             openDonate();
                         }}>
-                        ⚡ {t("donate")}
+                        <span aria-hidden="true">⚡</span>
+                        <span class="nav-donate-label" aria-hidden="true">
+                            {" "}
+                            {t("donate")}
+                        </span>
                     </button>
                 </Show>
                 <svg

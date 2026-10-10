@@ -86,6 +86,10 @@ describe("DonateModal", () => {
         expect(await screen.findByTestId("donate-onchain")).toBeTruthy();
         const dialog = screen.getByRole("dialog");
         expect(dialog.getAttribute("aria-modal")).toEqual("true");
+        // The panel scrolls on small screens: keyboard users can reach it
+        expect(screen.getByRole("tabpanel").getAttribute("tabindex")).toEqual(
+            "0",
+        );
         expect(screen.getByText(i18n.en.donate_title)).toBeTruthy();
         expect(screen.getByTestId("donate-address").textContent).toEqual(
             address,

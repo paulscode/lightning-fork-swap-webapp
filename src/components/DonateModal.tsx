@@ -501,6 +501,9 @@ const DonateWindow = () => {
                     id="donate-tabpanel"
                     class="donate-scroll"
                     role="tabpanel"
+                    // Reachable by keyboard, so it can be scrolled without a
+                    // mouse (the tabs pattern's tabpanel)
+                    tabIndex={0}
                     aria-labelledby={`donate-tab-${tab()}`}>
                     <Show when={tab() === "onchain" && donationAddress()}>
                         <DonateOnChain address={donationAddress()!} />

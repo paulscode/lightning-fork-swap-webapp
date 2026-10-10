@@ -53,6 +53,7 @@ nav a.active {
     display: inline-flex;
     align-items: center;
     gap: 10px;
+    min-width: 0;
     margin-right: 14px;
     color: var(--color-text);
     text-decoration: none;
@@ -79,6 +80,8 @@ nav #logo.active {
         0 0 22px var(--color-primary-glow);
 }
 .logo-wordmark {
+    overflow: hidden;
+    text-overflow: ellipsis;
     font-size: 19px;
     font-weight: 700;
     letter-spacing: 0.01em;
@@ -91,6 +94,9 @@ nav #logo.active {
         font-size: 16px;
     }
 }
+.nav-donate + #hamburger {
+    margin-left: 4px;
+}
 
 #hamburger {
     cursor: pointer;
@@ -100,6 +106,7 @@ nav #logo.active {
     -webkit-user-select: none;
     -ms-user-select: none;
     user-select: none;
+    flex-shrink: 0;
     z-index: 1000;
     margin-left: auto;
 }
