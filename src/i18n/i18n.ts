@@ -413,6 +413,30 @@ const dict = {
         cd_your_node: "Your node",
         history_donations: "Channel donations",
         history_donations_none: "No channel donations from this browser.",
+        network: "Network",
+        network_title: "The Lightning Fork network",
+        network_description:
+            "A map of the Lightning Fork network: each node is a star sized by its capacity, each line a channel. The list below holds the same facts.",
+        network_loading: "Loading the network",
+        network_unavailable:
+            "The network map isn't available right now. Here is our node and its channels.",
+        network_stats:
+            "{{ nodes }} nodes, {{ channels }} channels, {{ capacity }} {{ unit }} of capacity",
+        network_home: "Our node",
+        network_search: "Find a node by alias or key",
+        network_zoom_in: "Zoom in",
+        network_zoom_out: "Zoom out",
+        network_close_panel: "Close",
+        network_capacity: "Capacity",
+        network_channels: "Channels",
+        network_share: "Share of the network",
+        network_addresses: "Addresses",
+        network_ours: "The swap service's node",
+        network_open_channel: "Open a channel to us",
+        network_donate: "Donate",
+        network_list: "All nodes as a list",
+        network_list_alias: "Node",
+        network_more: "Explore the network",
     },
 };
 

@@ -1,0 +1,261 @@
+// The network sky: a canvas, HTML labels over it, and glass panels
+
+.visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+}
+
+.network-sky {
+    position: relative;
+    overflow: hidden;
+    background:
+        radial-gradient(ellipse at 50% 60%, #0b1430 0%, transparent 60%),
+        #02040a;
+
+    &.full {
+        height: calc(100dvh - 66px);
+        min-height: 420px;
+    }
+
+    &.background {
+        position: absolute;
+        inset: 0;
+        z-index: 0;
+    }
+
+    .sky-canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+        cursor: grab;
+        touch-action: none;
+    }
+
+    .sky-labels {
+        position: absolute;
+        inset: 0;
+        overflow: hidden;
+        pointer-events: none;
+    }
+
+    .sky-label {
+        position: absolute;
+        top: 0;
+        left: 0;
+        margin: 10px 0 0 10px;
+        color: var(--color-text-muted);
+        font-size: 0.75rem;
+        text-shadow: 0 0 6px #000;
+        white-space: nowrap;
+        will-change: transform;
+
+        &.selected {
+            color: var(--color-text);
+            font-weight: 700;
+            text-shadow:
+                0 0 8px var(--color-primary),
+                0 0 2px #000;
+        }
+    }
+
+    .sky-status {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        color: var(--color-text-muted);
+    }
+
+    .glass {
+        position: absolute;
+        z-index: 2;
+        padding: 0.75rem 1rem;
+        border: 1px solid var(--color-border-subtle);
+        border-radius: var(--border-radius-md);
+        background: color-mix(
+            in srgb,
+            var(--color-secondary-900) 70%,
+            transparent
+        );
+        backdrop-filter: blur(8px);
+        color: var(--color-text);
+        text-align: left;
+    }
+
+    .sky-controls {
+        top: 1rem;
+        right: 1rem;
+        width: min(320px, calc(100% - 2rem));
+
+        .sky-search {
+            min-height: 34px;
+            padding: 0.35rem 0.75rem;
+            text-align: left;
+        }
+
+        .sky-results {
+            max-height: 240px;
+            margin: 0.4rem 0 0;
+            padding: 0;
+            overflow-y: auto;
+            list-style: none;
+
+            button {
+                width: 100%;
+                padding: 0.3rem 0.5rem;
+                border: none;
+                background: none;
+                color: var(--color-text);
+                text-align: left;
+                cursor: pointer;
+
+                &:hover,
+                &:focus-visible {
+                    background: var(--color-white-10);
+                }
+            }
+        }
+
+        .sky-buttons {
+            display: flex;
+            gap: 0.4rem;
+            margin-top: 0.5rem;
+
+            button {
+                min-width: 2.2rem;
+                padding: 0.3rem 0.6rem;
+                border: 1px solid var(--color-border);
+                border-radius: var(--border-radius-sm);
+                background: var(--color-secondary-800);
+                color: var(--color-text);
+                cursor: pointer;
+            }
+        }
+
+        .sky-stats {
+            margin: 0.5rem 0 0;
+            color: var(--color-text-muted);
+            font-size: 0.8rem;
+        }
+    }
+
+    .sky-panel {
+        top: 1rem;
+        left: 1rem;
+        width: min(340px, calc(100% - 2rem));
+        max-height: calc(100% - 2rem);
+        overflow-y: auto;
+
+        h2 {
+            display: flex;
+            gap: 0.5rem;
+            align-items: center;
+            margin: 0;
+            font-size: 1.1rem;
+            overflow-wrap: anywhere;
+        }
+
+        .sky-swatch {
+            flex: none;
+            width: 0.8rem;
+            height: 0.8rem;
+            border-radius: 50%;
+            box-shadow: 0 0 8px currentcolor;
+        }
+
+        .sky-badge {
+            margin: 0.3rem 0;
+            color: var(--color-primary-lighter);
+            font-weight: 700;
+        }
+
+        .sky-key code,
+        .sky-uri code {
+            font-size: 0.7rem;
+            overflow-wrap: anywhere;
+        }
+
+        dl {
+            display: grid;
+            grid-template-columns: auto 1fr;
+            gap: 0.2rem 0.75rem;
+            margin: 0.5rem 0;
+        }
+
+        dt {
+            color: var(--color-text-muted);
+        }
+
+        dd {
+            margin: 0;
+        }
+
+        .sky-channels {
+            margin: 0.5rem 0 0;
+            padding: 0;
+            list-style: none;
+            font-size: 0.85rem;
+
+            li {
+                display: flex;
+                justify-content: space-between;
+                gap: 0.5rem;
+                padding: 0.15rem 0;
+            }
+
+            button {
+                padding: 0;
+                border: none;
+                background: none;
+                color: var(--color-link);
+                text-align: left;
+                cursor: pointer;
+                overflow-wrap: anywhere;
+            }
+        }
+    }
+
+    .sky-list {
+        bottom: 1rem;
+        right: 1rem;
+        max-width: min(520px, calc(100% - 2rem));
+        max-height: 40%;
+        overflow-y: auto;
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 0.8rem;
+        }
+
+        th,
+        td {
+            padding: 0.2rem 0.4rem;
+            text-align: left;
+        }
+
+        tr.ours td {
+            color: var(--color-primary-lighter);
+            font-weight: 700;
+        }
+    }
+
+    @media (max-width: 600px) {
+        .sky-panel {
+            top: auto;
+            bottom: 0;
+            left: 0;
+            width: 100%;
+            max-height: 45%;
+            border-radius: var(--border-radius-lg) var(--border-radius-lg) 0 0;
+        }
+
+        .sky-list {
+            display: none;
+        }
+    }
+}

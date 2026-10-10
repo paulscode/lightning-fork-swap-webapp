@@ -47,6 +47,7 @@
         "@trivago/prettier-plugin-sort-imports": "^6.0.2",
         "@types/node": "^25.9.3",
         "@types/qrcode": "^1.5.6",
+        "@types/three": "0.181",
         "axios": "^1.18.1",
         "eslint": "^9.39.4",
         "eslint-plugin-import-x": "^4.17.1",
@@ -91,7 +92,8 @@
         "qr-scanner": "^1.4.2",
         "qrcode": "^1.5.4",
         "solid-icons": "^1.2.0",
-        "solid-js": "^1.9.14"
+        "solid-js": "^1.9.14",
+        "three": "0.181"
     },
     "private": true,
     "license": "AGPL-3.0"

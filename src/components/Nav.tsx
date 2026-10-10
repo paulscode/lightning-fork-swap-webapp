@@ -52,6 +52,9 @@ const Nav = (props: { network: string }) => {
                     <A href="/history" onClick={() => setHamburger(false)}>
                         {t("history")}
                     </A>
+                    <A href="/network" onClick={() => setHamburger(false)}>
+                        {t("network")}
+                    </A>
                     <ExternalLink
                         href={config.contactUrl}
                         onClick={() => setHamburger(false)}>
