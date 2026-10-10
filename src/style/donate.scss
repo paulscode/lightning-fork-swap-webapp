@@ -251,6 +251,13 @@
             font-size: 0.8rem;
             word-break: break-all;
         }
+
+        // .btn is full width: here it would leave the code no room
+        .btn {
+            flex: none;
+            width: auto;
+            margin-top: 0;
+        }
     }
 
     .donate-command-title {
