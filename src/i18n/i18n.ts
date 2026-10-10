@@ -437,6 +437,32 @@ const dict = {
         network_list: "All nodes as a list",
         network_list_alias: "Node",
         network_more: "Explore the network",
+        home_headline: "Swap between the chain and its Lightning network",
+        home_subline:
+            "Non-custodial: your keys never leave your browser, and every swap either completes or can be refunded.",
+        home_stats:
+            "{{ nodes }} nodes · {{ channels }} channels · {{ capacity }} {{ unit }} of capacity",
+        home_tap_explore: "Tap to explore the network",
+        home_how: "How it works",
+        home_help_title: "Help the network grow",
+        home_help_text:
+            "Swaps run on shared liquidity. A donation adds to the coins the service keeps ready; a channel from your node to ours gives it room to receive.",
+        home_faq: "Questions",
+        faq_fees_q: "What does a swap cost?",
+        faq_fees_a:
+            "The swap card shows everything before you confirm: the service fee (a percentage of the amount) and the network fees of the swap's transactions.",
+        faq_limits_q: "How much can I swap?",
+        faq_limits_a:
+            "Each kind of swap has a minimum and a maximum, shown on the swap card. Larger amounts can be split into several swaps.",
+        faq_timeout_q: "What if something goes wrong?",
+        faq_timeout_a:
+            "A swap either completes on both sides or not at all. If a chain to Lightning swap fails, you can take your coins back after its timelock with your rescue key; if a Lightning to chain swap is not completed, your Lightning payment returns to you.",
+        faq_chain_q: "Which coins and networks?",
+        faq_chain_a:
+            "BTC on the Bitcoin (BLAKE2b) chain, and the Lightning Fork network built on it. Invoices and addresses from other networks are refused.",
+        faq_rescue_q: "What is the rescue key?",
+        faq_rescue_a:
+            "A file your browser makes for your swaps. Keep it: with it you can refund a failed swap from the Rescue page, even without this service.",
     },
 };
 

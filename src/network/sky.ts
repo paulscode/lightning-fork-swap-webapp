@@ -44,6 +44,9 @@ import {
 
 export type SkyOptions = {
     reducedMotion: boolean;
+    // full: orbit, zoom and pan (/network); orbit: turning only, so the
+    // page still scrolls (the home page); none: a backdrop (phones)
+    interaction?: "full" | "orbit" | "none";
     onSelect?: (pubkey: string) => void;
     onHover?: (pubkey: string | undefined) => void;
 };
@@ -372,6 +375,14 @@ export const createSky = (
     controls.zoomToCursor = true;
     controls.minDistance = 1;
     controls.maxDistance = 300;
+    const interaction = options.interaction ?? "full";
+    if (interaction === "orbit") {
+        controls.enableZoom = false;
+        controls.enablePan = false;
+    } else if (interaction === "none") {
+        controls.enabled = false;
+        canvas.style.pointerEvents = "none";
+    }
     let lastInput = performance.now();
     const touched = () => {
         lastInput = performance.now();

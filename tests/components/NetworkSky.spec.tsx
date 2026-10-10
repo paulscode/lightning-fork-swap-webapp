@@ -60,10 +60,13 @@ describe("the network sky without WebGL", () => {
     });
 
     test("falls back to the list of nodes, largest first, as text", async () => {
-        render(() => <NetworkSky mode="background" />, {
+        render(() => <NetworkSky mode="full" />, {
             wrapper: contextWrapper,
         });
-        const list = await screen.findByTestId("sky-list");
+        // The fallback replaces the list's usual summary once WebGL is found
+        // missing
+        await screen.findByText(i18n.en.network_unavailable);
+        const list = screen.getByTestId("sky-list");
         expect(list.querySelector("summary")?.textContent).toEqual(
             i18n.en.network_unavailable,
         );
@@ -76,6 +79,16 @@ describe("the network sky without WebGL", () => {
         expect(
             screen.getByTestId("sky-canvas").getAttribute("aria-label"),
         ).toEqual(i18n.en.network_description);
+    });
+
+    test("as the home page's backdrop, a failure shows nothing", async () => {
+        vi.mocked(loadMeta).mockRejectedValue(new Error("404"));
+        render(() => <NetworkSky mode="background" />, {
+            wrapper: contextWrapper,
+        });
+        await new Promise((r) => setTimeout(r, 20));
+        expect(screen.queryByTestId("sky-list")).toBeNull();
+        expect(screen.queryByTestId("sky-controls")).toBeNull();
     });
 
     test("when the files cannot load, the page says so", async () => {

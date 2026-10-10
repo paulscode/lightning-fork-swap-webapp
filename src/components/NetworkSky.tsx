@@ -29,7 +29,11 @@ import CopyButton from "./CopyButton";
 // The network sky: the background of the home page ("background"), or
 // the explorer of /network ("full") with search, the info panel and a
 // list of every node
-const NetworkSky = (props: { mode: "background" | "full" }) => {
+const NetworkSky = (props: {
+    mode: "background" | "full";
+    // Told the graph's numbers once they are loaded
+    onMeta?: (meta: GraphMeta) => void;
+}) => {
     const { t, denomination, separator } = useGlobalContext();
     let canvas!: HTMLCanvasElement;
     let labelLayer!: HTMLDivElement;
@@ -120,6 +124,7 @@ const NetworkSky = (props: { mode: "background" | "full" }) => {
         }
         setMeta(m);
         setTile(tl);
+        props.onMeta?.(m);
         if (!webglAvailable()) {
             setFailed(true);
             return;
@@ -129,8 +134,11 @@ const NetworkSky = (props: { mode: "background" | "full" }) => {
             if (disposed) {
                 return;
             }
+            const phone = Math.min(window.innerWidth, window.innerHeight) < 600;
             sky = createSky(canvas, m, tl, {
                 reducedMotion: prefersReducedMotion(),
+                interaction:
+                    props.mode === "full" ? "full" : phone ? "none" : "orbit",
                 onSelect: (key) => void choose(key),
             });
         } catch {
@@ -382,7 +390,9 @@ const NetworkSky = (props: { mode: "background" | "full" }) => {
                 </aside>
             </Show>
 
-            <Show when={props.mode === "full" || failed()}>
+            {/* The list: always on /network (the facts of the view, and its
+                fallback); on the home page the sky is only a backdrop */}
+            <Show when={props.mode === "full"}>
                 <details
                     class="sky-list glass"
                     open={failed()}
