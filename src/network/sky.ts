@@ -56,6 +56,8 @@ export type Sky = {
     dispose: () => void;
     // Screen positions of nodes for labels: [pubkey, alias, x, y][]
     labels: () => [string, string, number, number][];
+    // The selected node's neighbours, largest channel first (keyboard)
+    neighbours: () => string[];
 };
 
 // The sky's scale: the generator's unit is about one channel's length
@@ -279,6 +281,32 @@ export const createSky = (
     const halos = new Points(haloGeometry, haloMaterial());
     scene.add(halos);
 
+    // The rest of a large graph: one dim star per community
+    const agg = tile.aggregates;
+    if (agg !== undefined && agg.count.length > 0) {
+        const n = agg.count.length;
+        const geometry = new BufferGeometry();
+        const p = new Float32Array(n * 3);
+        const c = new Float32Array(n * 3);
+        const size = new Float32Array(n);
+        for (let i = 0; i < n; i++) {
+            p.set(
+                [
+                    agg.pos[i * 3] * spread,
+                    agg.pos[i * 3 + 1] * spread,
+                    agg.pos[i * 3 + 2] * spread,
+                ],
+                i * 3,
+            );
+            c.set([0.35, 0.45, 0.85], i * 3);
+            size[i] = 1.5 * Math.cbrt(agg.count[i]);
+        }
+        geometry.setAttribute("position", new BufferAttribute(p, 3));
+        geometry.setAttribute("color", new BufferAttribute(c, 3));
+        geometry.setAttribute("size", new BufferAttribute(size, 1));
+        scene.add(new Points(geometry, haloMaterial()));
+    }
+
     // --- idle channels: one batch of faint curves ---
     const edges = tile.edges;
     const curves: Float32Array[] = [];
@@ -378,7 +406,20 @@ export const createSky = (
         start: -1,
     };
 
+    // Neighbours flashed by an arrival, to put back to their size
+    const flashed = new Set<number>();
     const clearArcs = () => {
+        for (const i of flashed) {
+            const p = posOf(i);
+            m.makeScale(radii[i], radii[i], radii[i]).setPosition(
+                p[0],
+                p[1],
+                p[2],
+            );
+            cores.setMatrixAt(i, m);
+        }
+        flashed.clear();
+        cores.instanceMatrix.needsUpdate = true;
         for (const a of arcs) {
             scene.remove(a.line);
             a.line.geometry.dispose();
@@ -609,6 +650,23 @@ export const createSky = (
             (a.line.geometry as LineGeometry).setPositions(
                 Array.from(jagged.subarray(0, shown * 3)),
             );
+            // The strike: the far node flashes as the arc arrives
+            if (a.neighbour < count && all[a.neighbour] !== selected) {
+                const flash =
+                    age >= 150 && age < 450 ? 1 - (age - 150) / 300 : 0;
+                if (flash > 0 || flashed.has(a.neighbour)) {
+                    const r = radii[a.neighbour] * (1 + 0.8 * flash);
+                    const p = posOf(a.neighbour);
+                    tmp.makeScale(r, r, r).setPosition(p[0], p[1], p[2]);
+                    cores.setMatrixAt(a.neighbour, tmp);
+                    cores.instanceMatrix.needsUpdate = true;
+                    if (flash > 0) {
+                        flashed.add(a.neighbour);
+                    } else {
+                        flashed.delete(a.neighbour);
+                    }
+                }
+            }
         }
         // Dimmer when many channels share the node, so their crossing
         // near it does not burn to white
@@ -669,6 +727,7 @@ export const createSky = (
                 mesh.geometry?.dispose?.();
             });
         },
+        neighbours: () => arcs.map((a) => all[a.neighbour]),
         labels: () => {
             const out: [string, string, number, number][] = [];
             const keys = new Set<string>();

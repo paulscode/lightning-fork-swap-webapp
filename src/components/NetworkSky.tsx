@@ -142,10 +142,49 @@ const NetworkSky = (props: { mode: "background" | "full" }) => {
         void choose(m.ours.pubkey);
     });
     const onResize = () => sky?.resize();
+    // The keyboard (on /network): Esc our node, / the search, arrows the
+    // selected node's neighbours, one after another
+    // The neighbours being cycled, of the node where the cycling began
+    let cycle: { from: string; list: string[]; at: number } | undefined;
+    const onKey = (e: KeyboardEvent) => {
+        if (props.mode !== "full" || !sky || !meta()) {
+            return;
+        }
+        const typing = (e.target as HTMLElement | null)?.tagName === "INPUT";
+        if (e.key === "Escape") {
+            cycle = undefined;
+            void choose(meta()!.ours.pubkey);
+        } else if (e.key === "/" && !typing) {
+            e.preventDefault();
+            document
+                .querySelector<HTMLInputElement>("[data-testid=sky-search]")
+                ?.focus();
+        } else if (
+            (e.key === "ArrowRight" || e.key === "ArrowLeft") &&
+            !typing
+        ) {
+            const now = selected();
+            if (
+                cycle === undefined ||
+                (now !== cycle.from && !cycle.list.includes(now ?? ""))
+            ) {
+                cycle = { from: now ?? "", list: sky.neighbours(), at: -1 };
+            }
+            if (cycle.list.length === 0) {
+                return;
+            }
+            e.preventDefault();
+            const n = cycle.list.length;
+            cycle.at = (cycle.at + (e.key === "ArrowRight" ? 1 : n - 1)) % n;
+            void choose(cycle.list[cycle.at]);
+        }
+    };
+    document.addEventListener("keydown", onKey);
     onCleanup(() => {
         disposed = true;
         cancelAnimationFrame(labelFrame);
         window.removeEventListener("resize", onResize);
+        document.removeEventListener("keydown", onKey);
         sky?.dispose();
     });
 
