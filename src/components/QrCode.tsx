@@ -20,17 +20,21 @@ export const Qrcode = (params: QrCodeProps) => {
             ? undefined
             : getAssetDisplaySymbol(params.asset);
 
-    createResource(async () => {
-        try {
-            setDataUrl(
-                await QRCode.toDataURL(params.data, {
-                    width: 300,
-                }),
-            );
-        } catch (e) {
-            log.error(`QR code generation failed: ${formatError(e)}`);
-        }
-    });
+    // Drawn again whenever the data changes (the donation window's amount)
+    createResource(
+        () => params.data,
+        async (data) => {
+            try {
+                setDataUrl(
+                    await QRCode.toDataURL(data, {
+                        width: 300,
+                    }),
+                );
+            } catch (e) {
+                log.error(`QR code generation failed: ${formatError(e)}`);
+            }
+        },
+    );
 
     return (
         <div

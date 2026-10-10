@@ -12,12 +12,21 @@ const apiUrl =
 const explorerApiUrl = import.meta.env.VITE_EXPLORER_API_URL as
     string | undefined;
 const explorerUrl = import.meta.env.VITE_EXPLORER_URL as string | undefined;
+// VITE_DONATION_ADDRESS: an address of the regtest lnd's wallet (optional)
+// VITE_OUR_NODE: pubkey@host:port of the regtest swap node (optional)
+const donationAddress = import.meta.env.VITE_DONATION_ADDRESS as
+    string | undefined;
+const ourNode = import.meta.env.VITE_OUR_NODE as string | undefined;
 
 const config = {
     ...baseConfig,
     network: "regtest",
     loglevel: "debug",
     preventReloadOnPendingSwaps: false,
+    donation: donationAddress ? { address: donationAddress } : undefined,
+    ourNode: ourNode
+        ? { pubkey: ourNode.split("@")[0], uris: [ourNode.split("@")[1]] }
+        : undefined,
     apiUrl: {
         normal: apiUrl,
     },

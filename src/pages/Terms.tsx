@@ -69,7 +69,34 @@ const Terms: Component = () => {
                 rescue page keep working while new swaps are paused.
             </p>
 
-            <h2>5. Open source</h2>
+            <h2>5. Donations</h2>
+            <p>
+                You may give coins to the service to grow its liquidity. A
+                donation is a gift. It is not a payment for a swap or for
+                anything else, it creates no contract or obligation, and it is
+                not refunded, including amounts sent by mistake. It is not a
+                tax-deductible charitable contribution. Donations are used only
+                for the service's liquidity and the on-chain fees of managing
+                it. The donation address receives donations only; anyone can see
+                on the chain what it has received.
+            </p>
+            <p>
+                Send donations only from a wallet on the Bitcoin (BLAKE2b)
+                chain. If you send from coins that also exist on the SHA256
+                chain without replay protection, a copy of your transaction
+                there would move those coins to our address on that chain; we
+                never do that ourselves, and if it happens you can{" "}
+                <ExternalLink href={config.contactUrl}>contact us</ExternalLink>{" "}
+                to work out returning them, after proving they are yours. We do
+                not promise a return.
+            </p>
+            <p>
+                Opening a Lightning channel from your node to ours is voluntary
+                and costs you only its miner fee; the coins in your side of it
+                stay yours. We may close channels at any time.
+            </p>
+
+            <h2>6. Open source</h2>
             <p>
                 The software is open source under the GNU Affero General Public
                 License v3.0 (AGPL-3.0). It is built on{" "}

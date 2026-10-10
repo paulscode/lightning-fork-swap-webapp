@@ -7,6 +7,8 @@ import { BTC } from "../../src/consts/Assets";
 import {
     broadcastToExplorer,
     broadcastTransaction,
+    getAddressMempoolTxids,
+    getAddressStats,
     getBlockTipHeight,
     getFeeEstimations,
     getNetworkName,
@@ -281,6 +283,64 @@ describe("blockchain", () => {
             await expect(getTransactionConfirmed(BTC, tx1)).rejects.toThrow(
                 /malformed status/,
             );
+        });
+
+        test("should read an address's totals and its mempool txids", async () => {
+            fetchMock.mockResolvedValue(
+                textResponse(
+                    JSON.stringify({
+                        chain_stats: { funded_txo_sum: 1000, tx_count: 2 },
+                        mempool_stats: { funded_txo_sum: 50, tx_count: 1 },
+                    }),
+                ),
+            );
+            await expect(getAddressStats(BTC, "bc1qaddr")).resolves.toEqual({
+                receivedSat: 1050,
+                txCount: 3,
+            });
+            expect(fetchMock).toHaveBeenLastCalledWith(
+                `${firstApi}/address/bc1qaddr`,
+                expect.anything(),
+            );
+
+            fetchMock.mockResolvedValue(
+                textResponse(JSON.stringify([{ txid: tx1 }, { txid: tx2 }])),
+            );
+            await expect(
+                getAddressMempoolTxids(BTC, "bc1qaddr"),
+            ).resolves.toEqual([tx1, tx2]);
+            expect(fetchMock).toHaveBeenLastCalledWith(
+                `${firstApi}/address/bc1qaddr/txs/mempool`,
+                expect.anything(),
+            );
+        });
+
+        test.each([
+            [
+                "totals without mempool stats",
+                JSON.stringify({ chain_stats: {} }),
+            ],
+            [
+                "a negative total",
+                JSON.stringify({
+                    chain_stats: { funded_txo_sum: -1, tx_count: 0 },
+                    mempool_stats: { funded_txo_sum: 0, tx_count: 0 },
+                }),
+            ],
+        ])("should refuse %s", async (_, body) => {
+            fetchMock.mockResolvedValue(textResponse(body));
+            await expect(getAddressStats(BTC, "bc1qaddr")).rejects.toThrow(
+                /malformed address stats/,
+            );
+        });
+
+        test("should refuse mempool txids that are not txids", async () => {
+            fetchMock.mockResolvedValue(
+                textResponse(JSON.stringify([{ txid: "../../x" }])),
+            );
+            await expect(
+                getAddressMempoolTxids(BTC, "bc1qaddr"),
+            ).rejects.toThrow(/malformed transactions/);
         });
 
         test("should refuse a malformed outspend", async () => {

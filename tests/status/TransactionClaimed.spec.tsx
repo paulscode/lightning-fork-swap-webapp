@@ -8,9 +8,11 @@ import { decodeInvoice } from "boltz-swaps/invoice";
 import { SwapType } from "boltz-swaps/types";
 import { Show, createSignal } from "solid-js";
 
+import { config } from "../../src/config";
 import { BTC, LN } from "../../src/consts/Assets";
 import i18n from "../../src/i18n/i18n";
 import TransactionClaimed from "../../src/status/TransactionClaimed";
+import { closeDonate, donateTab } from "../../src/utils/donate";
 import type { SomeSwap } from "../../src/utils/swapCreator";
 import { TestComponent, contextWrapper, payContext } from "../helper";
 
@@ -148,5 +150,40 @@ describe("TransactionClaimed", () => {
         });
         await screen.findByText(i18n.en.congrats);
         expect(screen.queryByText(i18n.en.copy_preimage)).toBeNull();
+    });
+
+    test("should offer the donation window after a swap, when there is one", async () => {
+        const swap = {
+            id: "rev",
+            type: SwapType.Reverse,
+            assetSend: LN,
+            assetReceive: BTC,
+            claimTx: "txid",
+            receiveAmount: 1,
+        } as SomeSwap;
+        renderClaimed(swap);
+        await screen.findByText(i18n.en.congrats);
+        expect(screen.queryByTestId("donate-line")).toBeNull();
+    });
+
+    test("should open the donation window from the line after a swap", async () => {
+        config.donation = { address: "bcrt1qdonation" };
+        try {
+            renderClaimed({
+                id: "rev",
+                type: SwapType.Reverse,
+                assetSend: LN,
+                assetReceive: BTC,
+                claimTx: "txid",
+                receiveAmount: 1,
+            } as SomeSwap);
+            const line = await screen.findByTestId("donate-line");
+            expect(line.textContent).toContain(i18n.en.donate_line);
+            line.querySelector("button")!.click();
+            expect(donateTab()).toEqual("onchain");
+        } finally {
+            closeDonate();
+            config.donation = undefined;
+        }
     });
 });

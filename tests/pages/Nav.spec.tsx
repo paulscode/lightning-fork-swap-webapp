@@ -26,7 +26,7 @@ describe("Nav", () => {
         expect(networkLabel.length).toBe(0);
     });
 
-    test("should link to swap, rescue and history", () => {
+    test("should link to swap, rescue, history and the contact forum", () => {
         render(() => <Nav network="mainnet" />, {
             wrapper: contextWrapper,
         });
@@ -38,6 +38,7 @@ describe("Nav", () => {
             [i18n.en.swap, "/swap"],
             [i18n.en.rescue, "/rescue"],
             [i18n.en.history, "/history"],
+            [i18n.en.contact, "https://paulscode.com"],
         ]);
     });
 

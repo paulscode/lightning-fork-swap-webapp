@@ -3,8 +3,12 @@ import { Show, createSignal } from "solid-js";
 
 import logo from "../assets/lightning-fork-icon.webp";
 import Warnings from "../components/Warnings";
+import { config } from "../config";
 import { useGlobalContext } from "../context/Global";
 import "../style/nav.scss";
+import { openDonate } from "../utils/donate";
+import { donationAvailable } from "./DonateModal";
+import ExternalLink from "./ExternalLink";
 
 const Nav = (props: { network: string }) => {
     const { t, setHideHero } = useGlobalContext();
@@ -48,7 +52,24 @@ const Nav = (props: { network: string }) => {
                     <A href="/history" onClick={() => setHamburger(false)}>
                         {t("history")}
                     </A>
+                    <ExternalLink
+                        href={config.contactUrl}
+                        onClick={() => setHamburger(false)}>
+                        {t("contact")}
+                    </ExternalLink>
                 </div>
+                <Show when={donationAvailable()}>
+                    <button
+                        type="button"
+                        class="nav-donate"
+                        data-testid="nav-donate"
+                        onClick={() => {
+                            setHamburger(false);
+                            openDonate();
+                        }}>
+                        ⚡ {t("donate")}
+                    </button>
+                </Show>
                 <svg
                     id="hamburger"
                     viewBox="0 0 100 100"

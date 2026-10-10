@@ -242,6 +242,53 @@ const dict = {
         invoice_missing_blake2b:
             "This invoice was not made by a Lightning node on the Bitcoin BLAKE2b chain (it lacks feature bit 512). Paying it would fail.",
         copy_preimage: "Copy payment preimage",
+        donate: "Donate",
+        contact: "Contact",
+        close: "Close",
+        copy_node: "Node",
+        copy_command: "Command",
+        donate_title: "Help grow the swap service's liquidity",
+        donate_tab_onchain: "Donate on chain",
+        donate_tab_channel: "Open a channel",
+        donate_intro:
+            "Every swap needs coins ready on both sides: on the chain and in Lightning channels. Donations add to those coins, so the service can take bigger swaps and more of them at once.",
+        donate_amount: "Amount",
+        donate_any_amount: "Any amount",
+        donate_custom_placeholder: "Other amount in {{ denomination }}",
+        donate_address_hint:
+            "Check the start and the end of the address your wallet shows.",
+        donate_open_wallet: "Open in wallet",
+        donate_view_explorer: "See what this address has received",
+        donate_received_so_far:
+            "Donations so far: {{ amount }} {{ denomination }} in {{ count }} donations",
+        donate_thanks: "Received, thank you!",
+        donate_thanks_detail:
+            "Your donation is in the mempool and confirms with the next blocks.",
+        donate_how_title: "How your donation is used",
+        donate_how_reverse:
+            'Lightning to chain swaps. When you pay a Lightning invoice, the service sends your coins on chain from its own wallet. A fuller wallet means larger swaps and fewer "not enough liquidity" refusals.',
+        donate_how_submarine:
+            "Chain to Lightning swaps. The service pays your invoice through its Lightning channels. Opening a channel to a well-connected node takes on-chain coins, plus a miner fee.",
+        donate_how_balance:
+            "Keeping both sides open. When most people swap the same way, one side runs low. Moving coins back across costs on-chain fees. Your donation goes where liquidity is shortest.",
+        donate_how_promise:
+            "Donations are used only for the service's liquidity and the on-chain fees of managing it.",
+        donate_small_print:
+            "A donation is a gift: it is not tied to any swap, it is not refunded, and it is not a tax-deductible charitable contribution. Never send swap funds here. Send only from a Bitcoin (BLAKE2b) chain wallet.",
+        donate_replay_hint:
+            "Send from a wallet that signs for the Bitcoin (BLAKE2b) chain only (with replay protection), or from coins you received after the fork.",
+        donate_replay_at_risk:
+            "Heads-up: this transaction isn't replay-protected. The coins you spent also exist on the SHA256 chain, and anyone could copy this transaction there, which would send those coins to our address on that chain. We will never do it ourselves. To keep them, move the coins of these addresses on the SHA256 chain to an address of yours now:",
+        donate_replay_replayed:
+            "This transaction was copied to the SHA256 chain; those coins are now at our address there.",
+        donate_replay_contact:
+            "If they do end up with us, contact us and we'll work out returning them.",
+        channel_intro:
+            "Run a Lightning Fork node? A channel from your node to ours gives the service room to receive payments, which Lightning to chain swaps need. It costs you only the channel's miner fee, and your coins stay yours, spendable through our node.",
+        channel_min: "Channels from {{ amount }} sats.",
+        channel_command: "Or open it with lncli:",
+        donate_line: "Swaps run on shared liquidity.",
+        donate_line_action: "Help it grow",
     },
 };
 

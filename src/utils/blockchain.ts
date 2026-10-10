@@ -199,6 +199,64 @@ export const getBlockTipHeight = async (asset: string) => {
     return height;
 };
 
+export type AddressStats = {
+    // Received in all, confirmed and still in the mempool (sat)
+    receivedSat: number;
+    // Transactions that paid the address
+    txCount: number;
+};
+
+const isCount = (value: unknown): value is number =>
+    typeof value === "number" && Number.isSafeInteger(value) && value >= 0;
+
+export const getAddressStats = async (
+    asset: string,
+    address: string,
+): Promise<AddressStats> => {
+    const stats = explorerJson(
+        await fetchBlockExplorer<unknown>(asset, `/address/${address}`),
+    ) as Record<string, Record<string, unknown> | undefined> | null;
+    const chain = stats?.chain_stats;
+    const mempool = stats?.mempool_stats;
+    if (
+        chain === undefined ||
+        mempool === undefined ||
+        !isCount(chain.funded_txo_sum) ||
+        !isCount(mempool.funded_txo_sum) ||
+        !isCount(chain.tx_count) ||
+        !isCount(mempool.tx_count)
+    ) {
+        throw new Error("block explorer returned malformed address stats");
+    }
+    return {
+        receivedSat: chain.funded_txo_sum + mempool.funded_txo_sum,
+        txCount: chain.tx_count + mempool.tx_count,
+    };
+};
+
+// The txids of the address's transactions waiting in the mempool
+export const getAddressMempoolTxids = async (
+    asset: string,
+    address: string,
+): Promise<string[]> => {
+    const txs = explorerJson(
+        await fetchBlockExplorer<unknown>(
+            asset,
+            `/address/${address}/txs/mempool`,
+        ),
+    );
+    if (
+        !Array.isArray(txs) ||
+        !txs.every(
+            (tx: { txid?: unknown } | null) =>
+                typeof tx === "object" && tx !== null && isTxid(tx.txid),
+        )
+    ) {
+        throw new Error("block explorer returned malformed transactions");
+    }
+    return txs.map((tx: { txid: string }) => tx.txid);
+};
+
 export const getTransactionConfirmed = async (
     asset: string,
     txid: string,

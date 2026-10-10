@@ -8,10 +8,12 @@ import log from "loglevel";
 import { Show, createEffect, createResource, createSignal } from "solid-js";
 
 import CopyButton from "../components/CopyButton";
+import { donationAvailable } from "../components/DonateModal";
 import { useGlobalContext } from "../context/Global";
 import { usePayContext } from "../context/Pay";
 import { useModifySwap } from "../hooks/useModifySwap";
 import { formatAmount, formatDenomination } from "../utils/denomination";
+import { openDonate } from "../utils/donate";
 import { formatError } from "../utils/errors";
 import { type SubmarineSwap, getFinalAssetReceive } from "../utils/swapCreator";
 import Broadcasting from "./Broadcasting";
@@ -100,6 +102,14 @@ const TransactionClaimed = () => {
                         btnClass="btn btn-light"
                         data={preimage()!}
                     />
+                </Show>
+                <Show when={donationAvailable()}>
+                    <p class="donate-line" data-testid="donate-line">
+                        {t("donate_line")}{" "}
+                        <button type="button" onClick={() => openDonate()}>
+                            {t("donate_line_action")}
+                        </button>
+                    </p>
                 </Show>
             </Show>
         </div>

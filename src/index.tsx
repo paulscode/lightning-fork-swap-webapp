@@ -6,9 +6,11 @@ import "@fontsource/noto-sans/index.css";
 import { Route, type RouteSectionProps, Router } from "@solidjs/router";
 import { setLogger } from "boltz-swaps/logger";
 import log from "loglevel";
+import { Show } from "solid-js";
 import { render } from "solid-js/web";
 
 import { configureBoltzSwaps } from "./boltzSwapsConfig";
+import DonateModal from "./components/DonateModal";
 import Footer from "./components/Footer";
 import { legacyRescueRedirects } from "./components/LegacyRescueRedirects";
 import Nav from "./components/Nav";
@@ -32,6 +34,7 @@ import Rescue from "./pages/Rescue";
 import Suspension from "./pages/Suspension";
 import Terms from "./pages/Terms";
 import "./style/index.scss";
+import { openDonate, openDonateFromLink } from "./utils/donate";
 
 setLogger(log);
 configureBoltzSwaps();
@@ -67,7 +70,18 @@ document.body.classList.remove("loading");
 // the site cannot be framed, and a link with those parameters would only
 // hide the navigation and the rescue link, or send swap updates to an origin
 // the link chose.
+// /donate is the home page with the donation window open
+const DonatePage = () => {
+    openDonate("onchain");
+    return (
+        <Show when={!config.swapsSuspended} fallback={<Suspension />}>
+            <Hero />
+        </Show>
+    );
+};
+
 const App = (props: RouteSectionProps) => {
+    openDonateFromLink();
     return (
         <GlobalProvider
             initialEmbeddedMode={false}
@@ -79,6 +93,7 @@ const App = (props: RouteSectionProps) => {
                         <Nav network={config.network} />
                         {props.children}
                         <Notification />
+                        <DonateModal />
                         <Footer />
                     </RescueProvider>
                 </PayProvider>
@@ -106,6 +121,7 @@ const cleanup = render(
             <Route path="/rescue/refund/:id" component={RefundRescue} />
             {legacyRescueRedirects()}
             <Route path="/history" component={History} />
+            <Route path="/donate" component={DonatePage} />
             <Route path="/terms" component={Terms} />
             <Route path="/privacy" component={Privacy} />
             <Route path="*404" component={NotFound} />
