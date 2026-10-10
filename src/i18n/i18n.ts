@@ -437,6 +437,7 @@ const dict = {
         network_list: "All nodes as a list",
         network_list_alias: "Node",
         network_more: "Explore the network",
+        flip_assets: "Swap the direction",
         home_headline: "Swap between the chain and its Lightning network",
         home_subline:
             "Non-custodial: your keys never leave your browser, and every swap either completes or can be refunded.",

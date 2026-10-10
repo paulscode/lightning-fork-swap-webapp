@@ -968,7 +968,8 @@ textarea.invoice-input {
     bottom: 4px;
     right: 11px;
     font-size: 11px;
-    color: var(--color-white-30);
+    // Readable on the card (WCAG AA for small text)
+    color: var(--color-text-muted);
     pointer-events: none;
     user-select: none;
     z-index: 10;

@@ -5,7 +5,7 @@ import { useGlobalContext } from "../context/Global";
 import Pair from "../utils/Pair";
 
 const Reverse = () => {
-    const { pairs } = useGlobalContext();
+    const { pairs, t } = useGlobalContext();
     const { pair, setPair, setOnchainAddress, setInvoice } = useCreateContext();
 
     const setDirection = () => {
@@ -15,7 +15,12 @@ const Reverse = () => {
     };
 
     return (
-        <button id="flip-assets" onClick={() => setDirection()}>
+        <button
+            id="flip-assets"
+            type="button"
+            aria-label={t("flip_assets")}
+            title={t("flip_assets")}
+            onClick={() => setDirection()}>
             <ImArrowDown size={14} />
         </button>
     );
