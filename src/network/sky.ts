@@ -51,6 +51,10 @@ export type SkyOptions = {
     interaction?: "full" | "orbit" | "none";
     onSelect?: (pubkey: string) => void;
     onHover?: (pubkey: string | undefined) => void;
+    // The browser took the drawing context away (too many contexts, or a
+    // phone short of memory); the sky draws nothing more and should be
+    // made again
+    onLost?: () => void;
 };
 
 export type Sky = {
@@ -58,6 +62,9 @@ export type Sky = {
     home: () => void;
     zoom: (factor: number) => void;
     resize: () => void;
+    // Pixels at the bottom covered by something (the info panel on
+    // phones): the view is centred on what is left above them
+    setInset: (bottom: number) => void;
     dispose: () => void;
     // Screen positions of nodes for labels: [pubkey, alias, x, y][]
     labels: () => [string, string, number, number][];
@@ -207,6 +214,8 @@ export const createSky = (
         antialias: !phone,
         powerPreference: "high-performance",
     });
+    const onLost = () => options.onLost?.();
+    canvas.addEventListener("webglcontextlost", onLost);
     renderer.setPixelRatio(
         Math.min(window.devicePixelRatio || 1, phone ? 1.5 : 2),
     );
@@ -703,8 +712,16 @@ export const createSky = (
         bloom.resolution.set(w / 2, h / 2);
         arcMaterial.resolution.set(w, h);
         camera.aspect = w / h;
+        if (inset > 0) {
+            // The picture moves up by half the covered part; picking and
+            // labels go through the same projection
+            camera.setViewOffset(w, h, 0, Math.round(inset / 2), w, h);
+        } else {
+            camera.clearViewOffset();
+        }
         camera.updateProjectionMatrix();
     };
+    let inset = 0;
     resize();
 
     const home = () => {
@@ -725,6 +742,13 @@ export const createSky = (
             camera.position.copy(controls.target.clone().add(offset));
         },
         resize,
+        setInset: (bottom: number) => {
+            const next = Math.max(0, Math.round(bottom));
+            if (next !== inset) {
+                inset = next;
+                resize();
+            }
+        },
         dispose: () => {
             running = false;
             cancelAnimationFrame(frame);
@@ -732,10 +756,16 @@ export const createSky = (
             canvas.removeEventListener("pointerdown", onDown);
             canvas.removeEventListener("pointerup", onUp);
             canvas.removeEventListener("pointermove", onMove);
+            canvas.removeEventListener("webglcontextlost", onLost);
             controls.dispose();
             clearArcs();
             composer.dispose();
             renderer.dispose();
+            // dispose() keeps the context; give it back to the browser
+            // (unless it was taken already)
+            if (!renderer.getContext().isContextLost()) {
+                renderer.forceContextLoss();
+            }
             scene.traverse((o) => {
                 const mesh = o as Mesh;
                 mesh.geometry?.dispose?.();

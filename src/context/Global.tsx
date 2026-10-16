@@ -112,6 +112,9 @@ export type GlobalContextType = {
 
 const GlobalContext = createContext<GlobalContextType>();
 
+// The waits between attempts at the pairs before the API is called offline
+export const pairsRetryDelays = [1_000, 3_000];
+
 const GlobalProvider = (props: {
     children: JSX.Element;
     initialEmbeddedMode?: boolean;
@@ -288,19 +291,44 @@ const GlobalProvider = (props: {
         setNotification(messageStr);
     };
 
+    // A phone's connection drops a request now and then: asked again
+    // before the API is called offline
     const fetchPairs = async () => {
-        try {
-            const data = await getPairs();
+        for (let attempt = 0; ; attempt++) {
+            try {
+                const data = await getPairs();
 
-            log.debug("getpairs", data);
-            setOnline(true);
-            setPairs(data);
-        } catch (error) {
-            log.error("Error fetching pairs", error);
-            setOnline(false);
-            throw formatError(error);
+                log.debug("getpairs", data);
+                setOnline(true);
+                setPairs(data);
+                return;
+            } catch (error) {
+                if (attempt < pairsRetryDelays.length) {
+                    log.warn("Error fetching pairs, trying again", error);
+                    await new Promise((resolve) =>
+                        setTimeout(resolve, pairsRetryDelays[attempt]),
+                    );
+                    continue;
+                }
+                log.error("Error fetching pairs", error);
+                setOnline(false);
+                throw formatError(error);
+            }
         }
     };
+
+    // Offline: asked again when the connection or the tab comes back
+    const retryPairs = () => {
+        if (!online() && document.visibilityState !== "hidden") {
+            fetchPairs().catch(() => undefined);
+        }
+    };
+    window.addEventListener("online", retryPairs);
+    document.addEventListener("visibilitychange", retryPairs);
+    onCleanup(() => {
+        window.removeEventListener("online", retryPairs);
+        document.removeEventListener("visibilitychange", retryPairs);
+    });
 
     // Use IndexedDB if available; fallback to LocalStorage
     localforage.config({

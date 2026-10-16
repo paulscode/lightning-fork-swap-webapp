@@ -39,17 +39,23 @@ Compared to boltz-web-app 2.2.1:
 - **Rebrand**: name, icons, a single dark theme, short Terms and Privacy pages,
   a footer with only source, legal, rescue and (optional) onion links.
 - **Hardening** after a review:
-  - the payment screen of a submarine swap shows and links to a BIP21 built
-    from the address and amount the app has verified; the API's BIP21 is
-    checked strictly but never used;
-  - a claim or refund never gives more than 10 % of what it spends (or
-    3,000 sat for a small swap) to miners, nor uses a fee rate above 1,000
-    sat/vbyte, whatever the API or the explorer say;
-  - an LNURL or Lightning address must be a public HTTPS host, and its
-    invoice must be for the amount asked;
-  - stored logs never hold preimages, private keys or the rescue key;
-  - no inline script or style in the page (for the site's
-    Content-Security-Policy); Boltz's embedded mode is gone.
+    - the payment screen of a submarine swap shows and links to a BIP21 built
+      from the address and amount the app has verified; the API's BIP21 is
+      checked strictly but never used;
+    - a claim or refund never gives more than 10 % of what it spends (or 3,000
+      sat for a small swap) to miners, nor uses a fee rate above 1,000
+      sat/vbyte, whatever the API or the explorer say;
+    - an LNURL or Lightning address must be a public HTTPS host, and its invoice
+      must be for the amount asked;
+    - stored logs never hold preimages, private keys or the rescue key;
+    - no inline script or style in the page (for the site's
+      Content-Security-Policy); Boltz's embedded mode is gone.
+- **Flaky connections.** The pairs are asked up to three times before the app
+  says the API is offline, and again when the connection or the tab comes back.
+- **The network sky** (`/network` and the home page's backdrop): if the browser
+  takes its WebGL context away (too many contexts, or a phone short of memory),
+  it is made again on a new canvas; on phones the view is centred above the info
+  panel, and node names can be tapped.
 - The rescue key derivation is unchanged from Boltz (`m/44/0/0/0/<index>`).
 
 ## Build

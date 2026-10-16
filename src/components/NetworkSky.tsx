@@ -104,12 +104,91 @@ const NetworkSky = (props: {
                 return;
             }
             el.style.display = "";
+            el.dataset.key = label[0];
             if (el.textContent !== label[1]) {
                 el.textContent = label[1];
             }
             el.classList.toggle("selected", label[0] === selected());
             el.style.transform = `translate(${Math.round(label[2])}px, ${Math.round(label[3])}px)`;
         });
+    };
+
+    // The info panel covers the bottom of the sky on phones (the CSS's
+    // max-height there)
+    const phoneLayout = () =>
+        props.mode === "full" &&
+        typeof window.matchMedia === "function" &&
+        window.matchMedia("(max-width: 600px)").matches;
+    const fitInset = () =>
+        sky?.setInset(phoneLayout() ? canvas.clientHeight * 0.45 : 0);
+
+    // A lost context is not given back when the browser took it for being
+    // over its limit: the sky is made again on a new canvas, a few times
+    let rebuilds: number[] = [];
+    const rebuild = async () => {
+        const m = meta();
+        const tl = tile();
+        if (disposed || m === undefined || tl === undefined) {
+            return;
+        }
+        if (document.visibilityState === "hidden") {
+            document.addEventListener(
+                "visibilitychange",
+                () => void rebuild(),
+                { once: true },
+            );
+            return;
+        }
+        const now = Date.now();
+        rebuilds = rebuilds.filter((at) => now - at < 60_000);
+        sky?.dispose();
+        sky = undefined;
+        if (rebuilds.length >= 3) {
+            setFailed(true);
+            return;
+        }
+        rebuilds.push(now);
+        const fresh = canvas.cloneNode(false) as HTMLCanvasElement;
+        canvas.replaceWith(fresh);
+        canvas = fresh;
+        let made: Sky | undefined;
+        try {
+            made = await build(m, tl);
+        } catch {
+            setFailed(true);
+            return;
+        }
+        const key = selected();
+        if (key !== undefined) {
+            made?.select(key, info());
+        }
+    };
+
+    const build = async (m: GraphMeta, tl: Tile): Promise<Sky | undefined> => {
+        const { createSky } = await import("../network/sky");
+        if (disposed) {
+            return undefined;
+        }
+        const phone = Math.min(window.innerWidth, window.innerHeight) < 600;
+        sky = createSky(canvas, m, tl, {
+            reducedMotion: prefersReducedMotion(),
+            interaction:
+                props.mode === "full" ? "full" : phone ? "none" : "orbit",
+            onSelect: (key) => void choose(key),
+            onLost: () => setTimeout(() => void rebuild(), 250),
+        });
+        fitInset();
+        return sky;
+    };
+
+    // A name is easier to tap than its star
+    const onLabelClick = (e: MouseEvent) => {
+        const key = (e.target as HTMLElement | null)?.closest<HTMLElement>(
+            ".sky-label",
+        )?.dataset.key;
+        if (props.mode === "full" && key !== undefined) {
+            void choose(key);
+        }
     };
 
     onMount(async () => {
@@ -130,26 +209,22 @@ const NetworkSky = (props: {
             return;
         }
         try {
-            const { createSky } = await import("../network/sky");
-            if (disposed) {
-                return;
-            }
-            const phone = Math.min(window.innerWidth, window.innerHeight) < 600;
-            sky = createSky(canvas, m, tl, {
-                reducedMotion: prefersReducedMotion(),
-                interaction:
-                    props.mode === "full" ? "full" : phone ? "none" : "orbit",
-                onSelect: (key) => void choose(key),
-            });
+            await build(m, tl);
         } catch {
             setFailed(true);
+            return;
+        }
+        if (disposed) {
             return;
         }
         window.addEventListener("resize", onResize);
         drawLabels();
         void choose(m.ours.pubkey);
     });
-    const onResize = () => sky?.resize();
+    const onResize = () => {
+        sky?.resize();
+        fitInset();
+    };
     // The keyboard (on /network): Esc our node, / the search, arrows the
     // selected node's neighbours, one after another
     // The neighbours being cycled, of the node where the cycling began
@@ -245,7 +320,12 @@ const NetworkSky = (props: {
                 aria-label={t("network_description")}
                 data-testid="sky-canvas"
             />
-            <div ref={labelLayer} class="sky-labels" aria-hidden="true" />
+            <div
+                ref={labelLayer}
+                class="sky-labels"
+                aria-hidden="true"
+                onClick={onLabelClick}
+            />
 
             <Show when={!meta() && !failed()}>
                 <p class="sky-status" role="status">

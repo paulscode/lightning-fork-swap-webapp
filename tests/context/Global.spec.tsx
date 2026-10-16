@@ -77,11 +77,63 @@ describe("Global context", () => {
                 </GlobalProvider>
             ));
 
-            await expect(globalSignals.fetchPairs()).rejects.toEqual(
-                "backend down",
-            );
+            vi.useFakeTimers();
+            try {
+                const result = globalSignals.fetchPairs();
+                const check = expect(result).rejects.toEqual("backend down");
+                await vi.runAllTimersAsync();
+                await check;
+            } finally {
+                vi.useRealTimers();
+            }
+            // Asked three times before giving up
+            expect(getPairsMock).toHaveBeenCalledTimes(3);
             expect(globalSignals.online()).toBe(false);
             expect(globalSignals.pairs()).toBeUndefined();
+        });
+
+        test("a request dropped once is asked again, and the API stays online", async () => {
+            getPairsMock
+                .mockRejectedValueOnce(new Error("Failed to fetch"))
+                .mockResolvedValue(emptyPairs);
+
+            render(() => (
+                <GlobalProvider>
+                    <Probe />
+                </GlobalProvider>
+            ));
+
+            vi.useFakeTimers();
+            try {
+                const result = globalSignals.fetchPairs();
+                await vi.runAllTimersAsync();
+                await result;
+            } finally {
+                vi.useRealTimers();
+            }
+            expect(getPairsMock).toHaveBeenCalledTimes(2);
+            expect(globalSignals.online()).toBe(true);
+            expect(globalSignals.pairs()).toEqual(emptyPairs);
+        });
+
+        test("offline, the pairs are asked again when the connection comes back", async () => {
+            getPairsMock.mockResolvedValue(emptyPairs);
+
+            render(() => (
+                <GlobalProvider>
+                    <Probe />
+                </GlobalProvider>
+            ));
+
+            globalSignals.setOnline(false);
+            window.dispatchEvent(new Event("online"));
+            await vi.waitFor(() => expect(globalSignals.online()).toBe(true));
+            expect(globalSignals.pairs()).toEqual(emptyPairs);
+
+            // Online, nothing is asked
+            getPairsMock.mockClear();
+            window.dispatchEvent(new Event("online"));
+            expect(getPairsMock).not.toHaveBeenCalled();
         });
     });
 

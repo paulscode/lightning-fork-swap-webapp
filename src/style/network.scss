@@ -62,6 +62,15 @@
         }
     }
 
+    // On /network a name can be tapped: a wider target than the text, for
+    // fingers (the text stays where it was)
+    &.full .sky-label {
+        padding: 6px;
+        margin: 4px 0 0 4px;
+        pointer-events: auto;
+        cursor: pointer;
+    }
+
     .sky-status {
         position: absolute;
         top: 50%;
