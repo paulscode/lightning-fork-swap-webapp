@@ -22,9 +22,9 @@ export const isIos = () =>
 export const isMobile = () =>
     isIos() || !!navigator.userAgent.match(/android|blackberry/gi) || false;
 
-// Sent as the referral header so the operator can tell web app swaps apart
-export const getReferral = (): string =>
-    isMobile() ? "lightning_fork_swap_mobile" : "lightning_fork_swap_desktop";
+// Sent as the referral (a header, and stored with each swap): the same for
+// everyone, so a swap does not record whether it came from a phone
+export const getReferral = (): string => "lightning_fork_swap";
 
 export const cropString = (str: string, maxLen = 40, subStrSize = 19) => {
     if (str.length < maxLen) {

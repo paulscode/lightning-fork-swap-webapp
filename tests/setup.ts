@@ -17,7 +17,7 @@ setBoltzSwapsConfig({
         return chooseUrl(runtimeConfig.apiUrl);
     },
     get referral() {
-        return "lightning_fork_swap_desktop";
+        return "lightning_fork_swap";
     },
     get network() {
         return runtimeConfig.network;

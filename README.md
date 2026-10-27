@@ -50,6 +50,8 @@ Compared to boltz-web-app 2.2.1:
     - stored logs never hold preimages, private keys or the rescue key;
     - no inline script or style in the page (for the site's
       Content-Security-Policy); Boltz's embedded mode is gone.
+- **No device class.** The referral sent with each swap is the same for
+  everyone, not "mobile" or "desktop".
 - **Flaky connections.** The pairs are asked up to three times before the app
   says the API is offline, and again when the connection or the tab comes back.
 - **The network sky** (`/network` and the home page's backdrop): if the browser

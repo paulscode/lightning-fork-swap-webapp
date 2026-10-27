@@ -210,21 +210,15 @@ describe("helper", () => {
             setUserAgent(originalUserAgent);
         });
 
-        test("getReferral returns desktop referral on desktop", () => {
-            setUserAgent("Mozilla/5.0 (X11; Linux x86_64)");
-            expect(getReferral()).toBe("lightning_fork_swap_desktop");
-        });
-
-        test("getReferral returns mobile referral on Android", () => {
-            setUserAgent("Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36");
-            expect(getReferral()).toBe("lightning_fork_swap_mobile");
-        });
-
-        test("getReferral returns mobile referral on iOS", () => {
-            setUserAgent(
+        test("getReferral is the same on every device", () => {
+            for (const ua of [
+                "Mozilla/5.0 (X11; Linux x86_64)",
+                "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36",
                 "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)",
-            );
-            expect(getReferral()).toBe("lightning_fork_swap_mobile");
+            ]) {
+                setUserAgent(ua);
+                expect(getReferral()).toBe("lightning_fork_swap");
+            }
         });
     });
 });
