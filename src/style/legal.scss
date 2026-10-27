@@ -80,10 +80,11 @@
         }
     }
 
+    // Under the h1, closer to it than the text below (h1's margin is 2rem)
     .legal-updated {
         color: var(--color-text-muted);
         font-size: 0.9rem;
-        margin-top: -1.5rem;
+        margin: -1rem 0 1.5rem;
     }
 
     // A table of what is kept and for how long (the privacy page)
@@ -122,6 +123,11 @@
 
         h3 {
             font-size: 1.2rem;
+        }
+
+        // The h1's margin is 1rem here
+        .legal-updated {
+            margin-top: 0;
         }
 
         // Narrow screens: the table scrolls rather than squeezing its words
