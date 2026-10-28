@@ -5,6 +5,16 @@ const dict = {
         status: "Status",
         error: "Error",
         error_subline: "Invalid response from the API, something is wrong.",
+        swap_stopped: "Swap stopped for your safety",
+        swap_stopped_cost:
+            "The service asked {{ cost }} {{ denomination }} in fees on {{ amount }} {{ denomination }}, more than this app accepts. Try a smaller amount, or contact the operator.",
+        swap_stopped_timeout:
+            "The service's deadline for this swap is outside what this app accepts. Please try again in a few minutes.",
+        swap_stopped_other:
+            "The service's answer did not pass this app's safety checks. Please try again later, or contact the operator.",
+        swap_stopped_nothing_paid:
+            "The app stopped before you paid anything: none of your funds are involved.",
+        swap_stopped_id: "Swap ID, if you contact the operator: {{ id }}",
         history: "History",
         swap: "Swap",
         refund: "Refund",

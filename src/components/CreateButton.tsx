@@ -28,11 +28,19 @@ import {
     createReverse,
     createSubmarine,
 } from "../utils/swapCreator";
-import { validateResponse } from "../utils/validation";
+import { SwapCheckError, validateResponse } from "../utils/validation";
 import LoadingSpinner from "./LoadingSpinner";
 
 // In milliseconds
 const invoiceFetchTimeout = 25_000;
+
+// What the error page is told when the app stops a swap the server created
+export type SwapStoppedState = {
+    swapId: string;
+    check?: "cost" | "timeout";
+    cost?: number;
+    paid?: number;
+};
 
 const userErrorLabelKeys = new Set<DictKey>([
     "invalid_pair",
@@ -373,7 +381,19 @@ const CreateButton = () => {
                     `failed to create ${swapType()} swap: ${error.stack}`,
                 );
                 log.error("server response for swap creation:", data);
-                navigate("/error");
+                // The error page tells the user why, and that nothing was paid
+                navigate("/error", {
+                    state: {
+                        swapId: data.id,
+                        check:
+                            error instanceof SwapCheckError
+                                ? error.check
+                                : undefined,
+                        ...(error instanceof SwapCheckError
+                            ? error.details
+                            : {}),
+                    } satisfies SwapStoppedState,
+                });
                 return false;
             }
 

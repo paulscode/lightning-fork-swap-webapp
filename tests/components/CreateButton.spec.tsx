@@ -14,6 +14,7 @@ import Pair from "../../src/utils/Pair";
 import { generateRescueFile } from "../../src/utils/rescueFile";
 import type * as SwapCreatorModule from "../../src/utils/swapCreator";
 import type * as ValidationModule from "../../src/utils/validation";
+import { SwapCheckError } from "../../src/utils/validation";
 import { blake2bInvoice, sha256Invoice } from "../fixtures/invoices";
 import {
     TestComponent,
@@ -546,6 +547,39 @@ describe("CreateButton", () => {
             expect(window.location.pathname).toEqual("/error");
         });
         expect(await globalSignals.getSwap("submarine")).toBeNull();
+    });
+
+    test("tells the error page why a swap was stopped", async () => {
+        validateResponseMock.mockRejectedValue(
+            new SwapCheckError("too dear", "cost", {
+                cost: 40_154,
+                paid: 106_900,
+            }),
+        );
+
+        renderCreateButton();
+        globalSignals.setOnline(true);
+        setPairAssets(BTC, LN);
+        signals.setSendAmount(BigNumber(106_900));
+        signals.setAmountValid(true);
+        signals.setInvoice(blake2bInvoice);
+        signals.setInvoiceValid(true);
+
+        const btn = (await screen.findByText(
+            i18n.en.create_swap,
+        )) as HTMLButtonElement;
+        btn.click();
+
+        await waitFor(() => {
+            expect(window.location.pathname).toEqual("/error");
+        });
+        const state = window.history.state as Record<string, unknown>;
+        expect(state).toMatchObject({
+            check: "cost",
+            cost: 40_154,
+            paid: 106_900,
+        });
+        expect(typeof state.swapId).toEqual("string");
     });
 
     test("should be disabled with LNURL min amount error", async () => {
