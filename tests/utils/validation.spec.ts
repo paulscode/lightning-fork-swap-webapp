@@ -22,6 +22,7 @@ import { decodeAddress } from "../../src/utils/compat";
 import { ECPair } from "../../src/utils/ecpair";
 import type { SomeSwap } from "../../src/utils/swapCreator";
 import {
+    maxSwapCost,
     swapBip21,
     validateInvoice,
     validateResponse,
@@ -216,20 +217,33 @@ describe("validate responses", () => {
 
         test("should refuse a reverse swap that costs too much", async () => {
             vi.mocked(getBlockTipHeight).mockResolvedValue("146");
-            // 1 % of 100,000 plus 10,000 is the most it may cost
-            await expect(
+            // 5 % of 100,000 plus 10,000 is the most it may cost
+            const swapCosting = (onchainAmount: number) =>
                 validateResponse(
                     {
                         ...reverseSwapBtc,
-                        onchainAmount: 88_999,
-                        receiveAmount: 88_998,
+                        onchainAmount,
+                        receiveAmount: onchainAmount - 1,
                     } as SomeSwap,
                     () =>
                         ECPair.fromPrivateKey(
                             hex.decode(reverseSwapBtc.claimPrivateKey),
                         ),
-                ),
-            ).rejects.toThrow(/costs 11001 sat of 100000, more than 11000/);
+                );
+            await expect(swapCosting(84_999)).rejects.toThrow(
+                /costs 15001 sat of 100000, more than 15000/,
+            );
+            await expect(swapCosting(85_000)).resolves.toBeUndefined();
+        });
+
+        test("the cost limit is well clear of the service's terms", () => {
+            // A 2,000,000 sat reverse swap at 2 % and a few hundred sat of
+            // miner fees was refused with the limit at 1 %
+            const paid = 2_000_000;
+            const cost = paid * 0.02 + 154;
+            const ceiling =
+                (paid * maxSwapCost.percent) / 100 + maxSwapCost.sat;
+            expect(cost * 2).toBeLessThan(ceiling);
         });
 
         test("should not ask for the tip in a build without an explorer", async () => {

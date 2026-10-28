@@ -233,18 +233,35 @@ export const timeoutBounds = {
 };
 
 // The most a swap may cost the user, service and network fees together:
-// well above this service's terms (0.1 % submarine, 0.5 % reverse, miner
-// fees of a few hundred sat), so that only a server asking far more is
-// refused.
-export const maxSwapCost = { percent: 1, sat: 10_000 };
+// well above any fee the operator sets (2 % reverse since October 2026,
+// miner fees of a few hundred sat), so that only a server asking far more
+// is refused. (Amounts below what the user was shown are refused anyway.)
+// At 1 %, every reverse swap from about 985,000 sat up was refused once
+// the reverse fee was 2 %: keep this well clear of the terms.
+export const maxSwapCost = { percent: 5, sat: 10_000 };
+
+// A check of the server's answer that failed in a way the user can be told
+// about: what it cost, or when it would time out
+export class SwapCheckError extends Error {
+    constructor(
+        message: string,
+        readonly check: "cost" | "timeout",
+        readonly details: { cost?: number; paid?: number } = {},
+    ) {
+        super(message);
+        this.name = "SwapCheckError";
+    }
+}
 
 const checkCost = (swap: SomeSwap, paid: number, received: number) => {
     const ceiling = Math.floor(
         (paid * maxSwapCost.percent) / 100 + maxSwapCost.sat,
     );
     if (paid - received > ceiling) {
-        throw new Error(
+        throw new SwapCheckError(
             `swap ${swap.id} costs ${paid - received} sat of ${paid}, more than ${ceiling}`,
+            "cost",
+            { cost: paid - received, paid },
         );
     }
 };
@@ -264,8 +281,9 @@ const validateTimeout = async (swap: SomeSwap): Promise<void> => {
         blocks < bounds.min ||
         blocks > bounds.max
     ) {
-        throw new Error(
+        throw new SwapCheckError(
             `swap ${swap.id} times out ${blocks} blocks from the tip ${tip}, outside ${bounds.min} to ${bounds.max}`,
+            "timeout",
         );
     }
 };
