@@ -175,11 +175,7 @@ try {
 }
 
 export default defineConfig({
-    plugins: [
-        logPersistenceTransformPlugin(),
-        solidPlugin(),
-        nodePolyfills(),
-    ],
+    plugins: [logPersistenceTransformPlugin(), solidPlugin(), nodePolyfills()],
     resolve: {
         alias: {
             src: path.resolve(__dirname, "src"),
