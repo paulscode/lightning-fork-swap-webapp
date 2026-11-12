@@ -50,6 +50,18 @@ Compared to boltz-web-app 2.2.1:
     - stored logs never hold preimages, private keys or the rescue key;
     - no inline script or style in the page (for the site's
       Content-Security-Policy); Boltz's embedded mode is gone.
+- **Reverse claims** (after a second review):
+    - the app checks the server's lockup itself before it gives away the
+      preimage, unless this browser already revealed it (it notes that before
+      revealing); the server saying the invoice is settled is not enough;
+    - the claim always pays a fee that relays (the current rate, at least 1
+      sat/vbyte), taken from the amount received up to the usual cap; if it
+      cannot, the preimage is not revealed;
+    - the signed claim is kept, so it is broadcast again if it drops out;
+    - with 0-conf off, the lockup must really be confirmed, not just said to be;
+    - a refund fee rate from the API is floored the same way;
+    - a new rescue key set in one tab reaches the other open tabs, and only the
+      fields the app needs from a swap's creation are stored.
 - **No device class.** The referral sent with each swap is the same for
   everyone, not "mobile" or "desktop".
 - **Flaky connections.** The pairs are asked up to three times before the app
