@@ -149,7 +149,11 @@ describe("PayProvider claimSwap", () => {
             },
         );
         vi.mocked(claim).mockImplementation((_deriveKey, swap) =>
-            Promise.resolve({ ...swap, claimTx: "claimtxid" }),
+            Promise.resolve({
+                ...swap,
+                claimTx: "claimtxid",
+                claimTxHex: "claimtxhex",
+            }),
         );
     });
 
@@ -166,9 +170,16 @@ describe("PayProvider claimSwap", () => {
                 expect.objectContaining({ id: reverseSwap.id }),
                 lockup,
                 true,
-                false,
+                expect.objectContaining({
+                    preimageRevealed: false,
+                    requireConfirmed: true,
+                }),
             );
             expect(stored[reverseSwap.id].claimTx).toEqual("claimtxid");
+            // Kept for the claim watcher to broadcast again
+            expect((stored[reverseSwap.id] as ReverseSwap).claimTxHex).toEqual(
+                "claimtxhex",
+            );
             expect(context.swap()?.claimTx).toEqual("claimtxid");
             expect(context.isSwapClaiming(reverseSwap.id)).toEqual(false);
             expect(notify).toHaveBeenCalledWith("success", "swap_completed");
@@ -226,7 +237,7 @@ describe("PayProvider claimSwap", () => {
                 expect.objectContaining({ id: reverseSwap.id }),
                 expect.objectContaining({ hex: "fetchedhex" }),
                 true,
-                false,
+                expect.objectContaining({ requireConfirmed: false }),
             );
         });
 
@@ -245,9 +256,45 @@ describe("PayProvider claimSwap", () => {
 
             expect(getReverseTransaction).toHaveBeenCalledWith(reverseSwap.id);
             expect(claim).toHaveBeenCalledTimes(1);
-            // Settled: the preimage is out, so the claim skips the lockup check
-            expect(vi.mocked(claim).mock.calls[0][4]).toEqual(true);
+            // The server says settled, but this browser never revealed the
+            // preimage: the lockup is checked all the same
+            expect(vi.mocked(claim).mock.calls[0][4]).toEqual(
+                expect.objectContaining({ preimageRevealed: false }),
+            );
             expect(stored[reverseSwap.id].claimTx).toEqual("claimtxid");
+        });
+
+        test("records the reveal, and skips the check once it is recorded", async () => {
+            vi.mocked(claim).mockImplementationOnce(
+                async (_deriveKey, swap, _tx, _coop, options) => {
+                    await options?.beforeReveal?.();
+                    return { ...swap, claimTx: "claimtxid" };
+                },
+            );
+            const context = renderPayContext();
+            context.setSwap({ ...reverseSwap });
+            await context.claimSwap(reverseSwap.id, confirmedData());
+            expect(
+                (stored[reverseSwap.id] as ReverseSwap).preimageRevealed,
+            ).toEqual(true);
+
+            // A claim that has to be made again: the preimage is out already
+            stored[reverseSwap.id] = {
+                ...reverseSwap,
+                preimageRevealed: true,
+            } as SomeSwap;
+            vi.mocked(getReverseTransaction).mockResolvedValue({
+                id: "fetched",
+                hex: "fetchedhex",
+                timeoutBlockHeight: 123,
+            });
+            await context.claimSwap(reverseSwap.id, {
+                id: reverseSwap.id,
+                status: swapStatusSuccess.InvoiceSettled,
+            });
+            expect(vi.mocked(claim).mock.calls.at(-1)![4]).toEqual(
+                expect.objectContaining({ preimageRevealed: true }),
+            );
         });
 
         test("refuses to claim with an invalid persisted receive amount", async () => {

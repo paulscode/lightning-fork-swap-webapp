@@ -291,3 +291,43 @@ describe("claimReverseUtxo cooperative aggregation", () => {
         );
     });
 });
+
+describe("claimReverseUtxo fee floor", () => {
+    // The lockup output is 60,000 sat (getOutputAmount); a probe build of
+    // the claim is 100 vbytes with one cooperative input: 100 + 1 + 17
+    const sized = () => {
+        mocks.constructClaim.mockReturnValue({
+            ...claimTx,
+            vsize: 100,
+            inputsLength: 1,
+        });
+    };
+    const lastFee = (): unknown =>
+        mocks.constructClaim.mock.calls.at(-1)![2] as unknown;
+
+    test("a lockup that leaves 1 sat pays the floor, out of the amount received", async () => {
+        sized();
+        await claimReverseUtxo(
+            baseParams({ receiveAmount: 59_999, minFeeRate: 2 }),
+        );
+        expect(lastFee()).toEqual(Math.ceil(118 * 2));
+    });
+
+    test("a lockup that leaves more than the floor pays what it leaves", async () => {
+        sized();
+        await claimReverseUtxo(
+            baseParams({ receiveAmount: 59_000, minFeeRate: 2 }),
+        );
+        expect(lastFee()).toEqual(1_000);
+    });
+
+    test("a floor beyond the fee limit is refused before the preimage leaves", async () => {
+        sized();
+        await expect(
+            claimReverseUtxo(
+                baseParams({ receiveAmount: 59_999, minFeeRate: 1_000 }),
+            ),
+        ).rejects.toThrow(/more than the limit/);
+        expect(mocks.getPartialReverseClaimSignature).not.toHaveBeenCalled();
+    });
+});

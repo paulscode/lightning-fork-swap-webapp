@@ -25,11 +25,20 @@ vi.mock("../../src/utils/blockchain", () => ({
     broadcastTransaction: vi.fn(),
     getRawTransaction: vi.fn(),
     getBlockTipHeight: vi.fn(),
+    getTransactionConfirmed: vi.fn(() => Promise.resolve(true)),
     hasBlockExplorer: vi.fn(() => true),
 }));
 
-const { broadcastTransaction, getBlockTipHeight, getRawTransaction } =
-    await import("../../src/utils/blockchain");
+vi.mock("../../src/utils/fees", () => ({
+    minClaimFeeRate: vi.fn(() => Promise.resolve(3)),
+}));
+
+const {
+    broadcastTransaction,
+    getBlockTipHeight,
+    getRawTransaction,
+    getTransactionConfirmed,
+} = await import("../../src/utils/blockchain");
 const { claim, createSubmarineSignature, lockupCheckRetry } =
     await import("../../src/utils/claim");
 const { claimReverseUtxo } = await import("boltz-swaps/utxo");
@@ -148,14 +157,14 @@ describe("claim", () => {
         },
     );
 
-    const refused = async (invoiceSettled = false) => {
+    const refused = async (options = {}) => {
         await expect(
             claim(
                 vi.fn(),
                 { ...reverseSwap },
                 { hex: "lockuphex" },
                 true,
-                invoiceSettled,
+                options,
             ),
         ).rejects.toThrow();
         expect(claimReverseUtxo).not.toHaveBeenCalled();
@@ -198,18 +207,53 @@ describe("claim", () => {
         await refused();
     });
 
-    test("claims without the check once the invoice is settled", async () => {
+    test("claims without the check once this browser revealed the preimage", async () => {
         vi.mocked(getRawTransaction).mockRejectedValue(new Error("404"));
         vi.mocked(broadcastTransaction).mockResolvedValueOnce({ id: "" });
 
-        await claim(
-            vi.fn(),
-            { ...reverseSwap },
-            { hex: "lockuphex" },
-            true,
-            true,
-        );
+        await claim(vi.fn(), { ...reverseSwap }, { hex: "lockuphex" }, true, {
+            preimageRevealed: true,
+        });
         expect(getRawTransaction).not.toHaveBeenCalled();
         expect(claimReverseUtxo).toHaveBeenCalledTimes(1);
+    });
+
+    test("records the reveal before the preimage leaves, with the claim's fee floor", async () => {
+        vi.mocked(broadcastTransaction).mockResolvedValueOnce({ id: "" });
+        const order: string[] = [];
+        vi.mocked(claimReverseUtxo).mockImplementationOnce(() => {
+            order.push("claim");
+            return Promise.resolve({
+                transactionHex: "claimhex",
+                transactionId: "",
+            });
+        });
+
+        await claim(vi.fn(), { ...reverseSwap }, { hex: "lockuphex" }, true, {
+            beforeReveal: () => {
+                order.push("recorded");
+                return Promise.resolve();
+            },
+        });
+        expect(order).toEqual(["recorded", "claim"]);
+        expect(vi.mocked(claimReverseUtxo).mock.calls[0][0].minFeeRate).toEqual(
+            3,
+        );
+    });
+
+    test("nothing is recorded when the lockup check fails", async () => {
+        vi.mocked(getRawTransaction).mockResolvedValue("otherhex");
+        const beforeReveal = vi.fn();
+        await refused({ beforeReveal });
+        expect(beforeReveal).not.toHaveBeenCalled();
+    });
+
+    test("without 0-conf, waits for the explorer to confirm the lockup", async () => {
+        vi.mocked(getTransactionConfirmed).mockResolvedValueOnce(false);
+        await refused({ requireConfirmed: true });
+        expect(getTransactionConfirmed).toHaveBeenCalledWith(
+            BTC,
+            "a".repeat(64),
+        );
     });
 });

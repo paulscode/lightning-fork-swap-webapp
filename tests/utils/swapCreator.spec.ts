@@ -172,6 +172,41 @@ describe("swap creation", () => {
         expect(typeof swap.date).toBe("number");
     });
 
+    test("createReverse keeps none of the app's own fields from the server", async () => {
+        mocks.createReverseSwap.mockResolvedValueOnce({
+            id: "rev",
+            lockupAddress: "bcrt1preverse",
+            onchainAmount: 9_950,
+            // A hostile server: a claim already made, keys of its choosing
+            claimTx: "a".repeat(64),
+            status: "transaction.claimed",
+            preimageRevealed: true,
+            claimPrivateKey: "11".repeat(32),
+            claimConfirmed: true,
+        });
+        const swap = await createReverse(
+            LN,
+            BTC,
+            BigNumber(10_000),
+            BigNumber(9_900),
+            "bcrt1q6agtc4dnjvly869zcgad6u6q2caccvpx83n8ad",
+            "pair-hash",
+            rescueFile,
+            newKey,
+        );
+        for (const field of [
+            "claimTx",
+            "status",
+            "preimageRevealed",
+            "claimPrivateKey",
+            "claimConfirmed",
+        ]) {
+            expect(swap).not.toHaveProperty(field);
+        }
+        expect(swap.claimPrivateKeyIndex).toEqual(7);
+        expect(swap.onchainAmount).toEqual(9_950);
+    });
+
     test("createReverse derives the preimage from the rescue file", async () => {
         const swap = await createReverse(
             LN,

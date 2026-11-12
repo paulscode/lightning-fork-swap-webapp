@@ -11,7 +11,7 @@ import { Show, createSignal } from "solid-js";
 
 import { copyIconTimeout } from "../../consts/CopyContent";
 import { useCreateContext } from "../../context/Create";
-import { useGlobalContext } from "../../context/Global";
+import { rescueFileResetKey, useGlobalContext } from "../../context/Global";
 import { downloadRescueFile } from "../../utils/backup";
 import { clipboard } from "../../utils/helper";
 import { generateRescueFile } from "../../utils/rescueFile";
@@ -63,6 +63,11 @@ const RescueFile = () => {
             setRescueFile(newRescueFile);
             setLastUsedKey(0);
             setRescueFileBackupDone(false);
+            // Tells the other open tabs to take the new key
+            localStorage.setItem(
+                rescueFileResetKey,
+                JSON.stringify(Date.now()),
+            );
             setSettingsMenu(false);
             setSendAmount(BigNumber(0));
             setReceiveAmount(BigNumber(0));

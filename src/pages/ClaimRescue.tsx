@@ -30,7 +30,6 @@ import { getSwapIconAssets } from "../components/SwapIcons";
 import { hiddenInformation } from "../components/settings/PrivacyMode";
 import SettingsMenu from "../components/settings/SettingsMenu";
 import { type AssetType, LN } from "../consts/Assets";
-import { swapStatusSuccess } from "../consts/SwapStatus";
 import { useCreateContext } from "../context/Create";
 import { useGlobalContext } from "../context/Global";
 import { useRescueContext } from "../context/Rescue";
@@ -97,7 +96,8 @@ export const mapClaimableSwap = ({
 const ClaimRescue = () => {
     const params = useParams<{ id: string }>();
 
-    const { t, pairs, notify, fetchPairs, privacyMode } = useGlobalContext();
+    const { t, pairs, notify, fetchPairs, privacyMode, zeroConf } =
+        useGlobalContext();
     const { rescuableSwaps, rescueFile, deriveKey } = useRescueContext();
     const { onchainAddress, addressValid, setOnchainAddress, setAddressValid } =
         useCreateContext();
@@ -244,7 +244,9 @@ const ClaimRescue = () => {
                 },
                 swap.transaction as { hex: string },
                 true,
-                swap.status === swapStatusSuccess.InvoiceSettled,
+                // Nothing here records a reveal, and the status is the
+                // server's word: the lockup is always checked
+                { requireConfirmed: !zeroConf() },
             );
             notify(
                 "success",

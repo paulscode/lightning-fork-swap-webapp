@@ -56,6 +56,10 @@ export type ReverseSwap = SwapBase &
         preimage: string;
         claimAddress: string;
         claimPrivateKeyIndex?: number;
+        // Set before the preimage first left this browser (a claim's
+        // signature request or broadcast): from then on, nothing the
+        // server says can make a claim unsafe, and it must go through
+        preimageRevealed?: boolean;
 
         // Deprecated; used for backwards compatibility
         claimPrivateKey?: string;
@@ -162,6 +166,34 @@ export const createReverse = async (
     };
 };
 
+// What the app keeps about a swap for itself: never taken from the
+// server's creation response, where a server could set them to stop a
+// claim (claimTx, status) or to swap the keys (the deprecated private keys)
+export const localSwapFields = [
+    "status",
+    "claimTx",
+    "claimTxHex",
+    "claimConfirmed",
+    "refundTx",
+    "lockupTx",
+    "preimage",
+    "preimageRevealed",
+    "claimAddress",
+    "claimPrivateKey",
+    "claimPrivateKeyIndex",
+    "refundPrivateKey",
+    "refundPrivateKeyIndex",
+    "originalDestination",
+] as const;
+
+const withoutLocalFields = <T>(response: T): T => {
+    const copy = { ...response } as Record<string, unknown>;
+    for (const field of localSwapFields) {
+        delete copy[field];
+    }
+    return copy as T;
+};
+
 const annotateSwapBaseData = <T, K extends SwapType>(
     createdResponse: T,
     type: K,
@@ -170,7 +202,7 @@ const annotateSwapBaseData = <T, K extends SwapType>(
     sendAmount: BigNumber,
     receiveAmount: BigNumber,
 ): T & SwapBase & { type: K } => ({
-    ...createdResponse,
+    ...withoutLocalFields(createdResponse),
     type,
     assetSend,
     assetReceive,

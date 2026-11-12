@@ -19,6 +19,8 @@ import {
     constructClaim,
     decodeAddress,
     getOutputAmount,
+    maxFee,
+    maxFeeRate,
     parseTransaction,
     setCooperativeWitness,
     txToHex,
@@ -42,6 +44,11 @@ export type ReverseUtxoClaimParams = {
     receiveAmount: number;
     lockupTxHex: string;
     cooperative?: boolean;
+    // The least fee rate the claim may pay (sat/vbyte): when the lockup
+    // leaves less than that above receiveAmount, the difference comes out
+    // of the amount received (up to maxFee), so that the claim relays once
+    // the preimage is out. Without it the fee is what the lockup leaves.
+    minFeeRate?: number;
 };
 
 export type UtxoClaimResult = {
@@ -81,6 +88,7 @@ const buildAdjustedTaprootClaim = (
         params.receiveAmount,
         details,
         decoded.script,
+        params.minFeeRate,
     );
 
     return { claimTx, details, tweaked, boltzPublicKey };
@@ -141,10 +149,11 @@ export const claimReverseUtxo = async (
     }
 };
 
-const createAdjustedClaim = (
+export const createAdjustedClaim = (
     receiveAmount: number,
     claimDetails: ClaimDetails[],
     destination: Uint8Array,
+    minFeeRate?: number,
 ) => {
     if (receiveAmount === 0) {
         throw new Error("amount to be received is 0");
@@ -162,5 +171,59 @@ const createAdjustedClaim = (
         );
     }
 
-    return constructClaim(claimDetails, destination, feeBudget, true);
+    const minFee = minimumClaimFee(
+        claimDetails,
+        destination,
+        inputSum,
+        minFeeRate,
+    );
+    return constructClaim(
+        claimDetails,
+        destination,
+        Math.max(feeBudget, minFee),
+        true,
+    );
+};
+
+// The fee a claim needs at minFeeRate. A lockup that leaves the claim less
+// would make one that never relays, after the preimage is out: the
+// difference is taken from the amount received instead, and a claim that
+// cannot afford it within maxFee is refused before anything is revealed.
+const minimumClaimFee = (
+    claimDetails: ClaimDetails[],
+    destination: Uint8Array,
+    inputSum: number,
+    minFeeRate: number | undefined,
+): number => {
+    if (minFeeRate === undefined) {
+        return 0;
+    }
+    if (
+        !Number.isFinite(minFeeRate) ||
+        minFeeRate <= 0 ||
+        minFeeRate > maxFeeRate
+    ) {
+        throw new Error(`invalid minimum fee rate: ${String(minFeeRate)}`);
+    }
+    const probe = constructClaim(claimDetails, destination, 1, true) as
+        | { vsize: number; inputsLength: number }
+        | { virtualSize: () => number; ins: unknown[] };
+    const [vsize, inputs] =
+        "ins" in probe
+            ? [probe.virtualSize(), probe.ins.length]
+            : [probe.vsize, probe.inputsLength];
+    // A cooperative input is built without its 64-byte signature
+    const witness = claimDetails.reduce(
+        (total, details) =>
+            total +
+            ((details as { cooperative?: boolean }).cooperative ? 17 : 0),
+        0,
+    );
+    const fee = Math.ceil((vsize + inputs + witness) * minFeeRate);
+    if (fee > maxFee(inputSum)) {
+        throw new Error(
+            `a claim at ${minFeeRate} sat/vbyte would cost ${fee} sat, more than the limit of ${maxFee(inputSum)} sat for ${inputSum} sat`,
+        );
+    }
+    return fee;
 };

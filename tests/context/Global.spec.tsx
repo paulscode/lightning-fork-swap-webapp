@@ -332,5 +332,26 @@ describe("Global context", () => {
 
             expect(globalSignals.rescueFile()).toEqual(own);
         });
+
+        test("takes a key the user reset in another tab, used one or not", async () => {
+            renderProvider();
+            await globalSignals.newKey(BTC);
+            globalSignals.setRescueFileBackupDone(true);
+
+            // The other tab's reset: new key, not backed up, then the marker
+            localStorage.setItem("rescueFile", JSON.stringify(other));
+            localStorage.setItem("rescueFileBackupDone", "false");
+            localStorage.setItem("rescueFileReset", JSON.stringify(Date.now()));
+            window.dispatchEvent(
+                new StorageEvent("storage", {
+                    key: "rescueFileReset",
+                    newValue: "1",
+                }),
+            );
+
+            expect(globalSignals.rescueFile()).toEqual(other);
+            // No swap here before the new key is backed up
+            expect(globalSignals.rescueFileBackupDone()).toEqual(false);
+        });
     });
 });

@@ -20,8 +20,10 @@ import {
     broadcastTransaction,
     getBlockTipHeight,
     getRawTransaction,
+    getTransactionConfirmed,
     hasBlockExplorer,
 } from "./blockchain";
+import { minClaimFeeRate } from "./fees";
 import { parsePrivateKey } from "./helper";
 import type { ReverseSwap, SubmarineSwap } from "./swapCreator";
 
@@ -37,7 +39,8 @@ const claimReverseSwap = async (
     deriveKey: deriveKeyFn,
     swap: ReverseSwap,
     lockupTx: TransactionInterface,
-    cooperative: boolean = true,
+    cooperative: boolean,
+    minFeeRate: number,
 ): Promise<TransactionInterface> => {
     log.info(`Claiming reverse swap cooperatively: ${cooperative}`);
 
@@ -56,6 +59,7 @@ const claimReverseSwap = async (
         receiveAmount: swap.receiveAmount,
         lockupTxHex: txToHex(lockupTx),
         cooperative,
+        minFeeRate,
     });
 
     return parseTransaction(result.transactionHex);
@@ -94,6 +98,7 @@ export const lockupCheckRetry = { attempts: 6, delayMs: 5_000 };
 export const verifyReverseLockup = async (
     swap: ReverseSwap,
     lockupHex: string,
+    requireConfirmed = false,
 ): Promise<void> => {
     if (!hasBlockExplorer(swap.assetReceive)) {
         log.warn(`No explorer to check the lockup of swap ${swap.id} with`);
@@ -126,6 +131,15 @@ export const verifyReverseLockup = async (
         );
     }
 
+    // Without 0-conf the user waits for a confirmation: the explorer's
+    // word, not the server's
+    if (
+        requireConfirmed &&
+        !(await getTransactionConfirmed(swap.assetReceive, txid))
+    ) {
+        throw new Error(`lockup ${txid} of swap ${swap.id} is not confirmed`);
+    }
+
     const tip = Number(await getBlockTipHeight(swap.assetReceive));
     if (swap.timeoutBlockHeight - tip < minClaimMarginBlocks) {
         throw new Error(
@@ -134,24 +148,45 @@ export const verifyReverseLockup = async (
     }
 };
 
+export type ClaimOptions = {
+    // This browser revealed the preimage already (it stored that before the
+    // reveal): the lockup is claimed whatever it is, nothing is left to
+    // protect. Never from the server: a server that says "settled" before
+    // the reveal would skip the checks below.
+    preimageRevealed?: boolean;
+    // Called just before the preimage first leaves the browser, to record
+    // that it did
+    beforeReveal?: () => Promise<void>;
+    // 0-conf off: the lockup must be confirmed, by the explorer
+    requireConfirmed?: boolean;
+};
+
 export const claim = async (
     deriveKey: deriveKeyFn,
     swap: ReverseSwap,
     swapStatusTransaction: { hex: string },
     cooperative: boolean,
-    // Once the invoice is settled the preimage is out already: claim at once
-    invoiceSettled = false,
+    options: ClaimOptions = {},
 ): Promise<ReverseSwap> => {
-    if (!invoiceSettled) {
-        await verifyReverseLockup(swap, swapStatusTransaction.hex);
+    if (!options.preimageRevealed) {
+        await verifyReverseLockup(
+            swap,
+            swapStatusTransaction.hex,
+            options.requireConfirmed ?? false,
+        );
     }
 
+    const minFeeRate = await minClaimFeeRate(swap.assetReceive);
     const lockupTx = parseTransaction(swapStatusTransaction.hex);
+    // Building the claim asks the server for its signature with the
+    // preimage (cooperative), or broadcasts it (not): either reveals it
+    await options.beforeReveal?.();
     const claimTransaction = await claimReverseSwap(
         deriveKey,
         swap,
         lockupTx,
         cooperative,
+        minFeeRate,
     );
 
     log.debug("Broadcasting claim transaction");

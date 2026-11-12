@@ -3,7 +3,10 @@ import { afterEach, beforeEach, vi } from "vitest";
 
 import { config } from "../../src/config";
 import { BTC } from "../../src/consts/Assets";
-import { getFeeEstimationsFailover } from "../../src/utils/fees";
+import {
+    getFeeEstimationsFailover,
+    minClaimFeeRate,
+} from "../../src/utils/fees";
 
 const mockGetFeeEstimationsFromBoltz = vi.fn();
 const mockGetFeeEstimationsFromBlockchain = vi.fn();
@@ -185,6 +188,44 @@ describe("fees", () => {
             } finally {
                 config.assets![BTC].blockExplorerApis = originalApis;
             }
+        });
+    });
+
+    describe("the floors", () => {
+        let originalApis: Asset["blockExplorerApis"];
+
+        beforeEach(() => {
+            vi.clearAllMocks();
+            originalApis = config.assets![BTC].blockExplorerApis;
+            config.assets![BTC].blockExplorerApis = [
+                { id: Explorer.Esplora, normal: "https://esplora.example" },
+            ];
+        });
+
+        afterEach(() => {
+            config.assets![BTC].blockExplorerApis = originalApis;
+        });
+
+        test("a refund rate from the API is floored as the explorer's is", async () => {
+            mockGetFeeEstimationsFromBoltz.mockResolvedValue({ [BTC]: 0.0001 });
+            expect(await getFeeEstimationsFailover(BTC)).toEqual(2);
+        });
+
+        test("a claim's rate is the explorer's, whatever the API says", async () => {
+            mockGetFeeEstimationsFromBoltz.mockResolvedValue({ [BTC]: 500 });
+            mockGetFeeEstimationsFromBlockchain.mockResolvedValue(7);
+            expect(await minClaimFeeRate(BTC)).toEqual(7);
+            expect(mockGetFeeEstimationsFromBoltz).not.toHaveBeenCalled();
+        });
+
+        test("a claim's rate falls back to the API, and never under 1", async () => {
+            mockGetFeeEstimationsFromBlockchain.mockRejectedValue(
+                new Error("down"),
+            );
+            mockGetFeeEstimationsFromBoltz.mockResolvedValue({ [BTC]: 0.2 });
+            expect(await minClaimFeeRate(BTC)).toEqual(1);
+            mockGetFeeEstimationsFromBoltz.mockRejectedValue(new Error("down"));
+            expect(await minClaimFeeRate(BTC)).toEqual(1);
         });
     });
 });

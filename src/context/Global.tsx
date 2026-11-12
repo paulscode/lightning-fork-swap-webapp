@@ -112,6 +112,9 @@ export type GlobalContextType = {
 
 const GlobalContext = createContext<GlobalContextType>();
 
+// Written when the user resets the rescue key, for the other open tabs
+export const rescueFileResetKey = "rescueFileReset";
+
 // The waits between attempts at the pairs before the API is called offline
 export const pairsRetryDelays = [1_000, 3_000];
 
@@ -227,7 +230,32 @@ const GlobalProvider = (props: {
     // key yet takes the one in storage, so that every swap is covered by the
     // one rescue file the user backs up.
     let keyUsedInThisTab = false;
+    const adoptStoredRescueFile = () => {
+        const stored = readStored<RescueFile>("rescueFile");
+        if (stored !== null && stored.mnemonic !== rescueFile()?.mnemonic) {
+            log.debug("Taking the rescue file another tab stored");
+            setRescueFile(stored);
+        }
+        setRescueFileBackupDone(
+            readStored<boolean>("rescueFileBackupDone") === true,
+        );
+    };
     const onStorage = (event: StorageEvent) => {
+        // The user reset the rescue key in another tab (which cleared every
+        // swap): every tab takes the new key, used for a swap here or not,
+        // and its backup state, so that no new swap is made under a key the
+        // user discarded or before the new one is backed up
+        if (event.key === rescueFileResetKey && event.newValue !== null) {
+            keyUsedInThisTab = false;
+            adoptStoredRescueFile();
+            return;
+        }
+        if (event.key === "rescueFileBackupDone" && !keyUsedInThisTab) {
+            setRescueFileBackupDone(
+                readStored<boolean>("rescueFileBackupDone") === true,
+            );
+            return;
+        }
         if (
             event.key !== "rescueFile" ||
             event.newValue === null ||
@@ -235,11 +263,7 @@ const GlobalProvider = (props: {
         ) {
             return;
         }
-        const stored = readStored<RescueFile>("rescueFile");
-        if (stored !== null && stored.mnemonic !== rescueFile()?.mnemonic) {
-            log.debug("Taking the rescue file another tab stored");
-            setRescueFile(stored);
-        }
+        adoptStoredRescueFile();
     };
     window.addEventListener("storage", onStorage);
     onCleanup(() => window.removeEventListener("storage", onStorage));

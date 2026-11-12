@@ -168,10 +168,23 @@ const PayProvider = (props: { children: JSX.Element }) => {
                             claimableSwap,
                             transaction,
                             true,
-                            data.status === swapStatusSuccess.InvoiceSettled,
+                            {
+                                preimageRevealed:
+                                    claimableSwap.preimageRevealed === true,
+                                beforeReveal: async () => {
+                                    await modifySwap(swapId, (s) => {
+                                        (s as ReverseSwap).preimageRevealed =
+                                            true;
+                                    });
+                                },
+                                requireConfirmed: !zeroConf(),
+                            },
                         );
+                        // The hex too: the claim watcher rebroadcasts it if
+                        // it drops out of the mempools
                         const claimedSwap = await modifySwap(result.id, (s) => {
                             s.claimTx = result.claimTx;
+                            s.claimTxHex = result.claimTxHex;
                         });
                         return claimedSwap === null ? undefined : result;
                     },
